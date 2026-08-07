@@ -79,7 +79,7 @@
   {
    "fieldname": "category",
    "fieldtype": "Link",
-   "options": "Item Category",
+   "options": "Saathi Item Category",
    "label": "Category",
    "in_list_view": 1,
    "in_standard_filter": 1,
@@ -179,7 +179,7 @@
  "modified": "2026-08-06 00:00:00.000000",
  "modified_by": "Administrator",
  "module": "Saathi Middleware",
- "name": "Item",
+ "name": "Saathi Item",
  "naming_rule": "Expression",
  "owner": "Administrator",
  "permissions": [

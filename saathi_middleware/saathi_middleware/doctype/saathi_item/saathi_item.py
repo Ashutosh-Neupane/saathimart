@@ -2,7 +2,7 @@ import frappe
 from frappe.model.document import Document
 
 
-class Item(Document):
+class SaathiItem(Document):
 	def before_save(self):
 		franchise = frappe.db.get_value(
 			"Franchise", self.franchise, ["latitude", "longitude", "pincode", "city"], as_dict=True

@@ -10,15 +10,15 @@ def _upsert_item(franchise, payload):
 		return {"item_code": None, "status": "error", "message": "item_code is required"}
 
 	docname = f"{franchise.name}-{item_code}"
-	existing = frappe.db.exists("Item", docname)
+	existing = frappe.db.exists("Saathi Item", docname)
 
 	if existing:
-		pushed_at = frappe.db.get_value("Item", docname, "pushed_at")
+		pushed_at = frappe.db.get_value("Saathi Item", docname, "pushed_at")
 		if pushed_at and payload.get("pushed_at") and str(pushed_at) >= str(payload.get("pushed_at")):
 			return {"item_code": item_code, "status": "skipped", "message": "stale update ignored"}
-		doc = frappe.get_doc("Item", docname)
+		doc = frappe.get_doc("Saathi Item", docname)
 	else:
-		doc = frappe.new_doc("Item")
+		doc = frappe.new_doc("Saathi Item")
 		doc.franchise = franchise.name
 		doc.item_code = item_code
 
@@ -101,7 +101,7 @@ def get_nearby_items(latitude, longitude, category=None, item_group=None, q=None
 					SIN(RADIANS(%(lat)s)) * SIN(RADIANS(item.latitude))
 				))
 			)) AS distance_km
-		FROM `tabItem` item
+		FROM `tabSaathi Item` item
 		JOIN `tabFranchise` franchise ON franchise.name = item.franchise
 		WHERE {where_clause}
 		HAVING distance_km <= franchise.serviceable_radius_km

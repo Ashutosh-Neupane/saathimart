@@ -1,5 +1,5 @@
 from frappe.model.document import Document
 
 
-class ItemCategory(Document):
+class SaathiItemCategory(Document):
 	pass

@@ -201,6 +201,17 @@ def checkout(session_id, customer_name, customer_phone, delivery_address,
 
     cart.db_set("status", "CheckedOut")
 
+    if email:
+        try:
+            from saathimart.api.mailing import send_order_confirmation
+            items_summary = [
+                {"product_name": i.product_name, "qty": i.qty, "rate": i.rate}
+                for i in order.items
+            ]
+            send_order_confirmation(email, order.name, order.grand_total, items_summary)
+        except Exception:
+            frappe.log_error(frappe.get_traceback(), "Order confirmation email failed")
+
     return {
         "order_id":       order.name,
         "vendor":         order.vendor,

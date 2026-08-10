@@ -426,6 +426,18 @@ def _mark_order_paid(order_id, gateway, reference, transaction_uid, amount):
     log.insert(ignore_permissions=True)
     frappe.db.commit()
 
+    try:
+        from saathimart.api.mailing import send_order_confirmation
+        doc = frappe.get_doc("Order", order_id)
+        items_summary = [
+            {"product_name": i.product_name, "qty": i.qty, "rate": i.rate}
+            for i in doc.items
+        ]
+        if doc.customer_email:
+            send_order_confirmation(doc.customer_email, order_id, amount, items_summary)
+    except Exception:
+        frappe.log_error(frappe.get_traceback(), "Payment confirmation email failed")
+
 
 def _mark_order_failed(order_id, gateway, message):
     frappe.db.set_value("Order", order_id, {"payment_status": "Unpaid"})

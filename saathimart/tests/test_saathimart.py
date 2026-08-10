@@ -1711,8 +1711,14 @@ class TestVendorCommissionReconciliationReport(unittest.TestCase):
 
     def setUp(self):
         frappe.set_user("Administrator")
-        self.vendor_a = _make_vendor("Commission Vendor A", slug="commission-vendor-a")
-        self.vendor_b = _make_vendor("Commission Vendor B", slug="commission-vendor-b")
+        # A unique suffix per test method (not per class) — _make_vendor()
+        # reuses an existing Vendor by name, and these tests assert *exact*
+        # SUM(...) totals over a date range, so a name shared across test
+        # methods would let orders from earlier methods leak into later
+        # methods' aggregates.
+        suffix = frappe.generate_hash(length=6)
+        self.vendor_a = _make_vendor(f"Commission Vendor A {suffix}", slug=f"commission-vendor-a-{suffix}")
+        self.vendor_b = _make_vendor(f"Commission Vendor B {suffix}", slug=f"commission-vendor-b-{suffix}")
         frappe.db.set_value("Vendor", self.vendor_a.name, "commission_pct", 10)
         frappe.db.set_value("Vendor", self.vendor_b.name, "commission_pct", 20)
         self.product_a = _make_product("Commission Product A", price=1000)
@@ -1819,7 +1825,11 @@ class TestVendorPayout(unittest.TestCase):
 
     def setUp(self):
         frappe.set_user("Administrator")
-        self.vendor = _make_vendor("Payout Test Vendor", slug="payout-test-vendor")
+        # See TestVendorCommissionReconciliationReport.setUp — a unique
+        # suffix per test method keeps this test's orders from leaking into
+        # (or being polluted by) other methods' exact SUM(...) assertions.
+        suffix = frappe.generate_hash(length=6)
+        self.vendor = _make_vendor(f"Payout Test Vendor {suffix}", slug=f"payout-test-vendor-{suffix}")
         frappe.db.set_value("Vendor", self.vendor.name, "commission_pct", 10)
         self.product = _make_product("Payout Test Product", price=1000)
 

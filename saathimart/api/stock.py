@@ -119,8 +119,10 @@ def _validate_event(vendor, product, payload):
             "Verify with vendor before applying manually."
         ), row
 
-    # Staleness guard: if vendor sends base_qty, ensure it matches current state
-    if base_qty is not None:
+    # Staleness guard: if vendor sends base_qty, ensure it matches current state.
+    # Skip for brand-new Vendor Stock rows that have never been updated — the
+    # vendor's base_qty IS the source of truth for the initial sync.
+    if base_qty is not None and (row.last_event_seq or 0) > 0:
         current = flt(row.available_qty or 0) + flt(row.reserved_qty or 0)
         if flt(base_qty) != current:
             return False, (

@@ -10,6 +10,9 @@ def execute():
     existing = {row.Field for row in frappe.db.sql("DESCRIBE `tabVendor Listing`", as_dict=True)}
     for col in columns:
         if col not in existing:
-            frappe.db.sql(f"ALTER TABLE `tabVendor Listing` ADD COLUMN `{col}` VARCHAR(255)")
+            # ALTER TABLE autocommits in MariaDB — frappe.db.sql() refuses
+            # DDL for exactly that reason (ImplicitCommitError); sql_ddl()
+            # is the framework's own escape hatch for it.
+            frappe.db.sql_ddl(f"ALTER TABLE `tabVendor Listing` ADD COLUMN `{col}` VARCHAR(255)")
             frappe.log_error(f"Added column {col} to tabVendor Listing", "Patch")
     frappe.db.commit()

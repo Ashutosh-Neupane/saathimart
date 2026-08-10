@@ -25,8 +25,12 @@ def execute():
         cols = ", ".join(f"`{f}`" for f in fields)
         sql = f"CREATE INDEX IF NOT EXISTS `{idx_name}` ON `tab{doctype}` ({cols})"
         try:
-            frappe.db.sql(sql)
-            frappe.db.commit()
+            # CREATE INDEX autocommits in MariaDB — frappe.db.sql() refuses
+            # DDL for exactly that reason (ImplicitCommitError); this was
+            # silently swallowed by the except below, so indexes were
+            # never actually being created. sql_ddl() is the framework's
+            # own escape hatch for DDL.
+            frappe.db.sql_ddl(sql)
             frappe.log_error(f"Created index {idx_name} on {doctype}({', '.join(fields)})", "Patch")
         except Exception as e:
             frappe.log_error(f"Index {idx_name} failed: {e}", "Patch")

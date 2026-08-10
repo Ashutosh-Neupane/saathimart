@@ -96,9 +96,22 @@ cd "$BENCH"
 bench --site "$SITE" migrate
 bench build --app saathimart || true
 
+# `frappe.app:application` (the raw WSGI callable gunicorn would otherwise
+# import) never serves /assets or /files — that middleware only gets
+# applied inside frappe.app.serve(), which `bench serve`/`bench start`'s
+# dev server calls but a bare gunicorn import never does. In a real
+# deployment nginx serves those paths directly from disk instead; this
+# compose stack has no nginx in front, so wrap the app here or every JS/CSS
+# asset 404s once real gunicorn workers (not `bench start`'s werkzeug dev
+# server) are serving requests.
+cat > "$BENCH/sites/gunicorn_wsgi.py" <<'EOF'
+import frappe.app
+application = frappe.app.application_with_statics()
+EOF
+
 # Create Procfile for bench start with full gunicorn path
 cat > "$BENCH/Procfile" <<'EOF'
-web: cd /home/frappe/bench/sites && /home/frappe/bench/env/bin/gunicorn --bind 0.0.0.0:8000 frappe.app:application
+web: cd /home/frappe/bench/sites && /home/frappe/bench/env/bin/gunicorn --bind 0.0.0.0:8000 gunicorn_wsgi:application
 EOF
 
 echo "=== SaathiMart ready at http://localhost:8000 ==="

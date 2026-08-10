@@ -11,6 +11,7 @@ Flow:
 """
 import json
 import uuid
+import urllib.parse
 
 import frappe
 import requests
@@ -201,10 +202,28 @@ def _deliver_event(evt, secret, max_retries):
             if vs:
                 vendor_secret = vs
 
+        target_url = evt.target_site
+        host_header = None
+        if target_vendor:
+            vendor_site_url = frappe.db.get_value("Vendor", target_vendor, "frappe_site_url") or ""
+            if vendor_site_url:
+                host_header = urllib.parse.urlparse(vendor_site_url).hostname
+            parsed = urllib.parse.urlparse(target_url)
+            if parsed.hostname in ("localhost", "vendor1.localhost"):
+                target_url = parsed._replace(netloc="vendor:8000").geturl()
+
+        headers = {
+            "X-SM-Secret": vendor_secret,
+            "X-SM-Timestamp": str(int(now_datetime().timestamp())),
+            "Content-Type": "application/json",
+        }
+        if host_header:
+            headers["Host"] = host_header
+
         resp = requests.post(
-            f"{evt.target_site}/api/method/saathimart_vendor.api.receive.receive_from_hub",
+            f"{target_url}/api/method/saathimart_vendor.api.receive.receive_from_hub",
             json={"event": evt.event_type, "payload": json.loads(evt.payload or "{}")},
-            headers={"X-SM-Secret": vendor_secret, "Content-Type": "application/json"},
+            headers=headers,
             timeout=10,
         )
         status = "Sent" if resp.ok else "Failed"

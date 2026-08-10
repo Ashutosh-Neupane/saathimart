@@ -87,7 +87,8 @@ def _cascade_status_to_fulfillments(doc, status):
 @frappe.whitelist(allow_guest=True)
 def checkout(session_id, customer_name, customer_phone, delivery_address,
              payment_method="COD", delivery_zone=None, coupon_code=None,
-             loyalty_points=0, notes=None, customer_email=None):
+             loyalty_points=0, notes=None, customer_email=None,
+             customer_lat=None, customer_lng=None):
     """
     Convert an active Cart into a submitted Order.
 
@@ -108,6 +109,11 @@ def checkout(session_id, customer_name, customer_phone, delivery_address,
     cart = frappe.get_doc("Cart", cart_name)
     if not cart.items:
         frappe.throw(_("Cart is empty"))
+
+    if customer_lat is None and cart.customer_lat is not None:
+        customer_lat = flt(cart.customer_lat)
+    if customer_lng is None and cart.customer_lng is not None:
+        customer_lng = flt(cart.customer_lng)
 
     email = customer_email or (
         frappe.session.user if frappe.session.user != "Guest" else None
@@ -134,6 +140,10 @@ def checkout(session_id, customer_name, customer_phone, delivery_address,
     order.source_site      = cart.source_site or ""
     order.cart_id          = cart.name
     order.vendor            = next(iter(vendor_groups.keys()), "") if vendor_groups else ""
+    if customer_lat is not None:
+        order.delivery_lat = flt(customer_lat)
+    if customer_lng is not None:
+        order.delivery_lng = flt(customer_lng)
 
     for ci in cart.items:
         order.append("items", {

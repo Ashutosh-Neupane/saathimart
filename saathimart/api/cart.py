@@ -28,6 +28,26 @@ def _get_or_create_cart(session_id):
     return cart
 
 
+@frappe.whitelist(allow_guest=True)
+def set_customer_location(session_id, lat, lng):
+    """
+    Update the customer's delivery location on the cart.
+    Used by the frontend location picker so the backend — not just a client-side
+    cookie — is the single source of truth for vendor selection.
+    """
+    guest_rate_limit("cart.set_location", limit=60, window_seconds=60)
+    cart = _get_or_create_cart(session_id)
+    cart.customer_lat = flt(lat)
+    cart.customer_lng = flt(lng)
+    cart.save(ignore_permissions=True)
+    return {
+        "ok": True,
+        "cart_id": cart.name,
+        "customer_lat": flt(cart.customer_lat),
+        "customer_lng": flt(cart.customer_lng),
+    }
+
+
 def _get_vendor_stock(vendor, product):
     """Get Vendor Stock row for a vendor+product pair."""
     name = f"{vendor}-{product}"
@@ -50,7 +70,7 @@ def get_cart(session_id):
 
 
 @frappe.whitelist(allow_guest=True)
-def add_to_cart(session_id, product, qty=1, vendor=None, delivery_zone=None):
+def add_to_cart(session_id, product, qty=1, vendor=None, delivery_zone=None, customer_lat=None, customer_lng=None):
     guest_rate_limit("cart.add", limit=60, window_seconds=60)
     qty = float(qty)
     if qty <= 0:
@@ -70,9 +90,18 @@ def add_to_cart(session_id, product, qty=1, vendor=None, delivery_zone=None):
         if not vl:
             frappe.throw(_("Vendor listing not found for this product"))
     else:
-        best = select_best_vendor(product, delivery_zone=delivery_zone)
+        cart = _get_or_create_cart(session_id)
+        if customer_lat is None and cart.customer_lat is not None:
+            customer_lat = flt(cart.customer_lat)
+        if customer_lng is None and cart.customer_lng is not None:
+            customer_lng = flt(cart.customer_lng)
+        best = select_best_vendor(
+            product, delivery_zone=delivery_zone,
+            customer_lat=customer_lat, customer_lng=customer_lng,
+        )
         if not best:
             frappe.throw(_("No vendor available for this product"))
+        vendor = best.vendor
         vl = frappe.get_list(
             "Vendor Listing",
             filters={"name": best.name, "status": "Active"},
@@ -83,6 +112,12 @@ def add_to_cart(session_id, product, qty=1, vendor=None, delivery_zone=None):
     track_inventory = vl[0].track_inventory
 
     cart = _get_or_create_cart(session_id)
+
+    if customer_lat is not None:
+        cart.customer_lat = flt(customer_lat)
+    if customer_lng is not None:
+        cart.customer_lng = flt(customer_lng)
+    cart.save(ignore_permissions=True)
 
     # If same product + same vendor already in cart, increment qty
     for item in cart.items:

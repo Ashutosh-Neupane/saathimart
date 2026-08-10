@@ -8,8 +8,45 @@ import math
 import frappe
 from frappe import _
 from frappe.utils import flt, nowdate, add_days, today
-from saathimart.api.location import _haversine
 from saathimart.api.utils import guest_rate_limit
+
+
+def _load_vendor_locations_sql(vendor_names, customer_lat, customer_lng):
+    """
+    Return {vendor: {vendor_name, lat, lng, service_radius_km, distance_km}}
+    using MariaDB ST_Distance_Sphere. Skips vendors with NULL/zero coords
+    or outside their service_radius_km.
+    """
+    if not vendor_names:
+        return {}
+
+    rows = frappe.db.sql("""
+        SELECT name, vendor_name, lat, lng, service_radius_km,
+               ST_Distance_Sphere(
+                   ST_PointFromText(CONCAT('POINT(', lng, ' ', lat, ')')),
+                   ST_PointFromText(CONCAT('POINT(', %s, ' ', %s, ')'))
+               ) AS distance_meters
+        FROM `tabVendor`
+        WHERE name IN %s
+          AND lat IS NOT NULL AND lng IS NOT NULL
+          AND lat != 0 AND lng != 0
+          AND ST_Distance_Sphere(
+              ST_PointFromText(CONCAT('POINT(', lng, ' ', lat, ')')),
+              ST_PointFromText(CONCAT('POINT(', %s, ' ', %s, ')'))
+          ) <= service_radius_km * 1000
+        ORDER BY distance_meters ASC
+    """, (customer_lng, customer_lat, tuple(vendor_names), customer_lng, customer_lat), as_dict=True)
+
+    result = {}
+    for r in rows:
+        result[r.name] = {
+            "vendor_name": getattr(r, "vendor_name", r.name),
+            "lat": flt(r.lat),
+            "lng": flt(r.lng),
+            "service_radius_km": flt(r.service_radius_km or 5),
+            "distance_km": round(flt(r.distance_meters or 0) / 1000, 2),
+        }
+    return result
 
 
 def _preload_listing_data(product_names, customer_lat=None, customer_lng=None):
@@ -60,21 +97,9 @@ def _preload_listing_data(product_names, customer_lat=None, customer_lng=None):
             }
 
         if customer_lat is not None and customer_lng is not None:
-            for v in frappe.get_list(
-                "Vendor",
-                filters={"name": ["in", list(all_vendors)]},
-                fields=["name", "vendor_name", "lat", "lng", "service_radius_km"],
-            ):
-                vlat = flt(getattr(v, "lat", 0) or 0)
-                vlng = flt(getattr(v, "lng", 0) or 0)
-                if vlat and vlng:
-                    vendor_location_map[v.name] = {
-                        "vendor_name": getattr(v, "vendor_name", v.name),
-                        "lat": vlat,
-                        "lng": vlng,
-                        "service_radius_km": flt(getattr(v, "service_radius_km", 5) or 5),
-                        "distance_km": _haversine(flt(customer_lat), flt(customer_lng), vlat, vlng),
-                    }
+            vendor_location_map = _load_vendor_locations_sql(
+                list(all_vendors), customer_lat, customer_lng
+            )
 
     return listings_map, stock_map, vendor_location_map
 
@@ -113,21 +138,9 @@ def _get_best_vendor_listing(product_name, vendor=None, delivery_zone=None,
                 stock_map = {r.vendor: r for r in rows}
             vendor_location_map = {}
             if customer_lat is not None and customer_lng is not None and vendor_names:
-                for v in frappe.get_list(
-                    "Vendor",
-                    filters={"name": ["in", vendor_names]},
-                    fields=["name", "vendor_name", "lat", "lng", "service_radius_km"],
-                ):
-                    vlat = flt(getattr(v, "lat", 0) or 0)
-                    vlng = flt(getattr(v, "lng", 0) or 0)
-                    if vlat and vlng:
-                        vendor_location_map[v.name] = {
-                            "vendor_name": getattr(v, "vendor_name", v.name),
-                            "lat": vlat,
-                            "lng": vlng,
-                            "service_radius_km": flt(getattr(v, "service_radius_km", 5) or 5),
-                            "distance_km": _haversine(flt(customer_lat), flt(customer_lng), vlat, vlng),
-                        }
+                vendor_location_map = _load_vendor_locations_sql(
+                    vendor_names, customer_lat, customer_lng
+                )
             _stock_map = stock_map
             _vendor_location_map = vendor_location_map
 
@@ -452,7 +465,7 @@ def get_product(slug, vendor=None, delivery_zone=None, lat=None, lng=None):
     if not name:
         frappe.throw(_("Product not found"), frappe.DoesNotExistError)
 
-    cache_key = f"sm_product:{name}:{vendor or delivery_zone or 'hub'}"
+    cache_key = f"sm_product:{name}:{vendor or delivery_zone or 'hub'}:{lat or ''}:{lng or ''}"
     cached = frappe.cache().get_value(cache_key)
     if cached:
         return cached
@@ -660,6 +673,16 @@ def get_effective_price(product_doc, price_type="Site Price", qty=1,
 @frappe.whitelist(allow_guest=True)
 def select_best_vendor(product_name, delivery_zone=None, customer_lat=None, customer_lng=None):
     """Select the best vendor for a product based on configurable logic."""
+    if customer_lat is not None and customer_lng is not None:
+        best = _get_best_vendor_listing(
+            product_name,
+            delivery_zone=delivery_zone,
+            customer_lat=customer_lat,
+            customer_lng=customer_lng,
+        )
+        if best:
+            return best
+
     listings = frappe.get_list(
         "Vendor Listing",
         filters={"product": product_name, "status": "Active", "track_inventory": 1},

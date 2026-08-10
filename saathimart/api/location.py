@@ -1,5 +1,5 @@
 """
-Location API — nearest-vendor resolution with Haversine distance.
+Location API — nearest-vendor resolution using MariaDB spatial functions.
 
 All methods are whitelisted (allow_guest=True).
 
@@ -8,25 +8,14 @@ Query params:
   lng          — Customer longitude (required for distance calc)
   radius_km    — Search radius in km (default: 5)
 """
+import frappe
 import math
 
-import frappe
 from frappe import _
 from frappe.utils import flt, now_datetime
 
 
 from saathimart.api.utils import guest_rate_limit
-
-
-def _haversine(lat1, lng1, lat2, lng2):
-    """Return distance in km between two lat/lng points."""
-    R = 6371.0
-    phi1, phi2 = math.radians(lat1), math.radians(lat2)
-    dphi = math.radians(lat2 - lat1)
-    dlambda = math.radians(lng2 - lng1)
-    a = math.sin(dphi / 2) ** 2 + math.cos(phi1) * math.cos(phi2) * math.sin(dlambda / 2) ** 2
-    c = 2 * math.atan2(math.sqrt(a), math.sqrt(1 - a))
-    return R * c
 
 
 def _bounding_box(lat, lng, radius_km):
@@ -40,6 +29,7 @@ def _bounding_box(lat, lng, radius_km):
 def resolve_vendors(lat, lng, radius_km=5):
     """
     Return active vendors within radius, sorted by distance.
+    Uses MariaDB ST_Distance_Sphere for SQL-level distance calculation.
     """
     guest_rate_limit("location.resolve_vendors", limit=100, window_seconds=60)
     lat = flt(lat)
@@ -47,46 +37,46 @@ def resolve_vendors(lat, lng, radius_km=5):
     radius_km = flt(radius_km)
 
     lat_min, lat_max, lng_min, lng_max = _bounding_box(lat, lng, radius_km)
+    radius_m = radius_km * 1000
 
     vendors = frappe.db.sql("""
         SELECT name, vendor_name, lat, lng, service_radius_km,
-               address, hub_status, total_available_qty
+               address, hub_status, total_available_qty,
+               ST_Distance_Sphere(
+                   ST_PointFromText(CONCAT('POINT(', lng, ' ', lat, ')')),
+                   ST_PointFromText(CONCAT('POINT(', %s, ' ', %s, ')'))
+               ) AS distance_meters
         FROM `tabVendor`
         WHERE status = 'Active'
           AND hub_status != 'Suspended'
           AND lat BETWEEN %s AND %s
           AND lng BETWEEN %s AND %s
-    """, (lat_min, lat_max, lng_min, lng_max), as_dict=True)
+          AND lat IS NOT NULL AND lng IS NOT NULL
+          AND lat != 0 AND lng != 0
+          AND ST_Distance_Sphere(
+              ST_PointFromText(CONCAT('POINT(', lng, ' ', lat, ')')),
+              ST_PointFromText(CONCAT('POINT(', %s, ' ', %s, ')'))
+          ) <= service_radius_km * 1000
+        ORDER BY distance_meters ASC
+    """, (lng, lat, lat_min, lat_max, lng_min, lng_max, lng, lat), as_dict=True)
 
     result = []
     for v in vendors:
-        vlat = flt(getattr(v, "lat", 0) or 0)
-        vlng = flt(getattr(v, "lng", 0) or 0)
-        if not vlat or not vlng:
-            continue
-
-        dist = _haversine(lat, lng, vlat, vlng)
-        if dist > flt(getattr(v, "service_radius_km", 5) or 5):
-            continue
-
-        product_count = frappe.db.count(
-            "Vendor Stock",
-            filters={"vendor": v.name, "available_qty": [">", 0]},
-        )
-
         result.append({
             "name": v.name,
             "vendor_name": v.vendor_name,
-            "lat": vlat,
-            "lng": vlng,
-            "service_radius_km": flt(getattr(v, "service_radius_km", 5)),
+            "lat": flt(v.lat),
+            "lng": flt(v.lng),
+            "service_radius_km": flt(v.service_radius_km or 5),
             "address": getattr(v, "address", "") or "",
-            "distance_km": round(dist, 2),
+            "distance_km": round(flt(v.distance_meters or 0) / 1000, 2),
             "hub_status": getattr(v, "hub_status", "Active"),
-            "product_count": product_count,
+            "product_count": frappe.db.count(
+                "Vendor Stock",
+                filters={"vendor": v.name, "available_qty": [">", 0]},
+            ),
         })
 
-    result.sort(key=lambda x: x["distance_km"])
     return result
 
 
@@ -94,65 +84,51 @@ def resolve_vendors(lat, lng, radius_km=5):
 def nearest_vendor_for_product(product, lat, lng, radius_km=5):
     """
     Return vendors that have this product in stock, sorted by distance.
+    Uses MariaDB ST_Distance_Sphere for SQL-level distance calculation.
     """
     guest_rate_limit("location.nearest_vendor", limit=100, window_seconds=60)
     lat = flt(lat)
     lng = flt(lng)
     radius_km = flt(radius_km)
+    radius_m = radius_km * 1000
 
-    # Get all active vendor listings for this product
-    listings = frappe.get_list(
-        "Vendor Listing",
-        filters={"product": product, "status": "Active"},
-        fields=["vendor", "price", "available_qty", "reserved_qty",
-                "delivery_zone", "estimated_delivery_minutes", "priority"],
-        order_by="priority desc, price asc",
-    )
-
-    if not listings:
-        return []
-
-    # Enrich with vendor location
-    vendor_names = [l.vendor for l in listings if l.vendor]
-    vendor_map = {}
-    if vendor_names:
-        for v in frappe.get_list(
-            "Vendor",
-            filters={"name": ["in", vendor_names]},
-            fields=["name", "vendor_name", "lat", "lng", "service_radius_km"],
-        ):
-            vendor_map[v.name] = v
+    listings = frappe.db.sql("""
+        SELECT vl.vendor, vl.price, vl.available_qty, vl.reserved_qty,
+               vl.delivery_zone, vl.estimated_delivery_minutes, vl.priority,
+               v.vendor_name, v.lat, v.lng, v.service_radius_km,
+               ST_Distance_Sphere(
+                   ST_PointFromText(CONCAT('POINT(', v.lng, ' ', v.lat, ')')),
+                   ST_PointFromText(CONCAT('POINT(', %s, ' ', %s, ')'))
+               ) AS distance_meters
+        FROM `tabVendor Listing` vl
+        JOIN `tabVendor` v ON vl.vendor = v.name
+        WHERE vl.product = %s
+          AND vl.status = 'Active'
+          AND v.lat IS NOT NULL AND v.lng IS NOT NULL
+          AND v.lat != 0 AND v.lng != 0
+          AND ST_Distance_Sphere(
+              ST_PointFromText(CONCAT('POINT(', v.lng, ' ', v.lat, ')')),
+              ST_PointFromText(CONCAT('POINT(', %s, ' ', %s, ')'))
+          ) <= v.service_radius_km * 1000
+        ORDER BY distance_meters ASC
+    """, (lng, lat, product, lng, lat), as_dict=True)
 
     result = []
     for l in listings:
-        v = vendor_map.get(l.vendor)
-        if not v:
-            continue
-
-        vlat = flt(getattr(v, "lat", 0) or 0)
-        vlng = flt(getattr(v, "lng", 0) or 0)
-        if not vlat or not vlng:
-            continue
-
-        dist = _haversine(lat, lng, vlat, vlng)
-        if dist > flt(getattr(v, "service_radius_km", 5) or 5):
-            continue
-
         result.append({
             "vendor": l.vendor,
-            "vendor_name": getattr(v, "vendor_name", l.vendor),
-            "lat": vlat,
-            "lng": vlng,
-            "service_radius_km": flt(getattr(v, "service_radius_km", 5)),
-            "available_qty": flt(getattr(l, "available_qty", 0) or 0),
-            "reserved_qty": flt(getattr(l, "reserved_qty", 0) or 0),
-            "price": flt(getattr(l, "price", 0) or 0),
-            "distance_km": round(dist, 2),
+            "vendor_name": getattr(l, "vendor_name", l.vendor),
+            "lat": flt(l.lat),
+            "lng": flt(l.lng),
+            "service_radius_km": flt(l.service_radius_km or 5),
+            "available_qty": flt(l.available_qty or 0),
+            "reserved_qty": flt(l.reserved_qty or 0),
+            "price": flt(l.price or 0),
+            "distance_km": round(flt(l.distance_meters or 0) / 1000, 2),
             "delivery_zone": getattr(l, "delivery_zone", "") or "",
-            "estimated_delivery_minutes": getattr(l, "estimated_delivery_minutes", 20) or 20,
+            "estimated_delivery_minutes": flt(l.estimated_delivery_minutes or 20),
         })
 
-    result.sort(key=lambda x: x["distance_km"])
     return result
 
 

@@ -1,0 +1,7 @@
+[pre_model_sync]
+# Patches that run BEFORE schema sync (use when reading fields that will be removed)
+
+[post_model_sync]
+# Patches that run AFTER schema sync (use when populating new fields)
+saathimart.patches.add_vendor_listing_parent_columns
+saathimart.patches.add_performance_indexes

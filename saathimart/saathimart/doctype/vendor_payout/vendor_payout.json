@@ -1,0 +1,26 @@
+{
+ "name": "Vendor Payout",
+ "module": "Saathimart",
+ "doctype": "DocType",
+ "autoname": "SM-PAYOUT-.YYYY.-.#####",
+ "track_changes": 1,
+ "fields": [
+  {"fieldname": "vendor", "fieldtype": "Link", "label": "Vendor", "options": "Vendor", "reqd": 1, "in_list_view": 1},
+  {"fieldname": "payout_date", "fieldtype": "Date", "label": "Payout Date", "default": "Today", "in_list_view": 1},
+  {"fieldname": "col_break_1", "fieldtype": "Column Break"},
+  {"fieldname": "from_date", "fieldtype": "Date", "label": "Period From", "reqd": 1},
+  {"fieldname": "to_date", "fieldtype": "Date", "label": "Period To", "reqd": 1},
+  {"fieldname": "section_amounts", "fieldtype": "Section Break", "label": "Amounts"},
+  {"fieldname": "gross_sales", "fieldtype": "Currency", "label": "Gross Sales", "read_only": 1},
+  {"fieldname": "commission_amount", "fieldtype": "Currency", "label": "Commission Amount", "read_only": 1},
+  {"fieldname": "col_break_2", "fieldtype": "Column Break"},
+  {"fieldname": "payout_amount", "fieldtype": "Currency", "label": "Payout Amount", "read_only": 1, "in_list_view": 1},
+  {"fieldname": "fulfillments_count", "fieldtype": "Int", "label": "Fulfillments Settled", "read_only": 1},
+  {"fieldname": "section_reference", "fieldtype": "Section Break", "label": "Reference"},
+  {"fieldname": "payment_reference", "fieldtype": "Data", "label": "Payment Reference"},
+  {"fieldname": "notes", "fieldtype": "Small Text", "label": "Notes"}
+ ],
+ "permissions": [
+  {"role": "SM Admin", "read": 1, "write": 1, "create": 1, "delete": 1}
+ ]
+}

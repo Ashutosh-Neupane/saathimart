@@ -1,0 +1,14 @@
+{
+  "name": "Top Products",
+  "module": "Saathimart",
+  "doctype": "Report",
+  "custom": 0,
+  "report_name": "Top Products",
+  "is_standard": "Yes",
+  "ref_doctype": "Order",
+  "report_type": "Script Report",
+  "roles": [
+    {"role": "SM Admin"},
+    {"role": "SM Vendor"}
+  ]
+}

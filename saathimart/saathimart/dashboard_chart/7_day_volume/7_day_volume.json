@@ -1,0 +1,17 @@
+{
+  "name": "7-Day Order Volume",
+  "module": "Saathimart",
+  "doctype": "Dashboard Chart",
+  "istable": 0,
+  "is_standard": 1,
+  "is_report": 1,
+  "report_type": "Dashboard Chart",
+  "chart_type": "Line",
+  "function": "saathimart.dashboard_chart.7_day_volume.7_day_volume.get_data",
+  "filters_json": "{}",
+  "x_field": "date",
+  "y_field": "orders",
+  "timeseries": 1,
+  "timespan": "Last 7 Days",
+  "interval": "Daily"
+}

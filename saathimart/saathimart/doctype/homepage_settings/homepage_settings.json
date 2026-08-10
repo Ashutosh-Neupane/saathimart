@@ -1,0 +1,16 @@
+{
+  "name": "Homepage Settings",
+  "module": "Saathimart",
+  "doctype": "DocType",
+  "issingle": 1,
+  "fields": [
+    {"fieldname": "marketplace_banner_title", "fieldtype": "Small Text", "label": "Marketplace Banner Title",
+     "description": "One line per row for multi-line title"},
+    {"fieldname": "marketplace_banner_description", "fieldtype": "Small Text", "label": "Marketplace Banner Description"},
+    {"fieldname": "marketplace_banner_link_label", "fieldtype": "Data", "label": "Marketplace Banner Link Label"}
+  ],
+  "permissions": [
+    {"role": "SM Admin", "read": 1, "write": 1},
+    {"role": "Website Manager", "read": 1, "write": 1}
+  ]
+}

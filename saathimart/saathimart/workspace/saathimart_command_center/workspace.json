@@ -1,0 +1,32 @@
+{
+  "name": "SaathiMart Command Center",
+  "module": "Saathimart",
+  "doctype": "DocType",
+  "is_standard": 1,
+  "icon": "fa fa-shopping-cart",
+  "is_hidden": 0,
+  "charts": [
+    {"chart_name": "7-Day Order Volume", "width": "Half"},
+    {"chart_name": "Revenue by Zone", "width": "Half"},
+    {"chart_name": "Orders by Vendor", "width": "Half"},
+    {"chart_name": "Order Status Breakdown", "width": "Half"}
+  ],
+  "shortcuts": [
+    {"label": "New Order", "url": "/app/order", "type": "DocType", "color": "Green"},
+    {"label": "Products", "url": "/app/product", "type": "DocType", "color": "Blue"},
+    {"label": "Vendors", "url": "/app/vendor", "type": "DocType", "color": "Orange"},
+    {"label": "Coupons", "url": "/app/coupon", "type": "DocType", "color": "Purple"},
+    {"label": "Orders", "url": "/app/order", "type": "DocType", "color": "Red"},
+    {"label": "Delivery Zones", "url": "/app/delivery-zone", "type": "DocType", "color": "Yellow"}
+  ],
+  "cards": [
+    {"card_name": "Today's Orders", "width": "Half"},
+    {"card_name": "Today's Revenue", "width": "Half"},
+    {"card_name": "Pending Orders", "width": "Half"},
+    {"card_name": "Active Vendors", "width": "Half"},
+    {"card_name": "Low Stock Alerts", "width": "Half"}
+  ],
+  "card_breaks": [
+    {"label": "Reports", "col": 12, "is_independent": 1}
+  ]
+}

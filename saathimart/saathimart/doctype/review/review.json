@@ -1,0 +1,21 @@
+{
+ "name": "Review",
+ "module": "Saathimart",
+ "doctype": "DocType",
+ "autoname": "SM-REV-.YYYY.-.#####",
+ "fields": [
+  {"fieldname": "product", "fieldtype": "Link", "label": "Product", "options": "Product", "reqd": 1, "in_list_view": 1},
+  {"fieldname": "user", "fieldtype": "Link", "label": "User", "options": "User"},
+  {"fieldname": "reviewer_name", "fieldtype": "Data", "label": "Reviewer Name", "in_list_view": 1},
+  {"fieldname": "col_break_1", "fieldtype": "Column Break"},
+  {"fieldname": "rating", "fieldtype": "Rating", "label": "Rating", "reqd": 1, "in_list_view": 1},
+  {"fieldname": "status", "fieldtype": "Select", "label": "Status",
+   "options": "Pending\nApproved\nRejected", "default": "Pending", "in_list_view": 1},
+  {"fieldname": "comment", "fieldtype": "Text", "label": "Comment"},
+  {"fieldname": "order", "fieldtype": "Link", "label": "Order", "options": "Order"}
+ ],
+ "permissions": [
+  {"role": "SM Admin", "read": 1, "write": 1, "create": 1, "delete": 1},
+  {"role": "SM Customer", "read": 1, "create": 1}
+ ]
+}

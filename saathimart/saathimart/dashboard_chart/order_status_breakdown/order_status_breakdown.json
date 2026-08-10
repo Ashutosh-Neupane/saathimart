@@ -1,0 +1,12 @@
+{
+  "name": "Order Status Breakdown",
+  "module": "Saathimart",
+  "doctype": "Dashboard Chart",
+  "istable": 0,
+  "is_standard": 1,
+  "is_report": 1,
+  "report_type": "Dashboard Chart",
+  "chart_type": "Pie",
+  "function": "saathimart.dashboard_chart.order_status_breakdown.order_status_breakdown.get_data",
+  "filters_json": "{}"
+}

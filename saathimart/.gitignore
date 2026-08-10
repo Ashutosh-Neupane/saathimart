@@ -2,19 +2,6 @@
 __pycache__/
 *.py[cod]
 *.egg-info/
-*.egg
-build/
-dist/
-
-# Node
-node_modules/
-npm-debug.log
-
-# Testing / caches
-.pytest_cache/
-.cache/
-.coverage
-htmlcov/
 
 # Frappe / ERPNext
 # NOTE: Do NOT ignore *.json here. In a Frappe app, DocType / Workspace /

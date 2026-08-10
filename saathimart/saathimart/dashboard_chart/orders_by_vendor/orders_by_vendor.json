@@ -1,0 +1,12 @@
+{
+  "name": "Orders by Vendor",
+  "module": "Saathimart",
+  "doctype": "Dashboard Chart",
+  "istable": 0,
+  "is_standard": 1,
+  "is_report": 1,
+  "report_type": "Dashboard Chart",
+  "chart_type": "Bar",
+  "function": "saathimart.dashboard_chart.orders_by_vendor.orders_by_vendor.get_data",
+  "filters_json": "{}"
+}

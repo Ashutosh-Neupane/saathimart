@@ -1,0 +1,12 @@
+{
+  "name": "Revenue by Zone",
+  "module": "Saathimart",
+  "doctype": "Dashboard Chart",
+  "istable": 0,
+  "is_standard": 1,
+  "is_report": 1,
+  "report_type": "Dashboard Chart",
+  "chart_type": "Bar",
+  "function": "saathimart.dashboard_chart.revenue_by_zone.revenue_by_zone.get_data",
+  "filters_json": "{}"
+}

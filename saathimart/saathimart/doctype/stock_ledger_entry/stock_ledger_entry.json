@@ -1,0 +1,33 @@
+{
+ "name": "Stock Ledger Entry",
+ "module": "Saathimart",
+ "doctype": "DocType",
+ "is_submittable": 0,
+ "track_changes": 0,
+ "autoname": "SM-SLE-.YYYY.-.#####",
+ "fields": [
+  {"fieldname": "posting_date", "fieldtype": "Date", "label": "Posting Date", "reqd": 1, "in_list_view": 1},
+  {"fieldname": "posting_time", "fieldtype": "Time", "label": "Posting Time", "reqd": 1},
+  {"fieldname": "product", "fieldtype": "Link", "label": "Product", "options": "Product", "reqd": 1, "in_list_view": 1},
+  {"fieldname": "col_break_1", "fieldtype": "Column Break"},
+  {"fieldname": "voucher_type", "fieldtype": "Select", "label": "Voucher Type",
+   "options": "Order\nOrder Cancellation\nReceipt\nAdjustment\nReturn",
+   "reqd": 1, "in_list_view": 1},
+  {"fieldname": "voucher_no", "fieldtype": "Data", "label": "Voucher No", "in_list_view": 1},
+  {"fieldname": "section_qty", "fieldtype": "Section Break", "label": "Quantity"},
+  {"fieldname": "qty_change", "fieldtype": "Float", "label": "Qty Change", "reqd": 1,
+   "description": "Negative = stock out, Positive = stock in"},
+  {"fieldname": "balance_qty", "fieldtype": "Float", "label": "Balance Qty After", "read_only": 1},
+  {"fieldname": "col_break_2", "fieldtype": "Column Break"},
+  {"fieldname": "source_site", "fieldtype": "Data", "label": "Source Site",
+   "description": "Vendor site that pushed this entry (blank = local)"},
+  {"fieldname": "vendor", "fieldtype": "Link", "label": "Vendor", "options": "Vendor"},
+  {"fieldname": "remarks", "fieldtype": "Small Text", "label": "Remarks"}
+ ],
+ "title_field": "product",
+ "search_fields": "product,voucher_no,voucher_type",
+ "permissions": [
+  {"role": "SM Admin", "read": 1, "write": 1, "create": 1, "delete": 0},
+  {"role": "SM Vendor", "read": 1, "create": 1}
+ ]
+}

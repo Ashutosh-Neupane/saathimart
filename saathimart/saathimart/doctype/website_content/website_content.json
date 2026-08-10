@@ -1,0 +1,20 @@
+{
+  "name": "Website Content",
+  "module": "Saathimart",
+  "doctype": "DocType",
+  "autoname": "field:content_key",
+  "fields": [
+    {"fieldname": "content_key", "fieldtype": "Data", "label": "Content Key", "reqd": 1, "unique": 1, "in_list_view": 1,
+     "description": "Unique key: page:about, page:terms, support, contact, etc."},
+    {"fieldname": "content_json", "fieldtype": "Code", "label": "Content JSON", "options": "JSON",
+     "description": "Structured content payload matching the frontend type (no raw HTML)"},
+    {"fieldname": "published", "fieldtype": "Check", "label": "Published", "default": "1"},
+    {"fieldname": "notes", "fieldtype": "Small Text", "label": "Editor Notes"}
+  ],
+  "title_field": "content_key",
+  "permissions": [
+    {"role": "SM Admin", "read": 1, "write": 1, "create": 1, "delete": 1},
+    {"role": "Website Manager", "read": 1, "write": 1, "create": 1, "delete": 1},
+    {"role": "Guest", "read": 1}
+  ]
+}

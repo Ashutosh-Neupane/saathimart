@@ -1,0 +1,10 @@
+{
+  "name": "Product Specification",
+  "module": "Saathimart",
+  "doctype": "DocType",
+  "istable": 1,
+  "fields": [
+    {"fieldname": "label", "fieldtype": "Data", "label": "Label", "reqd": 1},
+    {"fieldname": "value", "fieldtype": "Data", "label": "Value", "reqd": 1}
+  ]
+}

@@ -1,0 +1,1 @@
+{"name":"Product Availability by Zone","module":"Saathimart","doctype":"Report","custom":0,"report_name":"Product Availability by Zone","is_standard":"Yes","ref_doctype":"Vendor Stock","report_type":"Script Report","roles":[{"role":"SM Admin"},{"role":"SM Vendor"}]}

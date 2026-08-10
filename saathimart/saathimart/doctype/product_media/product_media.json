@@ -1,0 +1,15 @@
+{
+  "name": "Product Media",
+  "module": "Saathimart",
+  "doctype": "DocType",
+  "istable": 1,
+  "fields": [
+    {"fieldname": "file", "fieldtype": "Attach", "label": "File", "reqd": 1},
+    {"fieldname": "file_type", "fieldtype": "Select", "label": "Type", "options": "image\\nvideo", "default": "image", "reqd": 1},
+    {"fieldname": "alt_text", "fieldtype": "Data", "label": "Alt Text"},
+    {"fieldname": "is_primary", "fieldtype": "Check", "label": "Primary", "default": "0"},
+    {"fieldname": "sort_order", "fieldtype": "Int", "label": "Sort Order", "default": "0"},
+    {"fieldname": "width", "fieldtype": "Int", "label": "Width (px)"},
+    {"fieldname": "height", "fieldtype": "Int", "label": "Height (px)"}
+  ]
+}

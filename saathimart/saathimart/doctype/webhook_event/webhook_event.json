@@ -1,0 +1,26 @@
+{
+  "name": "Webhook Event",
+  "module": "Saathimart",
+  "doctype": "DocType",
+  "autoname": "SM-EVT-.YYYY.-.#####",
+   "fields": [
+    {"fieldname": "event_type", "fieldtype": "Data", "label": "Event Type", "reqd": 1, "in_list_view": 1},
+    {"fieldname": "event_id", "fieldtype": "Data", "label": "Event ID", "reqd": 1, "unique": 1},
+    {"fieldname": "event_seq", "fieldtype": "Int", "label": "Event Seq",
+     "description": "Monotonically increasing sequence per target vendor"},
+    {"fieldname": "target_site", "fieldtype": "Data", "label": "Target Site", "in_list_view": 1},
+    {"fieldname": "target_vendor", "fieldtype": "Data", "label": "Target Vendor", "in_list_view": 1},
+   {"fieldname": "status", "fieldtype": "Select", "label": "Status",
+    "options": "Queued\nSent\nFailed\nDead\nSkipped", "default": "Queued", "in_list_view": 1},
+   {"fieldname": "col_break_1", "fieldtype": "Column Break"},
+   {"fieldname": "retry_count", "fieldtype": "Int", "label": "Retry Count", "default": "0"},
+   {"fieldname": "next_retry_at", "fieldtype": "Datetime", "label": "Next Retry At"},
+   {"fieldname": "dead_letter_reason", "fieldtype": "Small Text", "label": "Dead Letter Reason", "read_only": 1},
+   {"fieldname": "section_payload", "fieldtype": "Section Break", "label": "Payload"},
+   {"fieldname": "payload", "fieldtype": "Code", "label": "Payload (JSON)", "options": "JSON"},
+   {"fieldname": "response", "fieldtype": "Code", "label": "Response", "options": "JSON", "read_only": 1}
+  ],
+  "permissions": [
+   {"role": "SM Admin", "read": 1, "write": 1, "create": 1, "delete": 1}
+  ]
+}

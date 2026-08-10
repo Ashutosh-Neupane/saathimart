@@ -1,0 +1,31 @@
+{
+ "name": "Blog Post",
+ "module": "Saathimart",
+ "doctype": "DocType",
+ "autoname": "SM-BLOG-.YYYY.-.#####",
+ "track_changes": 1,
+ "fields": [
+  {"fieldname": "title", "fieldtype": "Data", "label": "Title", "reqd": 1, "in_list_view": 1},
+  {"fieldname": "slug", "fieldtype": "Data", "label": "Slug", "unique": 1},
+  {"fieldname": "author", "fieldtype": "Data", "label": "Author"},
+  {"fieldname": "col_break_1", "fieldtype": "Column Break"},
+  {"fieldname": "status", "fieldtype": "Select", "label": "Status",
+   "options": "Draft\nPublished\nArchived", "default": "Draft", "in_list_view": 1},
+  {"fieldname": "published_at", "fieldtype": "Datetime", "label": "Published At"},
+  {"fieldname": "category", "fieldtype": "Data", "label": "Category"},
+  {"fieldname": "tags", "fieldtype": "Data", "label": "Tags (comma separated)"},
+  {"fieldname": "section_media", "fieldtype": "Section Break", "label": "Media"},
+  {"fieldname": "cover_image", "fieldtype": "Attach Image", "label": "Cover Image"},
+  {"fieldname": "excerpt", "fieldtype": "Small Text", "label": "Excerpt"},
+  {"fieldname": "section_body", "fieldtype": "Section Break", "label": "Content"},
+  {"fieldname": "content", "fieldtype": "Text Editor", "label": "Content"},
+  {"fieldname": "section_seo", "fieldtype": "Section Break", "label": "SEO"},
+  {"fieldname": "meta_title", "fieldtype": "Data", "label": "Meta Title"},
+  {"fieldname": "meta_description", "fieldtype": "Small Text", "label": "Meta Description"}
+ ],
+ "title_field": "title",
+ "permissions": [
+  {"role": "SM Admin", "read": 1, "write": 1, "create": 1, "delete": 1},
+  {"role": "Guest", "read": 1}
+ ]
+}

@@ -1,0 +1,22 @@
+{
+ "name": "Product Price",
+ "module": "Saathimart",
+ "doctype": "DocType",
+ "istable": 1,
+ "fields": [
+  {"fieldname": "price_type", "fieldtype": "Select", "label": "Price Type",
+   "options": "Site Price\nRetail\nWholesale\nB2B\nMember\nSale\nZone", "default": "Site Price",
+   "reqd": 1, "in_list_view": 1},
+  {"fieldname": "vendor", "fieldtype": "Link", "label": "Vendor", "options": "Vendor",
+   "in_list_view": 1,
+   "description": "Leave blank for hub-level price. Set to a vendor for vendor-specific price."},
+  {"fieldname": "price", "fieldtype": "Currency", "label": "Price", "reqd": 1, "in_list_view": 1},
+  {"fieldname": "min_qty", "fieldtype": "Float", "label": "Min Qty", "default": "1",
+   "description": "Minimum qty for this price to apply"},
+  {"fieldname": "delivery_zone", "fieldtype": "Link", "label": "Zone", "options": "Delivery Zone",
+   "description": "Leave blank to apply to all zones"},
+  {"fieldname": "valid_from", "fieldtype": "Date", "label": "Valid From"},
+  {"fieldname": "valid_to", "fieldtype": "Date", "label": "Valid To"},
+  {"fieldname": "is_active", "fieldtype": "Check", "label": "Active", "default": "1"}
+ ]
+}

@@ -1,0 +1,38 @@
+{
+  "name": "Vendor Listing",
+  "module": "Saathimart",
+  "doctype": "DocType",
+  "autoname": "VL-.{vendor}-.{product}",
+  "fields": [
+    {"fieldname": "vendor", "fieldtype": "Link", "label": "Vendor", "options": "Vendor", "reqd": 1, "in_list_view": 1},
+    {"fieldname": "product", "fieldtype": "Link", "label": "Product", "options": "Product", "reqd": 1, "in_list_view": 1},
+    {"fieldname": "col_break_1", "fieldtype": "Column Break"},
+    {"fieldname": "status", "fieldtype": "Select", "label": "Status", "options": "Active\nInactive\nOut of Stock", "default": "Active", "in_list_view": 1},
+    {"fieldname": "price", "fieldtype": "Currency", "label": "Selling Price", "reqd": 1, "in_list_view": 1},
+    {"fieldname": "compare_price", "fieldtype": "Currency", "label": "MRP / Compare Price"},
+    {"fieldname": "col_break_2", "fieldtype": "Column Break"},
+    {"fieldname": "sku", "fieldtype": "Data", "label": "Vendor SKU"},
+    {"fieldname": "vendor_product_id", "fieldtype": "Data", "label": "Vendor Product ID"},
+    {"fieldname": "section_inventory", "fieldtype": "Section Break", "label": "Inventory"},
+    {"fieldname": "warehouse", "fieldtype": "Link", "label": "Warehouse", "options": "Warehouse"},
+    {"fieldname": "track_inventory", "fieldtype": "Check", "label": "Track Inventory", "default": "1"},
+    {"fieldname": "allow_backorder", "fieldtype": "Check", "label": "Allow Backorder", "default": "0"},
+    {"fieldname": "col_break_3", "fieldtype": "Column Break"},
+    {"fieldname": "available_qty", "fieldtype": "Float", "label": "Available Qty", "default": "0", "read_only": 1, "in_list_view": 1},
+    {"fieldname": "reserved_qty", "fieldtype": "Float", "label": "Reserved Qty", "default": "0", "read_only": 1},
+    {"fieldname": "physical_qty", "fieldtype": "Float", "label": "Physical Qty", "default": "0", "read_only": 1},
+    {"fieldname": "section_delivery", "fieldtype": "Section Break", "label": "Delivery"},
+    {"fieldname": "delivery_zone", "fieldtype": "Link", "label": "Delivery Zone", "options": "Delivery Zone"},
+    {"fieldname": "estimated_delivery_minutes", "fieldtype": "Int", "label": "Est. Delivery (minutes)", "default": "20"},
+    {"fieldname": "priority", "fieldtype": "Int", "label": "Priority", "default": "0", "description": "Higher = preferred when all else is equal"},
+    {"fieldname": "section_sync", "fieldtype": "Section Break", "label": "Sync"},
+    {"fieldname": "last_updated", "fieldtype": "Datetime", "label": "Last Updated", "read_only": 1},
+    {"fieldname": "last_sync_at", "fieldtype": "Datetime", "label": "Last Sync At", "read_only": 1}
+  ],
+  "title_field": "vendor",
+  "permissions": [
+    {"role": "SM Admin", "read": 1, "write": 1, "create": 1, "delete": 1},
+    {"role": "SM Vendor", "read": 1, "write": 1, "create": 1},
+    {"role": "Guest", "read": 1}
+  ]
+}

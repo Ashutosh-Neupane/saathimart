@@ -1,0 +1,290 @@
+"""
+Cart API — session-based cart, works for guests and logged-in users.
+"""
+import frappe
+from frappe import _
+from frappe.utils import add_days, flt, now_datetime
+
+from saathimart.api.products import select_best_vendor, get_effective_price
+from saathimart.api.utils import guest_rate_limit
+
+
+def _get_or_create_cart(session_id):
+    name = frappe.db.get_value(
+        "Cart", {"session_id": session_id, "status": "Active"}, "name"
+    )
+    if name:
+        return frappe.get_doc("Cart", name)
+
+    cart = frappe.new_doc("Cart")
+    cart.session_id = session_id
+    cart.user = frappe.session.user if frappe.session.user != "Guest" else None
+    try:
+        cart.source_site = frappe.request.headers.get("X-Source-Site", "")
+    except Exception:
+        cart.source_site = ""
+    cart.expires_at = add_days(now_datetime(), 7)
+    cart.insert(ignore_permissions=True)
+    return cart
+
+
+def _get_vendor_stock(vendor, product):
+    """Get Vendor Stock row for a vendor+product pair."""
+    name = f"{vendor}-{product}"
+    row = frappe.db.get_value(
+        "Vendor Stock", name,
+        ["available_qty", "reserved_qty"],
+        as_dict=True,
+    )
+    if not row:
+        row = {"available_qty": 0, "reserved_qty": 0}
+    row["track_inventory"] = 1
+    return row
+
+
+@frappe.whitelist(allow_guest=True)
+def get_cart(session_id):
+    guest_rate_limit("cart.get", limit=300, window_seconds=60)
+    cart = _get_or_create_cart(session_id)
+    return cart.as_dict()
+
+
+@frappe.whitelist(allow_guest=True)
+def add_to_cart(session_id, product, qty=1, vendor=None, delivery_zone=None):
+    guest_rate_limit("cart.add", limit=60, window_seconds=60)
+    qty = float(qty)
+    if qty <= 0:
+        frappe.throw(_("Qty must be positive"))
+
+    product_doc = frappe.get_doc("Product", product)
+    if product_doc.status != "Active":
+        frappe.throw(_("Product is not available"))
+
+    if vendor:
+        vl = frappe.get_list(
+            "Vendor Listing",
+            filters={"product": product, "vendor": vendor, "status": "Active"},
+            fields=["name", "price", "track_inventory", "allow_backorder", "delivery_zone"],
+            order_by="delivery_zone ASC, price ASC",
+        )
+        if not vl:
+            frappe.throw(_("Vendor listing not found for this product"))
+    else:
+        best = select_best_vendor(product, delivery_zone=delivery_zone)
+        if not best:
+            frappe.throw(_("No vendor available for this product"))
+        vl = frappe.get_list(
+            "Vendor Listing",
+            filters={"name": best.name, "status": "Active"},
+            fields=["name", "price", "track_inventory", "allow_backorder"],
+        )
+
+    rate = flt(vl[0].price)
+    track_inventory = vl[0].track_inventory
+
+    cart = _get_or_create_cart(session_id)
+
+    # If same product + same vendor already in cart, increment qty
+    for item in cart.items:
+        if item.product == product and (item.get("vendor") or None) == vendor:
+            item.qty += qty
+            item.amount = item.qty * item.rate
+            cart.save(ignore_permissions=True)
+            return cart.as_dict()
+
+    cart.append("items", {
+        "product": product,
+        "product_name": product_doc.product_name,
+        "vendor": vendor,
+        "qty": qty,
+        "rate": rate,
+        "amount": qty * rate,
+    })
+    cart.save(ignore_permissions=True)
+    return cart.as_dict()
+
+
+@frappe.whitelist(allow_guest=True)
+def update_cart_item(session_id, product, qty, vendor=None):
+    guest_rate_limit("cart.update", limit=60, window_seconds=60)
+    qty = float(qty)
+    cart = _get_or_create_cart(session_id)
+
+    for item in cart.items:
+        if item.product == product and (item.get("vendor") or None) == (vendor or None):
+            if qty <= 0:
+                cart.items.remove(item)
+            else:
+                # Check Vendor Stock only when a vendor is assigned
+                if item.vendor:
+                    stock = _get_vendor_stock(item.vendor, product)
+                    if stock["track_inventory"] and flt(stock["available_qty"] or 0) < qty:
+                        frappe.throw(_(
+                            "Only {0} unit(s) available."
+                        ).format(int(stock["available_qty"])))
+                item.qty = qty
+                item.amount = qty * item.rate
+            cart.save(ignore_permissions=True)
+            return cart.as_dict()
+
+    frappe.throw(_("Item not in cart"))
+
+
+@frappe.whitelist(allow_guest=True)
+def clear_cart(session_id):
+    guest_rate_limit("cart.clear", limit=30, window_seconds=60)
+    cart = _get_or_create_cart(session_id)
+    cart.items = []
+    cart.save(ignore_permissions=True)
+    return {"ok": True}
+
+
+@frappe.whitelist(allow_guest=True)
+def get_cart_summary(session_id):
+    """
+    Lightweight cart summary for the cart badge and mini-cart.
+    Returns item count, subtotal, and line summaries.
+    """
+    cart = _get_or_create_cart(session_id)
+    items = []
+    total_qty = 0
+    subtotal = 0.0
+    for item in cart.items:
+        qty = flt(item.qty or 0)
+        amount = flt(item.amount or 0)
+        total_qty += qty
+        subtotal += amount
+
+        # Resolve thumbnail from Product Media / Product
+        thumbnail = frappe.db.get_value("Product", item.product, "thumbnail")
+        slug = frappe.db.get_value("Product", item.product, "slug")
+
+        # Resolve vendor listing
+        vendor_listing = None
+        if item.vendor:
+            vendor_listing = frappe.db.get_value(
+                "Vendor Listing",
+                {"product": item.product, "vendor": item.vendor},
+                "name",
+            )
+
+        items.append({
+            "product": item.product,
+            "product_name": item.product_name,
+            "slug": slug,
+            "qty": qty,
+            "rate": flt(item.rate or 0),
+            "amount": amount,
+            "vendor": item.vendor or "",
+            "vendor_listing": vendor_listing or "",
+            "thumbnail": thumbnail,
+        })
+    return {
+        "cart_id": cart.name,
+        "item_count": total_qty,
+        "line_count": len(cart.items),
+        "subtotal": round(subtotal, 2),
+        "items": items,
+        "status": cart.status,
+    }
+
+
+@frappe.whitelist(allow_guest=True)
+def get_cart_count(session_id):
+    """
+    Ultra-lightweight endpoint for the cart badge count.
+    Returns just the total item quantity.
+    """
+    cart = _get_or_create_cart(session_id)
+    total_qty = sum(flt(i.qty or 0) for i in cart.items)
+    return {"count": int(total_qty)}
+
+
+def merge_guest_cart(user, guest_session_id):
+    """
+    Merge a guest cart into the user's logged-in cart after login.
+    Called from auth_full.login().
+    """
+    if not guest_session_id:
+        return
+
+    guest_cart_name = frappe.db.get_value(
+        "Cart", {"session_id": guest_session_id, "status": "Active"}, "name"
+    )
+    if not guest_cart_name:
+        return
+
+    guest_cart = frappe.get_doc("Cart", guest_cart_name)
+    if not guest_cart.items:
+        return
+
+    user_cart_name = frappe.db.get_value(
+        "Cart", {"user": user, "status": "Active"}, "name"
+    )
+    if user_cart_name:
+        user_cart = frappe.get_doc("Cart", user_cart_name)
+    else:
+        user_cart = frappe.new_doc("Cart")
+        user_cart.user = user
+        user_cart.session_id = guest_session_id
+        user_cart.expires_at = add_days(now_datetime(), 7)
+        user_cart.insert(ignore_permissions=True)
+
+    # Merge items: same product + vendor → increment qty, else append
+    for g_item in guest_cart.items:
+        merged = False
+        for u_item in user_cart.items:
+            if u_item.product == g_item.product and (u_item.get("vendor") or None) == (g_item.get("vendor") or None):
+                u_item.qty += g_item.qty
+                u_item.amount = u_item.qty * u_item.rate
+                merged = True
+                break
+        if not merged:
+            user_cart.append("items", {
+                "product": g_item.product,
+                "product_name": g_item.product_name,
+                "vendor": g_item.vendor,
+                "qty": g_item.qty,
+                "rate": g_item.rate,
+                "amount": g_item.amount,
+            })
+
+    user_cart.save(ignore_permissions=True)
+    guest_cart.db_set("status", "Merged")
+
+
+def expire_abandoned_carts():
+    """Scheduled: mark carts abandoned after configured hours and release any reservations."""
+    settings = frappe.get_single("Settings")
+    hours = settings.abandoned_cart_hours or 24
+    frappe.db.sql("""
+        UPDATE `tabCart`
+        SET status = 'Abandoned'
+        WHERE status = 'Active'
+          AND modified < DATE_SUB(NOW(), INTERVAL %s HOUR)
+    """, hours)
+
+    expired_carts = frappe.db.sql("""
+        SELECT name, session_id FROM `tabCart`
+        WHERE status = 'Abandoned'
+          AND modified < DATE_SUB(NOW(), INTERVAL %s HOUR)
+    """, hours, as_dict=True)
+
+    for cart in expired_carts:
+        _release_cart_reservations(cart.name)
+
+
+def _release_cart_reservations(cart_name):
+    """Release stock reservations for all items in a cart that was converted to an order."""
+    orders = frappe.get_list("Order", filters={"cart_id": cart_name}, fields=["name"])
+    for order in orders:
+        doc = frappe.get_doc("Order", order.name)
+        if doc.payment_status != "Paid" and doc.status not in ("Cancelled", "Delivered"):
+            from saathimart.api.stock import release_reservation
+            for item in doc.items:
+                if item.vendor:
+                    release_reservation(item.vendor, item.product, item.qty)
+            frappe.db.set_value("Order", order.name, {
+                "status": "Cancelled",
+                "notes": "Cancelled: cart expired without payment",
+            })

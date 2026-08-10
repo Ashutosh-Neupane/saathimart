@@ -1,0 +1,1 @@
+{"name":"Vendor Commission Reconciliation","module":"Saathimart","doctype":"Report","custom":0,"report_name":"Vendor Commission Reconciliation","is_standard":"Yes","ref_doctype":"Order","report_type":"Script Report","roles":[{"role":"SM Admin"},{"role":"SM Vendor"}]}

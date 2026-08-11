@@ -3,6 +3,9 @@ set -euo pipefail
 
 SITE="${FRAPPE_SITE:-saathimart.localhost}"
 BENCH="/home/frappe/bench"
+# Shared secret vendor sites sign their hub pushes with (X-SM-Secret header).
+# Must match saathimart-vendor's WEBHOOK_SECRET — see docker/init.sh there.
+WEBHOOK_SECRET="${WEBHOOK_SECRET:-saathimart-webhook-secret}"
 
 wait_for() {
   local host=$1 port=$2 label=$3
@@ -95,6 +98,34 @@ echo "Running migrations..."
 cd "$BENCH"
 bench --site "$SITE" migrate
 bench build --app saathimart || true
+
+# Seed Settings.webhook_secret so vendor pushes (X-SM-Secret) can be
+# verified — without this every vendor->hub sync call is rejected.
+#
+# Must run with cwd = $BENCH/sites: Frappe's per-site log handler builds
+# its file path as a *relative* join of site + "logs" + logfile (see
+# frappe/utils/logger.py:create_handler), so frappe.connect() throws
+# FileNotFoundError from anywhere else instead of writing to the real
+# sites/<site>/logs directory.
+echo "Configuring webhook secret..."
+cd "$BENCH/sites"
+"$BENCH/env/bin/python" - "$SITE" "$WEBHOOK_SECRET" <<'PYEOF'
+import sys
+import frappe
+site = sys.argv[1]
+secret = sys.argv[2]
+frappe.init(site, sites_path='/home/frappe/bench/sites')
+frappe.connect()
+settings = frappe.get_single('Settings')
+if not settings.get_password('webhook_secret', raise_exception=False):
+    settings.webhook_secret = secret
+    settings.save(ignore_permissions=True)
+    frappe.db.commit()
+    print('  Webhook secret configured')
+else:
+    print('  Webhook secret already configured, leaving as-is')
+PYEOF
+cd "$BENCH"
 
 # `frappe.app:application` (the raw WSGI callable gunicorn would otherwise
 # import) never serves /assets or /files — that middleware only gets

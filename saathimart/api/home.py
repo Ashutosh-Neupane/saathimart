@@ -71,17 +71,25 @@ def _is_banner_active(banner):
 
 
 @frappe.whitelist(allow_guest=True)
-def get_homepage_data():
+def get_homepage_data(lat=None, lng=None, radius_km=5):
     """
     Single-call homepage payload. Frontend calls this once on load.
     All sub-sections are optional — frontend should hide empty sections.
+
+    Location params:
+      lat, lng — customer coordinates; when provided, products are filtered
+      to only include those with a vendor within radius_km (default: 5km)
     """
+    clat = flt(lat) if lat is not None else None
+    clng = flt(lng) if lng is not None else None
+    max_radius = flt(radius_km) if radius_km is not None else None
+
     data = {
         "banners": _get_banners(),
         "categories": _get_categories(),
-        "deals": _get_deals(limit=20),
-        "bestsellers": _get_bestsellers(limit=10),
-        "recommended": _get_recommended(limit=12),
+        "deals": _get_deals(limit=20, customer_lat=clat, customer_lng=clng, max_radius=max_radius),
+        "bestsellers": _get_bestsellers(limit=10, customer_lat=clat, customer_lng=clng, max_radius=max_radius),
+        "recommended": _get_recommended(limit=12, customer_lat=clat, customer_lng=clng, max_radius=max_radius),
         "quick_links": _get_quick_links(),
         "announcement": _get_announcement(),
     }
@@ -95,21 +103,27 @@ def get_banners():
 
 
 @frappe.whitelist(allow_guest=True)
-def get_deals(limit=20):
+def get_deals(limit=20, lat=None, lng=None, radius_km=5):
     """Products currently on sale (compare_price > price)."""
-    return _get_deals(limit=int(limit))
+    return _get_deals(limit=int(limit), customer_lat=flt(lat) if lat is not None else None,
+                      customer_lng=flt(lng) if lng is not None else None,
+                      max_radius=flt(radius_km) if radius_km is not None else None)
 
 
 @frappe.whitelist(allow_guest=True)
-def get_bestsellers(limit=10):
+def get_bestsellers(limit=10, lat=None, lng=None, radius_km=5):
     """Top-selling products by quantity sold."""
-    return _get_bestsellers(limit=int(limit))
+    return _get_bestsellers(limit=int(limit), customer_lat=flt(lat) if lat is not None else None,
+                            customer_lng=flt(lng) if lng is not None else None,
+                            max_radius=flt(radius_km) if radius_km is not None else None)
 
 
 @frappe.whitelist(allow_guest=True)
-def get_recommended(limit=12):
-    """Curated product recommendations."""
-    return _get_recommended(limit=int(limit))
+def get_recommended(limit=12, lat=None, lng=None, radius_km=5):
+    """Random active products."""
+    return _get_recommended(limit=int(limit), customer_lat=flt(lat) if lat is not None else None,
+                            customer_lng=flt(lng) if lng is not None else None,
+                            max_radius=flt(radius_km) if radius_km is not None else None)
 
 
 @frappe.whitelist(allow_guest=True)
@@ -163,7 +177,7 @@ def _get_categories():
     return top
 
 
-def _get_deals(limit=20):
+def _get_deals(limit=20, customer_lat=None, customer_lng=None, max_radius=None):
     # Query Vendor Listing for active listings with compare_price > price
     listings = frappe.db.sql("""
         SELECT vl.product, vl.price, vl.compare_price, p.product_name, p.slug,
@@ -179,6 +193,20 @@ def _get_deals(limit=20):
 
     on_sale = []
     for l in listings[:limit]:
+        # Blinkit-style radius filter
+        if customer_lat is not None and customer_lng is not None and max_radius is not None:
+            from saathimart.api.products import _get_best_vendor_listing, _preload_listing_data
+            listings_map, stock_map, vendor_location_map = _preload_listing_data(
+                [l.product], customer_lat=customer_lat, customer_lng=customer_lng
+            )
+            best = _get_best_vendor_listing(
+                l.product, customer_lat=customer_lat, customer_lng=customer_lng,
+                _listings_map=listings_map, _stock_map=stock_map,
+                _vendor_location_map=vendor_location_map,
+            )
+            if not best or flt(getattr(best, "distance_km", 0) or 0) > max_radius:
+                continue
+
         on_sale.append({
             "name": l.product,
             "product_name": l.product_name,
@@ -197,7 +225,7 @@ def _get_deals(limit=20):
     return on_sale
 
 
-def _get_bestsellers(limit=10):
+def _get_bestsellers(limit=10, customer_lat=None, customer_lng=None, max_radius=None):
     data = frappe.db.sql("""
         SELECT oi.product, p.product_name, p.slug, p.price, p.compare_price,
                p.thumbnail, p.category, SUM(oi.qty) as total_qty
@@ -211,22 +239,39 @@ def _get_bestsellers(limit=10):
         LIMIT %s
     """, (add_days(today(), -30), limit), as_dict=True)
 
-    return [_serialize_product({
-        "name": r.product,
-        "product_name": r.product_name,
-        "slug": r.slug,
-        "price": r.price,
-        "compare_price": r.compare_price,
-        "thumbnail": r.thumbnail,
-        "category": r.category,
-        "vendor": None,
-        "short_description": "",
-        "stock_qty": 0,
-        "track_inventory": 1,
-    }) for r in data]
+    result = []
+    for r in data:
+        # Blinkit-style radius filter
+        if customer_lat is not None and customer_lng is not None and max_radius is not None:
+            from saathimart.api.products import _get_best_vendor_listing, _preload_listing_data
+            listings_map, stock_map, vendor_location_map = _preload_listing_data(
+                [r.product], customer_lat=customer_lat, customer_lng=customer_lng
+            )
+            best = _get_best_vendor_listing(
+                r.product, customer_lat=customer_lat, customer_lng=customer_lng,
+                _listings_map=listings_map, _stock_map=stock_map,
+                _vendor_location_map=vendor_location_map,
+            )
+            if not best or flt(getattr(best, "distance_km", 0) or 0) > max_radius:
+                continue
+
+        result.append(_serialize_product({
+            "name": r.product,
+            "product_name": r.product_name,
+            "slug": r.slug,
+            "price": r.price,
+            "compare_price": r.compare_price,
+            "thumbnail": r.thumbnail,
+            "category": r.category,
+            "vendor": None,
+            "short_description": "",
+            "stock_qty": 0,
+            "track_inventory": 1,
+        }))
+    return result
 
 
-def _get_recommended(limit=12):
+def _get_recommended(limit=12, customer_lat=None, customer_lng=None, max_radius=None):
     # frappe.get_list's order_by no longer accepts raw SQL like "rand()" (v16
     # validates the field format) — sample randomly in Python from a larger
     # pool instead.
@@ -240,7 +285,25 @@ def _get_recommended(limit=12):
         limit_page_length=max(limit * 4, 50),
     )
     sample = random.sample(pool, min(limit, len(pool)))
-    return [_serialize_product(frappe.get_doc("Product", p["name"])) for p in sample]
+
+    result = []
+    for p in sample:
+        # Blinkit-style radius filter
+        if customer_lat is not None and customer_lng is not None and max_radius is not None:
+            from saathimart.api.products import _get_best_vendor_listing, _preload_listing_data
+            listings_map, stock_map, vendor_location_map = _preload_listing_data(
+                [p["name"]], customer_lat=customer_lat, customer_lng=customer_lng
+            )
+            best = _get_best_vendor_listing(
+                p["name"], customer_lat=customer_lat, customer_lng=customer_lng,
+                _listings_map=listings_map, _stock_map=stock_map,
+                _vendor_location_map=vendor_location_map,
+            )
+            if not best or flt(getattr(best, "distance_km", 0) or 0) > max_radius:
+                continue
+
+        result.append(_serialize_product(frappe.get_doc("Product", p["name"])))
+    return result
 
 
 def _get_quick_links():

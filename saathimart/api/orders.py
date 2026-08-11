@@ -71,6 +71,8 @@ def _recompute_order_status_from_fulfillments(doc):
     if new_status != doc.status:
         frappe.db.set_value("Order", doc.name, "status", new_status)
         doc.status = new_status
+        from saathimart.api.notifications import create_order_status_notification
+        create_order_status_notification(doc, new_status)
     return new_status == "Delivered"
 
 
@@ -263,47 +265,6 @@ def get_order(order_id):
     return data
 
 
-@frappe.whitelist()
-def list_orders(page=1, page_size=20):
-    """Return the current customer's orders (or all for SM Admin)."""
-    page = max(int(page or 1), 1)
-    page_size = min(max(int(page_size or 20), 1), 100)
-    start = (page - 1) * page_size
-
-    if frappe.session.user == "Guest":
-        frappe.throw(_("Not logged in"), frappe.PermissionError)
-
-    filters = {}
-    if "SM Admin" not in frappe.get_roles() and "SM Vendor" not in frappe.get_roles():
-        filters["customer_email"] = frappe.session.user
-
-    total = frappe.db.count("Order", filters)
-    orders = frappe.get_list(
-        "Order",
-        filters=filters,
-        fields=[
-            "name", "creation", "status", "payment_status", "payment_method",
-            "grand_total", "delivery_zone", "delivery_address", "customer_name",
-            "customer_phone", "coupon_code", "loyalty_points_redeemed",
-        ],
-        order_by="creation desc",
-        start=start,
-        page_length=page_size,
-    )
-
-    for o in orders:
-        o.grand_total = flt(o.grand_total)
-        o.creation = o.creation.strftime("%Y-%m-%d %H:%M") if hasattr(o.creation, "strftime") else str(o.creation)
-
-    return {
-        "orders": orders,
-        "total": total,
-        "page": page,
-        "page_size": page_size,
-        "has_next": start + page_size < total,
-    }
-
-
 def _build_status_timeline(doc):
     """Build a Blinkit-style status timeline for order tracking."""
     steps = [
@@ -364,6 +325,9 @@ def update_order_status(order_id, status):
     doc.status = status
     doc.save(ignore_permissions=True)
     _cascade_status_to_fulfillments(doc, status)
+
+    from saathimart.api.notifications import create_order_status_notification
+    create_order_status_notification(doc, status)
 
     # Finalise or release any per-vendor stock reservation made at checkout.
     # Items with no vendor are the legacy hub-fulfilled path — nothing to do.

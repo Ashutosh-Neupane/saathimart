@@ -670,6 +670,53 @@ class TestCart(unittest.TestCase):
         cart = get_cart(self.SESSION)
         self.assertEqual(len(cart["items"]), 0)
 
+    def test_update_cart_item_without_vendor_matches_the_only_line(self):
+        """update_cart_item() doesn't require vendor when it's unambiguous —
+        add_to_cart() auto-resolves a vendor internally even when the caller
+        doesn't pass one, so a caller that only ever added one line for this
+        product shouldn't need to already know which vendor got picked."""
+        from saathimart.api.cart import add_to_cart, update_cart_item, get_cart
+        add_to_cart(self.SESSION, self.product.name, qty=1)
+        cart = get_cart(self.SESSION)
+        auto_vendor = cart["items"][0]["vendor"]
+        self.assertTrue(auto_vendor)  # some vendor was auto-selected
+
+        update_cart_item(self.SESSION, self.product.name, qty=4)
+        cart = get_cart(self.SESSION)
+        self.assertEqual(cart["items"][0]["qty"], 4)
+        self.assertEqual(cart["items"][0]["vendor"], auto_vendor)
+
+    def test_update_cart_item_ambiguous_across_vendors_requires_vendor(self):
+        """The same product sitting in the cart from two different vendors
+        (test_same_product_different_vendor_are_separate_cart_lines) is a
+        real ambiguity update_cart_item() can't silently guess through —
+        it must ask for the vendor rather than picking one arbitrarily."""
+        from saathimart.api.cart import add_to_cart, update_cart_item, get_cart
+        vendor_a = _make_vendor("Cart Update Vendor A", slug="cart-update-vendor-a")
+        vendor_b = _make_vendor("Cart Update Vendor B", slug="cart-update-vendor-b")
+        for v in (vendor_a, vendor_b):
+            vl = frappe.new_doc("Vendor Listing")
+            vl.vendor = v.name
+            vl.product = self.product.name
+            vl.price = 200
+            vl.track_inventory = 1
+            vl.status = "Active"
+            vl.insert(ignore_permissions=True)
+            _seed_vendor_stock(v.name, self.product.name, available=20)
+
+        add_to_cart(self.SESSION, self.product.name, qty=1, vendor=vendor_a.name)
+        add_to_cart(self.SESSION, self.product.name, qty=1, vendor=vendor_b.name)
+        self.assertEqual(len(get_cart(self.SESSION)["items"]), 2)
+
+        with self.assertRaises(frappe.ValidationError):
+            update_cart_item(self.SESSION, self.product.name, qty=5)
+
+        update_cart_item(self.SESSION, self.product.name, qty=5, vendor=vendor_a.name)
+        cart = get_cart(self.SESSION)
+        by_vendor = {i["vendor"]: i["qty"] for i in cart["items"]}
+        self.assertEqual(by_vendor[vendor_a.name], 5)
+        self.assertEqual(by_vendor[vendor_b.name], 1)
+
     def test_clear_cart(self):
         from saathimart.api.cart import add_to_cart, clear_cart, get_cart
         add_to_cart(self.SESSION, self.product.name, qty=2)
@@ -955,19 +1002,48 @@ class TestCheckoutVendorRouting(unittest.TestCase):
         self.assertIn(result["order_id"], [o["name"] for o in orders_for_a])
         self.assertIn(result["order_id"], [o["name"] for o in orders_for_b])
 
-    def test_checkout_without_vendor_is_unaffected(self):
-        """Legacy hub-fulfilled path — no vendor on any cart item."""
+    def test_checkout_without_vendor_auto_selects_and_reserves_stock(self):
+        """
+        There is no untracked "hub inventory" — every product is fulfilled by
+        some vendor. When add_to_cart() isn't given an explicit vendor it
+        auto-resolves one via select_best_vendor() (see
+        test_no_vendor_available_raises for the case where that can't find
+        one at all); checkout must reserve stock against whichever vendor
+        actually got picked, not silently skip stock tracking.
+        """
         from saathimart.api.cart import add_to_cart
         frappe.set_user("Guest")
         add_to_cart(self.SESSION, self.product.name, qty=1)
         frappe.set_user("Administrator")
 
         result = self._checkout()
-        self.assertEqual(result["vendor"], "")
-        stock = frappe.db.get_value(
-            "Vendor Stock", f"{self.vendor_a.name}-{self.product.name}", "available_qty"
+        self.assertTrue(result["vendor"])  # some vendor was auto-selected
+        order = frappe.get_doc("Order", result["order_id"])
+        self.assertEqual(order.items[0].vendor, result["vendor"])
+
+        reserved = frappe.db.get_value(
+            "Vendor Stock", f"{result['vendor']}-{self.product.name}", "reserved_qty"
         )
-        self.assertEqual(stock, 10)  # untouched
+        self.assertEqual(reserved, 1)
+
+    def test_no_vendor_available_raises(self):
+        """A product with zero Vendor Listings can't be added to a cart at
+        all — select_best_vendor() finds nothing and add_to_cart() must
+        reject it rather than silently adding an untracked, vendor-less
+        line (there's no pooled hub inventory to fall back to)."""
+        from saathimart.api.cart import add_to_cart
+
+        orphan = frappe.new_doc("Product")
+        orphan.product_name = "Orphan No Vendor Product"
+        orphan.status = "Active"
+        orphan.insert(ignore_permissions=True)
+
+        frappe.set_user("Guest")
+        with self.assertRaises(frappe.ValidationError):
+            add_to_cart(self.SESSION + "-orphan", orphan.name, qty=1)
+        frappe.set_user("Administrator")
+
+        frappe.delete_doc("Product", orphan.name, ignore_permissions=True)
 
 
 # ── Test: Order status transitions ────────────────────────────────────────────

@@ -206,22 +206,44 @@ PRODUCTS = [
 ]
 
 def _seed_products():
-    vendor_name = frappe.db.get_value("Vendor", {"vendor_name": "Fresh Mart Nepal"}, "name")
+    vendors = frappe.get_all("Vendor", fields=["name"])
     count = 0
+    batch = 0
     for p in PRODUCTS:
         if frappe.db.exists("Product", {"slug": p["slug"]}):
             continue
         prices = p.pop("prices", [])
         doc = frappe.new_doc("Product")
         doc.update(p)
-        doc.vendor = vendor_name
         doc.status = "Active"
-        doc.track_inventory = 1
-        doc.low_stock_threshold = 10
         for pr in prices:
             doc.append("prices", pr)
         doc.insert(ignore_permissions=True)
         count += 1
+
+        for v in vendors:
+            vl = frappe.new_doc("Vendor Listing")
+            vl.vendor = v.name
+            vl.product = doc.name
+            vl.price = p["price"]
+            vl.compare_price = p.get("compare_price", 0)
+            vl.barcode = p["sku"]
+            vl.sku = f"VEND-{p['sku']}"
+            vl.status = "Active"
+            vl.track_inventory = 1
+            vl.allow_backorder = 0
+            vl.available_qty = p.get("stock_qty", 0)
+            vl.reserved_qty = 0
+            vl.priority = 1
+            vl.estimated_delivery_minutes = 20
+            vl.insert(ignore_permissions=True)
+
+        batch += 1
+        if batch % 10 == 0:
+            frappe.db.commit()
+            frappe.clear_cache(doctype="Product")
+            frappe.clear_cache(doctype="Vendor Listing")
+            print(f"  ... {count} products committed")
     print(f"  {count} products")
 
 

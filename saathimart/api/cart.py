@@ -141,28 +141,46 @@ def add_to_cart(session_id, product, qty=1, vendor=None, delivery_zone=None, cus
 
 @frappe.whitelist(allow_guest=True)
 def update_cart_item(session_id, product, qty, vendor=None):
+    """
+    vendor is optional: add_to_cart() auto-resolves a vendor internally even
+    when the caller doesn't pass one, so a caller that only ever added one
+    line for this product shouldn't have to already know which vendor got
+    picked just to change its qty. Only require vendor when it's genuinely
+    ambiguous — the same product sitting in the cart from more than one
+    vendor (see test_same_product_different_vendor_are_separate_cart_lines).
+    """
     guest_rate_limit("cart.update", limit=60, window_seconds=60)
     qty = float(qty)
+    vendor = vendor or None
     cart = _get_or_create_cart(session_id)
 
-    for item in cart.items:
-        if item.product == product and (item.get("vendor") or None) == (vendor or None):
-            if qty <= 0:
-                cart.items.remove(item)
-            else:
-                # Check Vendor Stock only when a vendor is assigned
-                if item.vendor:
-                    stock = _get_vendor_stock(item.vendor, product)
-                    if stock["track_inventory"] and flt(stock["available_qty"] or 0) < qty:
-                        frappe.throw(_(
-                            "Only {0} unit(s) available."
-                        ).format(int(stock["available_qty"])))
-                item.qty = qty
-                item.amount = qty * item.rate
-            cart.save(ignore_permissions=True)
-            return cart.as_dict()
+    matches = [item for item in cart.items if item.product == product]
+    if vendor:
+        matches = [item for item in matches if (item.get("vendor") or None) == vendor]
+    elif len(matches) > 1:
+        frappe.throw(_(
+            "This product is in your cart from more than one vendor — specify which one to update"
+        ))
 
-    frappe.throw(_("Item not in cart"))
+    if not matches:
+        frappe.throw(_("Item not in cart"))
+    item = matches[0]
+
+    if qty <= 0:
+        cart.items.remove(item)
+    else:
+        # Check Vendor Stock only when a vendor is assigned
+        if item.vendor:
+            stock = _get_vendor_stock(item.vendor, product)
+            if stock["track_inventory"] and flt(stock["available_qty"] or 0) < qty:
+                frappe.throw(_(
+                    "Only {0} unit(s) available."
+                ).format(int(stock["available_qty"])))
+        item.qty = qty
+        item.amount = qty * item.rate
+
+    cart.save(ignore_permissions=True)
+    return cart.as_dict()
 
 
 @frappe.whitelist(allow_guest=True)

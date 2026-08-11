@@ -67,6 +67,11 @@ class Product(Document):
         return listings[0].sku if listings else ""
 
     @property
+    def barcode(self):
+        listings = self._get_listings()
+        return listings[0].barcode if listings else ""
+
+    @property
     def vendor_product_id(self):
         listings = self._get_listings()
         return listings[0].vendor_product_id if listings else ""

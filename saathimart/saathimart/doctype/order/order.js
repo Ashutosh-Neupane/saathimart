@@ -36,9 +36,7 @@ frappe.ui.form.on("Order", {
 					frappe.call({
 						method: "saathimart.api.payments.initiate_payment",
 						args: { method: frm.doc.payment_method.toLowerCase(), order_id: frm.doc.name },
-						callback(r) {
-							if (r.message?.payment_url) window.open(r.message.payment_url, "_blank");
-						},
+						callback(r) { if (!r.exc) frm.reload_doc(); },
 					});
 				});
 			}

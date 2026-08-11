@@ -5,12 +5,15 @@ Single source of truth for:
 - Rate limiting
 - Request logging
 - Common validation helpers
+- Vendor->hub push authentication
 """
 import hashlib
+import hmac
 import json
 
 import frappe
 from frappe import _
+from frappe.utils import now_datetime
 
 
 def rate_limit(key, limit=10, window_seconds=60):
@@ -43,6 +46,68 @@ def guest_rate_limit(endpoint, limit=60, window_seconds=60):
     except Exception:
         ip = "unknown"
     return rate_limit(f"{endpoint}:{ip}", limit=limit, window_seconds=window_seconds)
+
+
+def verify_hub_secret(endpoint):
+    """
+    Verify the X-SM-Secret header on an inbound vendor push against that
+    vendor's own webhook_secret (falling back to the hub's global
+    Settings.webhook_secret for vendors that haven't been provisioned with
+    their own yet).
+
+    No-ops when there is no active HTTP request — i.e. when the caller is
+    invoked internally after the true entry point (events.receive) already
+    authenticated the request, or called directly in tests. A real inbound
+    HTTP call always has frappe.request set by the time a whitelisted method
+    runs, so this guard never opens a bypass for actual traffic.
+    """
+    if not frappe.request:
+        return
+
+    settings_secret = frappe.get_single("Settings").get_password(
+        "webhook_secret", raise_exception=False
+    ) or ""
+
+    incoming = frappe.request.headers.get("X-SM-Secret", "")
+    vendor_id = frappe.request.headers.get("X-Vendor-ID", "")
+
+    expected = settings_secret
+    if vendor_id and frappe.db.exists("Vendor", vendor_id):
+        from frappe.utils.password import get_decrypted_password
+        try:
+            vendor_secret = get_decrypted_password(
+                "Vendor", vendor_id, "webhook_secret", raise_exception=False
+            ) or ""
+        except Exception:
+            vendor_secret = ""
+        if vendor_secret:
+            expected = vendor_secret
+
+    if not expected:
+        frappe.throw(_("Webhook secret not configured"), frappe.AuthenticationError)
+    if not incoming or not hmac.compare_digest(incoming, expected):
+        log_auth_failure(endpoint, "invalid_secret")
+        frappe.throw(_("Invalid secret"), frappe.AuthenticationError)
+
+
+def verify_hub_timestamp(max_age_seconds=300):
+    """
+    Reject an inbound vendor push whose X-SM-Timestamp is missing or stale
+    (replay-attack guard). Same no-op-without-a-request behaviour as
+    verify_hub_secret — see its docstring.
+    """
+    if not frappe.request:
+        return
+
+    ts = frappe.request.headers.get("X-SM-Timestamp")
+    if not ts:
+        frappe.throw(_("Missing X-SM-Timestamp header"), frappe.AuthenticationError)
+    try:
+        event_time = float(ts)
+    except (TypeError, ValueError):
+        frappe.throw(_("Invalid timestamp"), frappe.AuthenticationError)
+    if abs(now_datetime().timestamp() - event_time) > max_age_seconds:
+        frappe.throw(_("Request timestamp too old"), frappe.AuthenticationError)
 
 
 def log_auth_failure(endpoint, reason, payload=None):

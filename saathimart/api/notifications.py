@@ -4,6 +4,50 @@ Requires login.
 """
 import frappe
 from frappe import _
+from frappe.utils import now_datetime
+
+
+# Customer-facing copy for order status changes that should surface an
+# in-app SM Notification. Statuses not listed here (e.g. intermediate,
+# vendor-internal states) are silently skipped.
+_ORDER_STATUS_NOTIFICATIONS = {
+    "Confirmed":         ("Order Confirmed", "Your order {0} has been confirmed and is being prepared."),
+    "Preparing":         ("Order Being Prepared", "Your order {0} is being prepared."),
+    "Out for Delivery":  ("Out for Delivery", "Your order {0} is out for delivery."),
+    "Delivered":         ("Order Delivered", "Your order {0} has been delivered. Thank you for shopping with us!"),
+    "Cancelled":         ("Order Cancelled", "Your order {0} has been cancelled."),
+    "Refunded":          ("Order Refunded", "Your order {0} has been refunded."),
+}
+
+
+def create_order_status_notification(order_doc, status):
+    """
+    Insert an in-app SM Notification for a customer-visible Order status
+    change. Called from every code path that changes Order.status (admin
+    override, and vendor-reported status via api.events) so the SM
+    Notification doctype — previously only readable, never written by the
+    order flow — actually reflects what's happening to the order.
+
+    Best-effort: silently no-ops if there's no matching User (customer_email
+    is a free-text Data field, not a Link, so it isn't guaranteed to match
+    an existing User) or no copy configured for this status.
+    """
+    email = getattr(order_doc, "customer_email", None)
+    if not email or not frappe.db.exists("User", email):
+        return
+
+    info = _ORDER_STATUS_NOTIFICATIONS.get(status)
+    if not info:
+        return
+    title, message_template = info
+
+    doc = frappe.new_doc("SM Notification")
+    doc.user = email
+    doc.kind = "order"
+    doc.title = title
+    doc.message = message_template.format(order_doc.name)
+    doc.created_at = now_datetime()
+    doc.insert(ignore_permissions=True)
 
 
 @frappe.whitelist()

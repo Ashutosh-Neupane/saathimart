@@ -8,6 +8,8 @@ Query params:
   lng          — Customer longitude (required for distance calc)
   radius_km    — Search radius in km (default: 5)
 """
+import re
+
 import frappe
 import math
 
@@ -15,7 +17,7 @@ from frappe import _
 from frappe.utils import flt, now_datetime
 
 
-from saathimart.api.utils import guest_rate_limit
+from saathimart.api.utils import guest_rate_limit, verify_hub_secret
 
 
 def _bounding_box(lat, lng, radius_km):
@@ -132,30 +134,62 @@ def nearest_vendor_for_product(product, lat, lng, radius_km=5):
     return result
 
 
+def _humanize_vendor_id(vendor_id):
+    """Turn a site hostname like 'vendor1.localhost' into a readable label
+    ('Vendor1') to seed vendor_name on first contact. Admin can rename later."""
+    label = re.split(r"[.:]", vendor_id)[0]
+    label = re.sub(r"[_-]+", " ", label).strip()
+    return label.title() if label else vendor_id
+
+
 @frappe.whitelist(allow_guest=True)
 def update_vendor_location(vendor_id, lat, lng, service_radius_km=5, address=""):
     """
     Called by saathimart-vendor's sync_vendor_location() to push location updates.
 
     Creates or updates the Vendor doc on the hub with the vendor's current
-    warehouse location and delivery radius.
+    warehouse location and delivery radius. A vendor site the hub has never
+    seen before is self-registered under its own vendor_id (as "Pending" —
+    it won't be selectable for orders until an admin approves it), so the
+    two sides never need their Vendor names manually kept in sync.
     """
-    if not vendor_id or not frappe.db.exists("Vendor", vendor_id):
-        frappe.throw(_("Vendor {0} not found on hub").format(vendor_id))
+    verify_hub_secret("location.update_vendor_location")
 
-    doc = frappe.get_doc("Vendor", vendor_id)
+    if not vendor_id:
+        frappe.throw(_("vendor_id is required"))
+
+    is_new_vendor = not frappe.db.exists("Vendor", vendor_id)
+    if is_new_vendor:
+        doc = frappe.new_doc("Vendor")
+        # autoname is unset (hash-based) for Vendor, so the desired name has
+        # to be forced explicitly — name_set tells set_new_name() to leave
+        # doc.name alone instead of overwriting it with a generated hash.
+        doc.name = vendor_id
+        doc.flags.name_set = True
+        doc.vendor_name = _humanize_vendor_id(vendor_id)
+        doc.status = "Pending"
+        doc.commission_pct = 0
+    else:
+        doc = frappe.get_doc("Vendor", vendor_id)
+
     doc.lat = flt(lat)
     doc.lng = flt(lng)
     doc.service_radius_km = flt(service_radius_km)
     doc.address = address or getattr(doc, "address", "") or ""
     doc.hub_status = "Active"
     doc.last_sync_at = now_datetime()
-    doc.save(ignore_permissions=True)
+
+    if is_new_vendor:
+        doc.insert(ignore_permissions=True)
+    else:
+        doc.save(ignore_permissions=True)
     frappe.db.commit()
 
     return {
         "ok": True,
-        "vendor": vendor_id,
+        "vendor": doc.name,
+        "newly_registered": is_new_vendor,
+        "status": doc.status,
         "lat": doc.lat,
         "lng": doc.lng,
         "service_radius_km": doc.service_radius_km,

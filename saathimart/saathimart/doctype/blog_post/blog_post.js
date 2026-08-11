@@ -5,7 +5,7 @@ frappe.ui.form.on("Blog Post", {
 
 		if (frm.doc.slug && frm.doc.status === "Published") {
 			frm.add_custom_button(__("View Post"), () => {
-				window.open(`/blog/${frm.doc.slug}`, "_blank");
+				window.open(`https://www.saathimart.com/blog/${frm.doc.slug}`, "_blank");
 			});
 		}
 

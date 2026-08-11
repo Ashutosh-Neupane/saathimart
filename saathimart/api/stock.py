@@ -22,6 +22,8 @@ import frappe
 from frappe import _
 from frappe.utils import flt, now_datetime
 
+from saathimart.api.utils import verify_hub_secret
+
 MAX_SINGLE_EVENT_QTY = 1000  # guards against a vendor fat-fingering qty_change
 
 
@@ -391,8 +393,13 @@ def confirm_deduction(vendor, product, qty, order_id=None):
 @frappe.whitelist(allow_guest=True)
 def apply_vendor_stock_event(event, payload):
     """
-    Vendor pushes stock.receipt / stock.deduct / stock.adjustment here
-    (saathimart_vendor.utils.enqueue_outbox → Sync Outbox → hub events.receive).
+    Vendor pushes stock.receipt / stock.deduct / stock.adjustment here.
+    Reached two ways: async via saathimart_vendor.utils.enqueue_outbox →
+    Sync Outbox → hub events.receive → _handle_inbound (already
+    authenticated there), or synchronously via saathimart_vendor's
+    sync_vendor_stock() button hitting this whitelisted method directly —
+    hence the secret check below, which is a no-op when called internally
+    with no active HTTP request (see verify_hub_secret's docstring).
 
     Payload keys match saathimart_vendor.hooks.stock / tasks.py exactly:
       barcode, hub_product, qty_change, vendor_id, voucher_no, source_site, remarks
@@ -400,6 +407,7 @@ def apply_vendor_stock_event(event, payload):
 
     REQUIRES explicit Product Mapping — no sku=barcode fallback.
     """
+    verify_hub_secret("stock.apply_vendor_stock_event")
     if event not in ("stock.receipt", "stock.deduct", "stock.adjustment"):
         frappe.throw(_("Invalid stock event type: {0}").format(event))
 

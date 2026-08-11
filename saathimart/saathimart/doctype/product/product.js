@@ -2,7 +2,7 @@ frappe.ui.form.on("Product", {
 	refresh(frm) {
 		frm.add_custom_button(__("View on Store"), () => {
 			if (frm.doc.slug) {
-				window.open(`/products/${frm.doc.slug}`, "_blank");
+				window.open(`https://www.saathimart.com/products/${frm.doc.slug}`, "_blank");
 			}
 		});
 

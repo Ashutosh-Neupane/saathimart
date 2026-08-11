@@ -1,8 +1,6 @@
 """
 Events API — vendor sites poll here, and receive inbound webhook events.
 """
-import hashlib
-import hmac
 import json
 import uuid
 
@@ -11,7 +9,7 @@ from frappe import _
 from frappe.utils import now_datetime, add_to_date
 
 from saathimart.api.constants import VALID_ORDER_TRANSITIONS
-from saathimart.api.utils import guest_rate_limit, log_auth_failure
+from saathimart.api.utils import guest_rate_limit, verify_hub_secret, verify_hub_timestamp
 
 
 def _validate_order_transition(order, new_status):
@@ -35,7 +33,7 @@ def poll(since=None, limit=50):
     Header: X-SM-Secret must match SM Settings.webhook_secret
     """
     guest_rate_limit("events.poll", limit=100, window_seconds=60)
-    _verify_secret()
+    verify_hub_secret("events.poll")
 
     filters = {"status": "Sent"}
     if since:
@@ -64,8 +62,8 @@ def receive(event=None, payload=None):
     e.g. vendor confirms order, updates stock, pushes price change.
     """
     guest_rate_limit("events.receive", limit=1000, window_seconds=60)
-    _verify_timestamp()
-    _verify_secret()
+    verify_hub_timestamp()
+    verify_hub_secret("events.receive")
     if not event:
         frappe.throw(_("event is required"))
 
@@ -149,6 +147,8 @@ def _apply_order_status(payload, new_status):
         _validate_order_transition(doc, new_status)
         doc.status = new_status
         doc.save(ignore_permissions=True)
+        from saathimart.api.notifications import create_order_status_notification
+        create_order_status_notification(doc, new_status)
 
 
 def _apply_order_delivered(payload):
@@ -190,6 +190,8 @@ def _apply_order_delivered(payload):
                 confirm_deduction(item.vendor, item.product, item.qty, order_id=doc.name)
         frappe.db.set_value("Order", order_id, "status", "Delivered")
         became_delivered = True
+        from saathimart.api.notifications import create_order_status_notification
+        create_order_status_notification(doc, "Delivered")
 
     if became_delivered and doc.payment_method == "COD" and doc.customer_email:
         from saathimart.api.loyalty import earn_points
@@ -243,6 +245,8 @@ def _apply_order_cancel_from_vendor(payload):
             "status": "Cancelled",
             "notes": f"Cancelled by vendor: {payload.get('reason', '')}",
         })
+        from saathimart.api.notifications import create_order_status_notification
+        create_order_status_notification(doc, "Cancelled")
 
 
 def _apply_stock_receipt(payload):
@@ -306,6 +310,7 @@ def _apply_price_update(payload):
     delivery_zone = payload.get("delivery_zone") or None
     compare_price = frappe.utils.flt(payload.get("compare_price") or 0)
     sku = payload.get("sku") or ""
+    barcode = payload.get("barcode") or ""
 
     # Find or create Vendor Listing
     filters = {"product": product_id, "vendor": vendor}
@@ -327,6 +332,8 @@ def _apply_price_update(payload):
             doc.compare_price = compare_price
         if sku:
             doc.sku = sku
+        if barcode:
+            doc.barcode = barcode
         if delivery_zone:
             doc.delivery_zone = delivery_zone
         doc.status = "Active"
@@ -339,6 +346,7 @@ def _apply_price_update(payload):
         doc.vendor = vendor
         doc.price = new_price
         doc.compare_price = compare_price
+        doc.barcode = barcode
         doc.sku = sku
         doc.delivery_zone = delivery_zone
         doc.status = "Active"
@@ -352,44 +360,6 @@ def _apply_price_update(payload):
         doc.last_updated = now_datetime()
         doc.last_sync_at = now_datetime()
         doc.insert(ignore_permissions=True)
-
-
-def _verify_secret():
-    settings_secret = frappe.get_single("Settings").get_password(
-        "webhook_secret", raise_exception=False
-    ) or ""
-    if not settings_secret:
-        frappe.throw(_("Webhook secret not configured"), frappe.AuthenticationError)
-
-    incoming = frappe.request.headers.get("X-SM-Secret", "")
-    vendor_id = frappe.request.headers.get("X-Vendor-ID", "")
-
-    if vendor_id:
-        vendor = frappe.db.get_value("Vendor", vendor_id, "webhook_secret", as_dict=True)
-        if vendor and vendor.webhook_secret:
-            expected = vendor.webhook_secret
-        else:
-            expected = settings_secret
-    else:
-        expected = settings_secret
-
-    if not hmac.compare_digest(incoming, expected):
-        log_auth_failure("webhook", "invalid_secret")
-        frappe.throw(_("Invalid secret"), frappe.AuthenticationError)
-
-
-def _verify_timestamp(max_age_seconds=300):
-    """Reject events older than max_age_seconds to prevent replay attacks."""
-    ts = frappe.request.headers.get("X-SM-Timestamp")
-    if not ts:
-        frappe.throw(_("Missing X-SM-Timestamp header"), frappe.AuthenticationError)
-    try:
-        event_time = float(ts)
-    except (TypeError, ValueError):
-        frappe.throw(_("Invalid timestamp"), frappe.AuthenticationError)
-    now = now_datetime().timestamp()
-    if abs(now - event_time) > max_age_seconds:
-        frappe.throw(_("Event timestamp too old"), frappe.AuthenticationError)
 
 
 @frappe.whitelist(allow_guest=True)

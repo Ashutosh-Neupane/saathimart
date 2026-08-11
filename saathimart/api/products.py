@@ -8,14 +8,14 @@ import math
 import frappe
 from frappe import _
 from frappe.utils import flt, nowdate, add_days, today
-from saathimart.api.utils import guest_rate_limit
+from saathimart.api.utils import guest_rate_limit, verify_hub_secret
 
 
 def _load_vendor_locations_sql(vendor_names, customer_lat, customer_lng):
     """
     Return {vendor: {vendor_name, lat, lng, service_radius_km, distance_km}}
-    using MariaDB ST_Distance_Sphere. Skips vendors with NULL/zero coords
-    or outside their service_radius_km.
+    using MariaDB ST_Distance_Sphere. Returns ALL vendors regardless of radius;
+    the caller decides whether to filter by service_radius_km.
     """
     if not vendor_names:
         return {}
@@ -30,12 +30,8 @@ def _load_vendor_locations_sql(vendor_names, customer_lat, customer_lng):
         WHERE name IN %s
           AND lat IS NOT NULL AND lng IS NOT NULL
           AND lat != 0 AND lng != 0
-          AND ST_Distance_Sphere(
-              ST_PointFromText(CONCAT('POINT(', lng, ' ', lat, ')')),
-              ST_PointFromText(CONCAT('POINT(', %s, ' ', %s, ')'))
-          ) <= service_radius_km * 1000
         ORDER BY distance_meters ASC
-    """, (customer_lng, customer_lat, tuple(vendor_names), customer_lng, customer_lat), as_dict=True)
+    """, (customer_lng, customer_lat, tuple(vendor_names)), as_dict=True)
 
     result = {}
     for r in rows:
@@ -45,6 +41,7 @@ def _load_vendor_locations_sql(vendor_names, customer_lat, customer_lng):
             "lng": flt(r.lng),
             "service_radius_km": flt(r.service_radius_km or 5),
             "distance_km": round(flt(r.distance_meters or 0) / 1000, 2),
+            "has_location": True,
         }
     return result
 
@@ -67,7 +64,7 @@ def _preload_listing_data(product_names, customer_lat=None, customer_lng=None):
     rows = frappe.db.sql("""
         SELECT vl.product, vl.name, vl.vendor, vl.price, vl.compare_price,
                vl.track_inventory, vl.delivery_zone, vl.estimated_delivery_minutes,
-               vl.priority, vl.sku, vl.vendor_product_id, vl.warehouse, vl.allow_backorder
+               vl.priority, vl.barcode, vl.sku, vl.vendor_product_id, vl.warehouse, vl.allow_backorder
         FROM `tabVendor Listing` vl
         WHERE vl.product IN %s AND vl.status = 'Active'
         ORDER BY vl.priority DESC, vl.price ASC
@@ -96,10 +93,30 @@ def _preload_listing_data(product_names, customer_lat=None, customer_lng=None):
                 "physical_qty": flt(r.physical_qty or 0),
             }
 
+        vendor_names_rows = frappe.db.sql("""
+            SELECT name, vendor_name, lat, lng, service_radius_km
+            FROM `tabVendor`
+            WHERE name IN %s
+        """, (tuple(all_vendors),), as_dict=True)
+        vendor_names_map = {r.name: r.vendor_name for r in vendor_names_rows}
+
         if customer_lat is not None and customer_lng is not None:
             vendor_location_map = _load_vendor_locations_sql(
                 list(all_vendors), customer_lat, customer_lng
             )
+
+        for vendor_id, vname in vendor_names_map.items():
+            if vendor_id not in vendor_location_map:
+                vendor_location_map[vendor_id] = {
+                    "vendor_name": vname,
+                    "lat": 0,
+                    "lng": 0,
+                    "service_radius_km": 0,
+                    "distance_km": 9999,
+                    "has_location": False,
+                }
+            else:
+                vendor_location_map[vendor_id]["has_location"] = True
 
     return listings_map, stock_map, vendor_location_map
 
@@ -108,6 +125,7 @@ def _get_best_vendor_listing(product_name, vendor=None, delivery_zone=None,
                              customer_lat=None, customer_lng=None,
                              _listings_map=None, _stock_map=None, _vendor_location_map=None):
     """Return the best Vendor Listing for a product using pre-loaded data."""
+    vendor_location_map = _vendor_location_map or {}
     if _listings_map is not None:
         listings = _listings_map.get(product_name, [])
     else:
@@ -127,28 +145,30 @@ def _get_best_vendor_listing(product_name, vendor=None, delivery_zone=None,
             order_by="priority desc, price asc",
         )
         if listings:
-            stock_map = {}
             vendor_names = [l.vendor for l in listings if l.vendor]
-            if vendor_names:
-                rows = frappe.db.sql("""
-                    SELECT vendor, available_qty, reserved_qty, physical_qty
-                    FROM `tabVendor Stock`
-                    WHERE product = %s AND vendor IN %s
-                """, (product_name, tuple(vendor_names)), as_dict=True)
-                stock_map = {r.vendor: r for r in rows}
-            vendor_location_map = {}
             if customer_lat is not None and customer_lng is not None and vendor_names:
                 vendor_location_map = _load_vendor_locations_sql(
                     vendor_names, customer_lat, customer_lng
                 )
-            _stock_map = stock_map
-            _vendor_location_map = vendor_location_map
+
+    # Normalize stock_map: always {vendor: stock_data}
+    if _stock_map is not None and product_name in _stock_map:
+        stock_map = _stock_map[product_name]
+    elif _stock_map is None:
+        stock_map = {}
+        vendor_names = [l.vendor for l in listings if l.vendor]
+        if vendor_names:
+            rows = frappe.db.sql("""
+                SELECT vendor, available_qty, reserved_qty, physical_qty
+                FROM `tabVendor Stock`
+                WHERE product = %s AND vendor IN %s
+            """, (product_name, tuple(vendor_names)), as_dict=True)
+            stock_map = {r.vendor: r for r in rows}
+    else:
+        stock_map = {}
 
     if not listings:
         return None
-
-    stock_map = _stock_map or {}
-    vendor_location_map = _vendor_location_map or {}
 
     def _enrich(listing):
         s = stock_map.get(listing.vendor, {})
@@ -157,11 +177,11 @@ def _get_best_vendor_listing(product_name, vendor=None, delivery_zone=None,
         listing.physical_qty = s.get("physical_qty", 0)
         loc = vendor_location_map.get(listing.vendor)
         if loc:
-            listing.vendor_name = loc["vendor_name"]
-            listing.vendor_lat = loc["lat"]
-            listing.vendor_lng = loc["lng"]
-            listing.vendor_service_radius_km = loc["service_radius_km"]
-            listing.distance_km = loc["distance_km"]
+            listing.vendor_name = loc.get("vendor_name") or listing.vendor_name or ""
+            listing.vendor_lat = loc.get("lat", 0)
+            listing.vendor_lng = loc.get("lng", 0)
+            listing.vendor_service_radius_km = loc.get("service_radius_km", 0)
+            listing.distance_km = loc.get("distance_km", 0)
         return listing
 
     if vendor:
@@ -198,18 +218,28 @@ def _get_best_vendor_listing(product_name, vendor=None, delivery_zone=None,
 
     if vendor_location_map:
         eligible = []
+        fallback = []
         for l in listings:
             loc = vendor_location_map.get(l.vendor)
             if not loc:
                 continue
-            if loc["distance_km"] > loc["service_radius_km"]:
+            if loc.get("has_location") is False:
                 continue
-            if l.track_inventory and flt(stock_map.get(l.vendor, {}).get("available_qty") or 0) <= 0:
-                continue
-            eligible.append(_enrich(l))
+            if loc["distance_km"] <= loc["service_radius_km"]:
+                if l.track_inventory and flt(stock_map.get(l.vendor, {}).get("available_qty") or 0) <= 0:
+                    continue
+                eligible.append(_enrich(l))
+            else:
+                fallback.append(_enrich(l))
         if eligible:
             eligible.sort(key=lambda x: x.distance_km)
             result = eligible[0]
+            if _listings_map is None:
+                frappe.cache().set_value(cache_key, result, expires_in_sec=300)
+            return result
+        if fallback and customer_lat is not None and customer_lng is not None:
+            fallback.sort(key=lambda x: x.distance_km)
+            result = fallback[0]
             if _listings_map is None:
                 frappe.cache().set_value(cache_key, result, expires_in_sec=300)
             return result
@@ -267,6 +297,7 @@ def _serialize_product(doc, _listings_map=None, _stock_map=None, _vendor_locatio
     vendor = best_listing.vendor if best_listing else None
     sku = best_listing.sku if best_listing else ""
     vendor_product_id = best_listing.vendor_product_id if best_listing else ""
+    barcode = best_listing.barcode if best_listing else ""
     delivery_zone = best_listing.delivery_zone if best_listing else ""
 
     return {
@@ -290,6 +321,7 @@ def _serialize_product(doc, _listings_map=None, _stock_map=None, _vendor_locatio
         "discount_pct": discount,
         "tags": getattr(doc, "tags", "") or "",
         "sku": sku,
+        "barcode": barcode,
         "vendor_product_id": vendor_product_id,
         "delivery_zone": delivery_zone,
         "media": media_files,
@@ -302,7 +334,7 @@ def _serialize_product(doc, _listings_map=None, _stock_map=None, _vendor_locatio
 @frappe.whitelist(allow_guest=True)
 def list_products(category=None, vendor=None, search=None, page=1, page_size=20,
                   sort=None, in_stock=None, min_price=None, max_price=None, tags=None,
-                  delivery_zone=None, lat=None, lng=None):
+                  delivery_zone=None, lat=None, lng=None, radius_km=5):
     """
     Blinkit-style product listing with rich filters and sorting.
 
@@ -311,9 +343,16 @@ def list_products(category=None, vendor=None, search=None, page=1, page_size=20,
 
     Location params:
       lat, lng — customer coordinates; when provided, vendors are sorted by distance
+      radius_km — maximum distance in km for a vendor to be considered (default: 5)
     """
     guest_rate_limit("products.list", limit=300, window_seconds=60)
-    filters = {"status": "Active", "is_active": 1}
+    # Product has no is_active field of its own (only Category and the
+    # Product Price child row do) — filtering on it here made Frappe
+    # silently resolve it against the unrelated Product Price child table
+    # and LEFT JOIN it in, duplicating rows per matching price row or
+    # dropping products with no active price row at all. status covers
+    # "is this product active" on its own, matching every other query below.
+    filters = {"status": "Active"}
 
     # Category filter — accept a single slug/name or a comma-separated list
     if category:
@@ -373,6 +412,8 @@ def list_products(category=None, vendor=None, search=None, page=1, page_size=20,
         product_names, customer_lat=clat, customer_lng=clng
     )
 
+    max_radius = flt(radius_km) if radius_km is not None else None
+
     # Apply price/stock/vendor filtering in Python (vendor listing aware)
     filtered = []
     for p in products:
@@ -407,6 +448,12 @@ def list_products(category=None, vendor=None, search=None, page=1, page_size=20,
             if not any(tag.lower() in product_tags for tag in tag_list):
                 continue
 
+        # Blinkit-style radius filter: only show products with a vendor within max_radius
+        distance = flt(getattr(best, "distance_km", 0) or 0)
+        has_location = getattr(best, "has_location", False)
+        if max_radius is not None and has_location and distance > max_radius:
+            continue
+
         p["price"] = price
         p["compare_price"] = compare
         p["stock_qty"] = stock
@@ -416,8 +463,9 @@ def list_products(category=None, vendor=None, search=None, page=1, page_size=20,
         p["vendor_lat"] = flt(getattr(best, "vendor_lat", 0) or 0)
         p["vendor_lng"] = flt(getattr(best, "vendor_lng", 0) or 0)
         p["vendor_service_radius_km"] = flt(getattr(best, "vendor_service_radius_km", 0) or 0)
-        p["distance_km"] = flt(getattr(best, "distance_km", 0) or 0)
+        p["distance_km"] = distance
         p["sku"] = best.sku or ""
+        p["barcode"] = best.barcode or ""
         p["vendor_product_id"] = best.vendor_product_id or ""
         p["delivery_zone"] = best.delivery_zone or ""
         filtered.append(p)
@@ -440,7 +488,7 @@ def list_products(category=None, vendor=None, search=None, page=1, page_size=20,
         f"sm_list_products:{category or ''}:{vendor or ''}:{search or ''}:"
         f"{page}:{page_size}:{sort or ''}:{lat or ''}:{lng or ''}:"
         f"{delivery_zone or ''}:{min_price or ''}:{max_price or ''}:"
-        f"{in_stock or ''}:{tags or ''}"
+        f"{in_stock or ''}:{tags or ''}:{radius_km or ''}"
     )
     frappe.cache().set_value(cache_key, {
         "items": serialized,
@@ -458,14 +506,14 @@ def list_products(category=None, vendor=None, search=None, page=1, page_size=20,
 
 
 @frappe.whitelist(allow_guest=True)
-def get_product(slug, vendor=None, delivery_zone=None, lat=None, lng=None):
+def get_product(slug, vendor=None, delivery_zone=None, lat=None, lng=None, radius_km=5):
     """Full product detail with vendor-specific pricing and location."""
     guest_rate_limit("products.get", limit=300, window_seconds=60)
     name = frappe.db.get_value("Product", {"slug": slug, "status": "Active"}, "name")
     if not name:
         frappe.throw(_("Product not found"), frappe.DoesNotExistError)
 
-    cache_key = f"sm_product:{name}:{vendor or delivery_zone or 'hub'}:{lat or ''}:{lng or ''}"
+    cache_key = f"sm_product:{name}:{vendor or delivery_zone or 'hub'}:{lat or ''}:{lng or ''}:{radius_km or ''}"
     cached = frappe.cache().get_value(cache_key)
     if cached:
         return cached
@@ -473,9 +521,23 @@ def get_product(slug, vendor=None, delivery_zone=None, lat=None, lng=None):
     doc = frappe.get_doc("Product", name)
     clat = flt(lat) if lat is not None else None
     clng = flt(lng) if lng is not None else None
+    max_radius = flt(radius_km) if radius_km is not None else None
+
     listings_map, stock_map, vendor_location_map = _preload_listing_data(
         [name], customer_lat=clat, customer_lng=clng
     )
+
+    # Check if nearest vendor is within radius before serializing
+    if clat is not None and clng is not None and max_radius is not None:
+        best_check = _get_best_vendor_listing(
+            name, vendor=vendor, delivery_zone=delivery_zone,
+            customer_lat=clat, customer_lng=clng,
+            _listings_map=listings_map, _stock_map=stock_map,
+            _vendor_location_map=vendor_location_map,
+        )
+        if not best_check or flt(getattr(best_check, "distance_km", 0) or 0) > max_radius:
+            frappe.throw(_("Product not available in your area"), frappe.DoesNotExistError)
+
     data = _serialize_product(doc, _listings_map=listings_map, _stock_map=stock_map,
                               _vendor_location_map=vendor_location_map,
                               vendor=vendor, delivery_zone=delivery_zone,
@@ -498,14 +560,21 @@ def get_product(slug, vendor=None, delivery_zone=None, lat=None, lng=None):
     if clat is not None and clng is not None:
         for l in listings:
             loc = vendor_location_map.get(l.vendor)
-            if loc:
+            if loc and loc.get("has_location"):
                 l.vendor_name = loc["vendor_name"]
                 l.vendor_lat = loc["lat"]
                 l.vendor_lng = loc["lng"]
                 l.vendor_service_radius_km = loc["service_radius_km"]
                 l.distance_km = loc["distance_km"]
+            elif loc:
+                l.vendor_name = loc["vendor_name"]
 
         listings.sort(key=lambda x: x.get("distance_km", 9999))
+    else:
+        for l in listings:
+            loc = vendor_location_map.get(l.vendor)
+            if loc:
+                l.vendor_name = loc["vendor_name"]
 
     data["vendor_listings"] = listings
 
@@ -559,15 +628,15 @@ def get_category_products(slug, page=1, page_size=20, sort=None, in_stock=None):
 
 @frappe.whitelist(allow_guest=True)
 def lookup_by_barcode(barcode):
-    """Resolve a physical barcode → hub Product via Vendor Listing SKU."""
+    """Resolve a physical barcode → hub Product via Vendor Listing barcode."""
     guest_rate_limit("products.barcode", limit=100, window_seconds=60)
     if not barcode:
         frappe.throw(_("barcode is required"))
 
-    # Check Vendor Listing SKU first (vendor-specific barcode)
+    # Check Vendor Listing barcode first (vendor-specific barcode)
     vl = frappe.db.get_value(
         "Vendor Listing",
-        {"sku": barcode, "status": "Active"},
+        {"barcode": barcode, "status": "Active"},
         ["product", "vendor", "price"],
         as_dict=True,
     )
@@ -576,7 +645,8 @@ def lookup_by_barcode(barcode):
         return {
             "name": doc.name,
             "product_name": doc.product_name,
-            "sku": barcode,
+            "barcode": barcode,
+            "sku": doc.sku,
             "price": flt(vl.price),
             "slug": doc.slug,
             "vendor": vl.vendor,
@@ -590,10 +660,72 @@ def lookup_by_barcode(barcode):
     return {
         "name": doc.name,
         "product_name": doc.product_name,
+        "barcode": doc.sku,
         "sku": doc.sku,
         "price": flt(doc.price),
         "slug": doc.slug,
     }
+
+
+@frappe.whitelist(allow_guest=True)
+def create_vendor_listing(product, vendor, price=0, compare_price=0, barcode="", sku="",
+                          status="Active", track_inventory=1, allow_backorder=0,
+                          available_qty=0, priority=1, estimated_delivery_minutes=20,
+                          delivery_zone=None, warehouse=""):
+    """
+    Create or update a Vendor Listing. Called by vendors (via hub_post, which
+    authenticates with X-SM-Secret/X-Vendor-ID rather than a Frappe session —
+    see verify_hub_secret) after successful barcode mapping.
+    """
+    guest_rate_limit("products.create_vendor_listing", limit=60, window_seconds=60)
+    verify_hub_secret("products.create_vendor_listing")
+    if not frappe.db.exists("Product", product):
+        frappe.throw(_("Product {0} not found").format(product), frappe.DoesNotExistError)
+    if not frappe.db.exists("Vendor", vendor):
+        frappe.throw(_("Vendor {0} not found").format(vendor), frappe.DoesNotExistError)
+
+    existing = frappe.db.get_value("Vendor Listing", {"product": product, "vendor": vendor}, "name")
+    if existing:
+        doc = frappe.get_doc("Vendor Listing", existing)
+        doc.price = price
+        doc.compare_price = compare_price
+        if barcode:
+            doc.barcode = barcode
+        if sku:
+            doc.sku = sku
+        doc.status = status
+        doc.track_inventory = track_inventory
+        doc.allow_backorder = allow_backorder
+        doc.available_qty = available_qty
+        doc.priority = priority
+        doc.estimated_delivery_minutes = estimated_delivery_minutes
+        if delivery_zone:
+            doc.delivery_zone = delivery_zone
+        if warehouse:
+            doc.warehouse = warehouse
+        doc.save(ignore_permissions=True)
+        return {"created": False, "name": doc.name}
+
+    doc = frappe.new_doc("Vendor Listing")
+    doc.product = product
+    doc.vendor = vendor
+    doc.price = price
+    doc.compare_price = compare_price
+    doc.barcode = barcode
+    doc.sku = sku
+    doc.status = status
+    doc.track_inventory = track_inventory
+    doc.allow_backorder = allow_backorder
+    doc.available_qty = available_qty
+    doc.reserved_qty = 0
+    doc.priority = priority
+    doc.estimated_delivery_minutes = estimated_delivery_minutes
+    if delivery_zone:
+        doc.delivery_zone = delivery_zone
+    if warehouse:
+        doc.warehouse = warehouse
+    doc.insert(ignore_permissions=True)
+    return {"created": True, "name": doc.name}
 
 
 @frappe.whitelist(allow_guest=True)

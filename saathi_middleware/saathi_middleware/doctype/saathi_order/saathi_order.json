@@ -1,0 +1,254 @@
+{
+ "actions": [],
+ "allow_rename": 0,
+ "autoname": "SORD-.YYYY.-.#####",
+ "creation": "2026-08-10 00:00:00.000000",
+ "doctype": "DocType",
+ "engine": "InnoDB",
+ "field_order": [
+  "franchise",
+  "order_status",
+  "placed_at",
+  "column_break_header",
+  "payment_mode",
+  "payment_status",
+  "section_break_customer",
+  "customer_name",
+  "customer_mobile",
+  "column_break_customer",
+  "customer_email",
+  "section_break_delivery",
+  "delivery_address",
+  "delivery_city",
+  "column_break_delivery",
+  "delivery_latitude",
+  "delivery_longitude",
+  "delivery_charges",
+  "section_break_items",
+  "items",
+  "column_break_totals",
+  "subtotal",
+  "grand_total",
+  "section_break_erpnext_sync",
+  "sync_status",
+  "erpnext_customer",
+  "erpnext_address",
+  "erpnext_sales_order",
+  "column_break_erpnext_sync",
+  "erpnext_sales_invoice",
+  "erpnext_delivery_note"
+ ],
+ "fields": [
+  {
+   "fieldname": "franchise",
+   "fieldtype": "Link",
+   "options": "Franchise",
+   "label": "Franchise",
+   "reqd": 1,
+   "in_list_view": 1,
+   "description": "A single order is always fulfilled by exactly one franchise."
+  },
+  {
+   "fieldname": "order_status",
+   "fieldtype": "Select",
+   "label": "Order Status",
+   "options": "Placed\nPushed\nConfirmed\nOut for Delivery\nDelivered\nCancelled",
+   "default": "Placed",
+   "in_list_view": 1
+  },
+  {
+   "fieldname": "placed_at",
+   "fieldtype": "Datetime",
+   "label": "Placed At",
+   "default": "now",
+   "in_list_view": 1
+  },
+  {
+   "fieldname": "column_break_header",
+   "fieldtype": "Column Break"
+  },
+  {
+   "fieldname": "payment_mode",
+   "fieldtype": "Link",
+   "options": "Saathi Payment Mode",
+   "label": "Payment Mode",
+   "reqd": 1
+  },
+  {
+   "fieldname": "payment_status",
+   "fieldtype": "Select",
+   "label": "Payment Status",
+   "options": "Pending\nPaid\nCOD Pending\nFailed\nRefunded",
+   "default": "Pending",
+   "in_list_view": 1
+  },
+  {
+   "fieldname": "section_break_customer",
+   "fieldtype": "Section Break",
+   "label": "Customer"
+  },
+  {
+   "fieldname": "customer_name",
+   "fieldtype": "Data",
+   "label": "Customer Name",
+   "reqd": 1
+  },
+  {
+   "fieldname": "customer_mobile",
+   "fieldtype": "Data",
+   "label": "Customer Mobile",
+   "reqd": 1
+  },
+  {
+   "fieldname": "column_break_customer",
+   "fieldtype": "Column Break"
+  },
+  {
+   "fieldname": "customer_email",
+   "fieldtype": "Data",
+   "label": "Customer Email"
+  },
+  {
+   "fieldname": "section_break_delivery",
+   "fieldtype": "Section Break",
+   "label": "Delivery"
+  },
+  {
+   "fieldname": "delivery_address",
+   "fieldtype": "Small Text",
+   "label": "Delivery Address",
+   "reqd": 1
+  },
+  {
+   "fieldname": "delivery_city",
+   "fieldtype": "Data",
+   "label": "Delivery City",
+   "reqd": 1,
+   "description": "Required by ERPNext's Address doctype on the franchise site."
+  },
+  {
+   "fieldname": "column_break_delivery",
+   "fieldtype": "Column Break"
+  },
+  {
+   "fieldname": "delivery_latitude",
+   "fieldtype": "Float",
+   "label": "Delivery Latitude",
+   "precision": "6"
+  },
+  {
+   "fieldname": "delivery_longitude",
+   "fieldtype": "Float",
+   "label": "Delivery Longitude",
+   "precision": "6"
+  },
+  {
+   "fieldname": "delivery_charges",
+   "fieldtype": "Currency",
+   "label": "Delivery Charges",
+   "default": "0"
+  },
+  {
+   "fieldname": "section_break_items",
+   "fieldtype": "Section Break",
+   "label": "Items"
+  },
+  {
+   "fieldname": "items",
+   "fieldtype": "Table",
+   "options": "Saathi Order Item",
+   "label": "Items",
+   "reqd": 1
+  },
+  {
+   "fieldname": "column_break_totals",
+   "fieldtype": "Column Break"
+  },
+  {
+   "fieldname": "subtotal",
+   "fieldtype": "Currency",
+   "label": "Subtotal",
+   "read_only": 1
+  },
+  {
+   "fieldname": "grand_total",
+   "fieldtype": "Currency",
+   "label": "Grand Total",
+   "read_only": 1,
+   "in_list_view": 1
+  },
+  {
+   "fieldname": "section_break_erpnext_sync",
+   "fieldtype": "Section Break",
+   "label": "ERPNext Sync"
+  },
+  {
+   "fieldname": "sync_status",
+   "fieldtype": "Select",
+   "label": "Sync Status",
+   "options": "Pending\nSuccess\nFailed",
+   "default": "Pending",
+   "in_list_view": 1
+  },
+  {
+   "fieldname": "erpnext_customer",
+   "fieldtype": "Data",
+   "label": "ERPNext Customer",
+   "read_only": 1
+  },
+  {
+   "fieldname": "erpnext_address",
+   "fieldtype": "Data",
+   "label": "ERPNext Address",
+   "read_only": 1
+  },
+  {
+   "fieldname": "erpnext_sales_order",
+   "fieldtype": "Data",
+   "label": "ERPNext Sales Order",
+   "read_only": 1
+  },
+  {
+   "fieldname": "column_break_erpnext_sync",
+   "fieldtype": "Column Break"
+  },
+  {
+   "fieldname": "erpnext_sales_invoice",
+   "fieldtype": "Data",
+   "label": "ERPNext Sales Invoice",
+   "read_only": 1
+  },
+  {
+   "fieldname": "erpnext_delivery_note",
+   "fieldtype": "Data",
+   "label": "ERPNext Delivery Note",
+   "read_only": 1
+  }
+ ],
+ "index_web_pages_for_search": 0,
+ "links": [],
+ "modified": "2026-08-10 00:00:00.000000",
+ "modified_by": "Administrator",
+ "module": "Saathi Middleware",
+ "name": "Saathi Order",
+ "naming_rule": "Expression",
+ "owner": "Administrator",
+ "permissions": [
+  {
+   "create": 1,
+   "delete": 1,
+   "email": 1,
+   "export": 1,
+   "print": 1,
+   "read": 1,
+   "report": 1,
+   "role": "System Manager",
+   "share": 1,
+   "write": 1
+  }
+ ],
+ "sort_field": "creation",
+ "sort_order": "DESC",
+ "states": [],
+ "track_changes": 1
+}

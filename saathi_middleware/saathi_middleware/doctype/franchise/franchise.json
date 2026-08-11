@@ -25,7 +25,18 @@
   "section_break_contact",
   "contact_person",
   "contact_phone",
-  "site_url"
+  "site_url",
+  "section_break_erpnext",
+  "erpnext_site_url",
+  "erpnext_company",
+  "column_break_erpnext",
+  "erpnext_default_warehouse",
+  "erpnext_selling_price_list",
+  "section_break_erpnext_auth",
+  "erpnext_api_key",
+  "column_break_erpnext_auth",
+  "erpnext_api_secret",
+  "reserve_stock"
  ],
  "fields": [
   {
@@ -136,11 +147,70 @@
    "fieldtype": "Data",
    "label": "Franchise Site URL",
    "description": "Informational only — the franchise's own ERPNext site address."
+  },
+  {
+   "fieldname": "section_break_erpnext",
+   "fieldtype": "Section Break",
+   "label": "ERPNext Integration (Order Push)"
+  },
+  {
+   "fieldname": "erpnext_site_url",
+   "fieldtype": "Data",
+   "label": "ERPNext Site URL",
+   "description": "Full base URL used for API calls, e.g. http://saathimart.localhost. Required for order push to work."
+  },
+  {
+   "fieldname": "erpnext_company",
+   "fieldtype": "Data",
+   "label": "Company",
+   "description": "Exact Company name as it exists on the franchise's ERPNext site."
+  },
+  {
+   "fieldname": "column_break_erpnext",
+   "fieldtype": "Column Break"
+  },
+  {
+   "fieldname": "erpnext_default_warehouse",
+   "fieldtype": "Data",
+   "label": "Default Warehouse",
+   "description": "Warehouse used on pushed Sales Order items, e.g. Stores - SM."
+  },
+  {
+   "fieldname": "erpnext_selling_price_list",
+   "fieldtype": "Data",
+   "label": "Selling Price List"
+  },
+  {
+   "fieldname": "section_break_erpnext_auth",
+   "fieldtype": "Section Break",
+   "label": "ERPNext API Credentials",
+   "description": "Generate from a dedicated integration User on the franchise's site. That user's role should be limited to Customer, Address, Contact, Sales Order, Delivery Note, Sales Invoice, Payment Entry."
+  },
+  {
+   "fieldname": "erpnext_api_key",
+   "fieldtype": "Data",
+   "label": "ERPNext API Key"
+  },
+  {
+   "fieldname": "column_break_erpnext_auth",
+   "fieldtype": "Column Break"
+  },
+  {
+   "fieldname": "erpnext_api_secret",
+   "fieldtype": "Password",
+   "label": "ERPNext API Secret"
+  },
+  {
+   "fieldname": "reserve_stock",
+   "fieldtype": "Check",
+   "label": "Reserve Stock on Sales Order",
+   "default": "0",
+   "description": "Only turn this on after enabling Stock Settings > Enable Stock Reservation on this franchise's own ERPNext site. If turned on here while off on their site, every pushed Sales Order will fail to submit."
   }
  ],
  "index_web_pages_for_search": 0,
  "links": [],
- "modified": "2026-08-06 00:00:00.000000",
+ "modified": "2026-08-10 00:00:00.000000",
  "modified_by": "Administrator",
  "module": "Saathi Middleware",
  "name": "Franchise",

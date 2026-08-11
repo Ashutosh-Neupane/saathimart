@@ -149,6 +149,12 @@ app_license = "mit"
 # Scheduled Tasks
 # ---------------
 
+scheduler_events = {
+	"cron": {
+		"*/5 * * * *": ["saathi_middleware.api.order.retry_failed_order_syncs"],
+	},
+}
+
 # scheduler_events = {
 # 	"all": [
 # 		"saathi_middleware.tasks.all"

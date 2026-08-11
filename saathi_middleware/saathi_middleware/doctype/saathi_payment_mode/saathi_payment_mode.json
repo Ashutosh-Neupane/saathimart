@@ -1,0 +1,97 @@
+{
+ "actions": [],
+ "allow_rename": 0,
+ "autoname": "field:mode_name",
+ "creation": "2026-08-10 00:00:00.000000",
+ "doctype": "DocType",
+ "engine": "InnoDB",
+ "field_order": [
+  "mode_name",
+  "is_enabled",
+  "is_online",
+  "column_break_main",
+  "display_order",
+  "erpnext_mode_of_payment",
+  "section_break_gateway",
+  "gateway_config"
+ ],
+ "fields": [
+  {
+   "fieldname": "mode_name",
+   "fieldtype": "Data",
+   "label": "Mode Name",
+   "reqd": 1,
+   "unique": 1,
+   "in_list_view": 1,
+   "description": "e.g. Cash on Delivery, eSewa, Khalti, Card"
+  },
+  {
+   "fieldname": "is_enabled",
+   "fieldtype": "Check",
+   "label": "Is Enabled",
+   "default": "1",
+   "in_list_view": 1
+  },
+  {
+   "fieldname": "is_online",
+   "fieldtype": "Check",
+   "label": "Is Online",
+   "default": "0",
+   "description": "Unchecked for COD/manual modes. Checked for modes that need a gateway redirect/callback before the order can be pushed."
+  },
+  {
+   "fieldname": "column_break_main",
+   "fieldtype": "Column Break"
+  },
+  {
+   "fieldname": "display_order",
+   "fieldtype": "Int",
+   "label": "Display Order",
+   "default": "0"
+  },
+  {
+   "fieldname": "erpnext_mode_of_payment",
+   "fieldtype": "Data",
+   "label": "ERPNext Mode of Payment",
+   "description": "Exact Mode of Payment name expected to exist on each franchise's ERPNext site, used when marking a Sales Invoice paid."
+  },
+  {
+   "fieldname": "section_break_gateway",
+   "fieldtype": "Section Break",
+   "label": "Gateway Config",
+   "collapsible": 1
+  },
+  {
+   "fieldname": "gateway_config",
+   "fieldtype": "Code",
+   "options": "JSON",
+   "label": "Gateway Config (JSON)",
+   "description": "Reserved for future online payment gateway integration. Not used by Cash on Delivery."
+  }
+ ],
+ "index_web_pages_for_search": 0,
+ "links": [],
+ "modified": "2026-08-10 00:00:00.000000",
+ "modified_by": "Administrator",
+ "module": "Saathi Middleware",
+ "name": "Saathi Payment Mode",
+ "naming_rule": "By fieldname",
+ "owner": "Administrator",
+ "permissions": [
+  {
+   "create": 1,
+   "delete": 1,
+   "email": 1,
+   "export": 1,
+   "print": 1,
+   "read": 1,
+   "report": 1,
+   "role": "System Manager",
+   "share": 1,
+   "write": 1
+  }
+ ],
+ "sort_field": "display_order",
+ "sort_order": "ASC",
+ "states": []
+}

@@ -17,6 +17,24 @@ class Product(Document):
     def validate(self):
         if self.price and self.price < 0:
             frappe.throw("Price cannot be negative")
+        self._validate_variants()
+
+    def _validate_variants(self):
+        if self.has_variants and self.variant_of:
+            frappe.throw("A product cannot both have variants and be a variant of another product")
+        if self.variant_of:
+            if self.variant_of == self.name:
+                frappe.throw("A product cannot be a variant of itself")
+            parent_has_variants, parent_status = frappe.db.get_value(
+                "Product", self.variant_of, ["has_variants", "status"]
+            ) or (0, None)
+            if parent_status is None:
+                frappe.throw(f"Variant Of product {self.variant_of} does not exist")
+            if not parent_has_variants:
+                frappe.throw(
+                    f"{self.variant_of} is not marked Has Variants — "
+                    "it can't be used as a variant template"
+                )
 
     def on_update(self):
         frappe.cache().delete_key(f"sm_product:{self.name}")

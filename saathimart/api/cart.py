@@ -79,6 +79,8 @@ def add_to_cart(session_id, product, qty=1, vendor=None, delivery_zone=None, cus
     product_doc = frappe.get_doc("Product", product)
     if product_doc.status != "Active":
         frappe.throw(_("Product is not available"))
+    if product_doc.has_variants:
+        frappe.throw(_("This product has multiple options — please select a specific variant"))
 
     if vendor:
         vl = frappe.get_list(

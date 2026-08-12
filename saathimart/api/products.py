@@ -266,6 +266,94 @@ def _get_best_vendor_listing(product_name, vendor=None, delivery_zone=None,
     return result
 
 
+def _get_best_template_listing(template_name, delivery_zone=None,
+                               customer_lat=None, customer_lng=None):
+    """
+    A has_variants=1 template has no Vendor Listings of its own — its price/
+    stock on a browse card or product page is the cheapest active listing
+    across its own variants (in-stock ones preferred), the same "starting
+    from ₹X" summary any variant-based storefront shows before a customer
+    has picked a specific size/color. Returns a listing row shaped exactly
+    like _get_best_vendor_listing's return value so callers don't need to
+    know which one they got.
+    """
+    variant_names = frappe.get_list(
+        "Product", filters={"variant_of": template_name, "status": "Active"},
+        pluck="name",
+    )
+    if not variant_names:
+        return None
+
+    listings_map, stock_map, vendor_location_map = _preload_listing_data(
+        variant_names, customer_lat=customer_lat, customer_lng=customer_lng
+    )
+    candidates = []
+    for vn in variant_names:
+        best = _get_best_vendor_listing(
+            vn, delivery_zone=delivery_zone,
+            customer_lat=customer_lat, customer_lng=customer_lng,
+            _listings_map=listings_map, _stock_map=stock_map,
+            _vendor_location_map=vendor_location_map,
+        )
+        if best:
+            candidates.append(best)
+    if not candidates:
+        return None
+
+    in_stock = [c for c in candidates
+                if not c.track_inventory or flt(getattr(c, "available_qty", 0) or 0) > 0]
+    pool = in_stock or candidates
+    return min(pool, key=lambda c: flt(c.price))
+
+
+def _resolve_best_listing(doc_or_name, has_variants, vendor=None, delivery_zone=None,
+                          customer_lat=None, customer_lng=None,
+                          _listings_map=None, _stock_map=None, _vendor_location_map=None):
+    """Single entry point for "what listing represents this product" —
+    branches to the template-aggregate resolver when has_variants is set,
+    otherwise the normal per-product resolver. See both functions' own
+    docstrings."""
+    name = doc_or_name if isinstance(doc_or_name, str) else doc_or_name.name
+    if has_variants:
+        return _get_best_template_listing(
+            name, delivery_zone=delivery_zone,
+            customer_lat=customer_lat, customer_lng=customer_lng,
+        )
+    return _get_best_vendor_listing(
+        name, vendor=vendor, delivery_zone=delivery_zone,
+        customer_lat=customer_lat, customer_lng=customer_lng,
+        _listings_map=_listings_map, _stock_map=_stock_map,
+        _vendor_location_map=_vendor_location_map,
+    )
+
+
+def _get_variant_summaries(template_name, vendor=None, delivery_zone=None,
+                           customer_lat=None, customer_lng=None, exclude=None):
+    """Serialized list of a template's active variants (each variant's own
+    price/stock/attributes) — what a frontend renders as the size/color
+    picker on a product page."""
+    filters = {"status": "Active", "variant_of": template_name}
+    if exclude:
+        filters["name"] = ["!=", exclude]
+    variant_names = frappe.get_list(
+        "Product", filters=filters, pluck="name", order_by="creation asc"
+    )
+    if not variant_names:
+        return []
+
+    listings_map, stock_map, vendor_location_map = _preload_listing_data(
+        variant_names, customer_lat=customer_lat, customer_lng=customer_lng
+    )
+    return [
+        _serialize_product(
+            frappe.get_doc("Product", vn), _listings_map=listings_map,
+            _stock_map=stock_map, _vendor_location_map=vendor_location_map,
+            vendor=vendor, delivery_zone=delivery_zone,
+            customer_lat=customer_lat, customer_lng=customer_lng,
+        )
+        for vn in variant_names
+    ]
+
 
 def _serialize_product(doc, _listings_map=None, _stock_map=None, _vendor_location_map=None,
                        vendor=None, delivery_zone=None, customer_lat=None, customer_lng=None):
@@ -280,8 +368,8 @@ def _serialize_product(doc, _listings_map=None, _stock_map=None, _vendor_locatio
     if not primary_media and media_files:
         primary_media = media_files[0]
 
-    best_listing = _get_best_vendor_listing(
-        doc.name, vendor=vendor, delivery_zone=delivery_zone,
+    best_listing = _resolve_best_listing(
+        doc, getattr(doc, "has_variants", 0), vendor=vendor, delivery_zone=delivery_zone,
         customer_lat=customer_lat, customer_lng=customer_lng,
         _listings_map=_listings_map, _stock_map=_stock_map,
         _vendor_location_map=_vendor_location_map,
@@ -300,6 +388,11 @@ def _serialize_product(doc, _listings_map=None, _stock_map=None, _vendor_locatio
     vendor_product_id = best_listing.vendor_product_id if best_listing else ""
     barcode = best_listing.barcode if best_listing else ""
     delivery_zone = best_listing.delivery_zone if best_listing else ""
+
+    variant_attributes = [
+        {"attribute": r.attribute, "value": r.value}
+        for r in (getattr(doc, "variant_attributes", None) or [])
+    ]
 
     return {
         "name": doc.name,
@@ -330,6 +423,9 @@ def _serialize_product(doc, _listings_map=None, _stock_map=None, _vendor_locatio
         "avg_rating": flt(doc.avg_rating or 0),
         "review_count": doc.review_count or 0,
         "brand": getattr(doc, "brand", "") or "",
+        "has_variants": getattr(doc, "has_variants", 0) or 0,
+        "variant_of": getattr(doc, "variant_of", "") or "",
+        "variant_attributes": variant_attributes,
     }
 
 
@@ -354,7 +450,14 @@ def list_products(category=None, vendor=None, search=None, page=1, page_size=20,
     # and LEFT JOIN it in, duplicating rows per matching price row or
     # dropping products with no active price row at all. status covers
     # "is this product active" on its own, matching every other query below.
-    filters = {"status": "Active"}
+    #
+    # variant_of "is not set" keeps individual variants (e.g. "T-Shirt —
+    # Red, L") out of the browse grid — only the template ("T-Shirt", with
+    # has_variants=1) or a standalone non-variant product shows here.
+    # Customers pick a specific variant on the template's own product page
+    # (see get_product's `variants` list), so the grid doesn't end up with
+    # one card per size/color of the same item.
+    filters = {"status": "Active", "variant_of": ["is", "not set"]}
 
     # Category filter — accept a single slug/name or a comma-separated list
     if category:
@@ -400,7 +503,7 @@ def list_products(category=None, vendor=None, search=None, page=1, page_size=20,
         or_filters=or_filters,
         fields=["name", "product_name", "slug", "category", "status",
                 "short_description", "tags", "thumbnail", "avg_rating",
-                "review_count", "brand"],
+                "review_count", "brand", "has_variants"],
         limit_start=(page - 1) * page_size,
         limit_page_length=page_size,
         order_by=order_by,
@@ -419,8 +522,11 @@ def list_products(category=None, vendor=None, search=None, page=1, page_size=20,
     # Apply price/stock/vendor filtering in Python (vendor listing aware)
     filtered = []
     for p in products:
-        best = _get_best_vendor_listing(
-            p["name"], vendor=vendor, delivery_zone=delivery_zone,
+        # A has_variants template has no Vendor Listing of its own — its
+        # card price/stock is aggregated across its variants instead (see
+        # _resolve_best_listing); a plain product resolves the normal way.
+        best = _resolve_best_listing(
+            p["name"], p.get("has_variants"), vendor=vendor, delivery_zone=delivery_zone,
             customer_lat=clat, customer_lng=clng,
             _listings_map=listings_map, _stock_map=stock_map,
             _vendor_location_map=vendor_location_map,
@@ -529,8 +635,11 @@ def get_product(slug, vendor=None, delivery_zone=None, lat=None, lng=None, radiu
         [name], customer_lat=clat, customer_lng=clng
     )
 
-    # Check if nearest vendor is within radius before serializing
-    if clat is not None and clng is not None and max_radius is not None:
+    # Check if nearest vendor is within radius before serializing. Skipped
+    # for a has_variants template — it has no listings/location of its own
+    # to check; availability is a per-variant question, reflected in each
+    # variant's own price/stock once the customer picks one below.
+    if clat is not None and clng is not None and max_radius is not None and not doc.has_variants:
         best_check = _get_best_vendor_listing(
             name, vendor=vendor, delivery_zone=delivery_zone,
             customer_lat=clat, customer_lng=clng,
@@ -580,6 +689,27 @@ def get_product(slug, vendor=None, delivery_zone=None, lat=None, lng=None, radiu
 
     data["vendor_listings"] = listings
 
+    # Variant switcher data: a template's own children, or a variant's
+    # siblings (+ a pointer back to its template) — same shape either way
+    # so the frontend doesn't need to special-case which slug it loaded.
+    if doc.has_variants:
+        data["variants"] = _get_variant_summaries(
+            name, vendor=vendor, delivery_zone=delivery_zone,
+            customer_lat=clat, customer_lng=clng,
+        )
+        data["variant_of_product"] = None
+    elif doc.variant_of:
+        data["variants"] = _get_variant_summaries(
+            doc.variant_of, vendor=vendor, delivery_zone=delivery_zone,
+            customer_lat=clat, customer_lng=clng, exclude=name,
+        )
+        data["variant_of_product"] = frappe.db.get_value(
+            "Product", doc.variant_of, ["name", "product_name", "slug"], as_dict=True
+        )
+    else:
+        data["variants"] = []
+        data["variant_of_product"] = None
+
     # Add review summary
     review_stats = frappe.db.sql("""
         SELECT COUNT(*) as review_count, AVG(rating) as avg_rating
@@ -598,7 +728,8 @@ def get_product(slug, vendor=None, delivery_zone=None, lat=None, lng=None, radiu
 
     related_pool = frappe.get_list(
         "Product",
-        filters={"status": "Active", "category": doc.category, "name": ["!=", name]},
+        filters={"status": "Active", "category": doc.category, "name": ["!=", name],
+                 "variant_of": ["is", "not set"]},
         fields=["name", "product_name", "slug", "category"],
         order_by="creation desc",
         limit_page_length=32,

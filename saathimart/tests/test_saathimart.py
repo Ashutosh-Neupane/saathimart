@@ -65,7 +65,7 @@ def tearDownModule():
 
 # ── Helpers ───────────────────────────────────────────────────────────────────
 
-def _make_product(name, price=100, stock=50, prices=None):
+def _make_product(name, price=100, stock=50, prices=None, variant_of=None, variant_attributes=None):
     slug = frappe.scrub(name).replace("_", "-")
     if frappe.db.exists("Product", {"slug": slug}):
         existing = frappe.get_doc("Product", {"slug": slug})
@@ -78,6 +78,10 @@ def _make_product(name, price=100, stock=50, prices=None):
     doc.status         = "Active"
     for p in (prices or []):
         doc.append("prices", p)
+    if variant_of:
+        doc.variant_of = variant_of
+    for attr in (variant_attributes or []):
+        doc.append("variant_attributes", attr)
     doc.insert(ignore_permissions=True)
 
     vendor = _make_vendor(f"Test Vendor {name}")
@@ -131,6 +135,21 @@ def _make_product(name, price=100, stock=50, prices=None):
             vl.status = "Active"
             vl.insert(ignore_permissions=True)
 
+    return doc
+
+
+def _make_variant_template(name):
+    """A has_variants=1 template Product — no Vendor Listing/Stock of its
+    own, purely a grouping shell for variant Products (see _make_product's
+    variant_of/variant_attributes params)."""
+    slug = frappe.scrub(name).replace("_", "-")
+    if frappe.db.exists("Product", {"slug": slug}):
+        return frappe.get_doc("Product", {"slug": slug})
+    doc = frappe.new_doc("Product")
+    doc.product_name = name
+    doc.status = "Active"
+    doc.has_variants = 1
+    doc.insert(ignore_permissions=True)
     return doc
 
 
@@ -519,6 +538,107 @@ class TestProductStockSerialization(unittest.TestCase):
         result = get_product(self.product.slug, vendor=vendor.name)
         self.assertEqual(result["allow_backorder"], 0)
         self.assertEqual(result["stock_qty"], 5)
+
+
+# ── Test: Product variants ───────────────────────────────────────────────────
+# A variant is a full Product in its own right (own slug, Vendor Listing,
+# Vendor Stock, barcode) linked back to a has_variants=1 template via
+# variant_of — so cart/checkout/stock/hub-vendor sync need zero changes to
+# work with variants. These tests cover the template/variant-specific
+# surface: validation, browse-grid aggregation, and the variant switcher.
+
+class TestProductVariants(unittest.TestCase):
+
+    def setUp(self):
+        frappe.set_user("Administrator")
+        self.template = _make_variant_template("Variant T-Shirt")
+        self.red_l = _make_product(
+            "Variant T-Shirt Red L", price=500, stock=10, prices=[],
+            variant_of=self.template.name,
+            variant_attributes=[{"attribute": "Color", "value": "Red"},
+                                {"attribute": "Size", "value": "L"}],
+        )
+        self.blue_m = _make_product(
+            "Variant T-Shirt Blue M", price=450, stock=0, prices=[],
+            variant_of=self.template.name,
+            variant_attributes=[{"attribute": "Color", "value": "Blue"},
+                                {"attribute": "Size", "value": "M"}],
+        )
+
+    def test_variant_of_must_point_to_a_has_variants_product(self):
+        plain = _make_product("Variant Test Plain Product", price=100, prices=[])
+        doc = frappe.new_doc("Product")
+        doc.product_name = "Bad Variant"
+        doc.status = "Active"
+        doc.variant_of = plain.name
+        with self.assertRaises(frappe.ValidationError):
+            doc.insert(ignore_permissions=True)
+
+    def test_cannot_be_both_template_and_variant(self):
+        doc = frappe.new_doc("Product")
+        doc.product_name = "Confused Product"
+        doc.status = "Active"
+        doc.has_variants = 1
+        doc.variant_of = self.template.name
+        with self.assertRaises(frappe.ValidationError):
+            doc.insert(ignore_permissions=True)
+
+    def test_valid_variant_creation_succeeds(self):
+        self.assertEqual(self.red_l.variant_of, self.template.name)
+        self.assertEqual(len(self.red_l.variant_attributes), 2)
+
+    def test_list_products_shows_template_not_individual_variants(self):
+        from saathimart.api.products import list_products
+        result = list_products(search="Variant T-Shirt")
+        names = [i["name"] for i in result["items"]]
+        self.assertIn(self.template.name, names)
+        self.assertNotIn(self.red_l.name, names)
+        self.assertNotIn(self.blue_m.name, names)
+
+    def test_list_products_template_price_is_cheapest_in_stock_variant(self):
+        from saathimart.api.products import list_products
+        result = list_products(search="Variant T-Shirt")
+        item = next(i for i in result["items"] if i["name"] == self.template.name)
+        # blue_m (450) is cheaper but out of stock; red_l (500) is in stock —
+        # the in-stock variant wins over the merely-cheaper one.
+        self.assertEqual(item["price"], 500)
+        self.assertTrue(item["has_variants"])
+
+    def test_get_product_on_template_returns_variant_list(self):
+        from saathimart.api.products import get_product
+        result = get_product(self.template.slug)
+        self.assertTrue(result["has_variants"])
+        variant_names = {v["name"] for v in result["variants"]}
+        self.assertEqual(variant_names, {self.red_l.name, self.blue_m.name})
+        self.assertIsNone(result["variant_of_product"])
+
+    def test_get_product_on_variant_returns_siblings_and_attributes(self):
+        from saathimart.api.products import get_product
+        result = get_product(self.red_l.slug)
+        self.assertEqual(result["variant_of"], self.template.name)
+        self.assertEqual(
+            {a["attribute"]: a["value"] for a in result["variant_attributes"]},
+            {"Color": "Red", "Size": "L"},
+        )
+        sibling_names = {v["name"] for v in result["variants"]}
+        self.assertEqual(sibling_names, {self.blue_m.name})  # excludes itself
+        self.assertEqual(result["variant_of_product"]["name"], self.template.name)
+        # A variant is fully purchasable on its own — real price/stock, not
+        # the template's aggregate.
+        self.assertEqual(result["price"], 500)
+        self.assertEqual(result["stock_qty"], 10)
+
+    def test_add_to_cart_rejects_template_directly(self):
+        from saathimart.api.cart import add_to_cart
+        with self.assertRaises(frappe.ValidationError):
+            add_to_cart("variant-cart-session", self.template.name, qty=1)
+
+    def test_add_to_cart_accepts_a_specific_variant(self):
+        from saathimart.api.cart import add_to_cart, get_cart
+        add_to_cart("variant-cart-session-2", self.red_l.name, qty=1)
+        cart = get_cart("variant-cart-session-2")
+        self.assertEqual(cart["items"][0]["product"], self.red_l.name)
+        self.assertEqual(cart["items"][0]["rate"], 500)
 
 
 # ── Test: calculate_taxes_and_totals ─────────────────────────────────────────

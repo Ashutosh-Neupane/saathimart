@@ -35,7 +35,15 @@
      {"fieldname": "stock_qty", "fieldtype": "Float", "label": "Stock Qty", "default": "0", "read_only": 1},
      {"fieldname": "section_rating", "fieldtype": "Section Break", "label": "Ratings"},
     {"fieldname": "avg_rating", "fieldtype": "Float", "label": "Avg Rating", "default": "0", "read_only": 1, "in_list_view": 1},
-    {"fieldname": "review_count", "fieldtype": "Int", "label": "Review Count", "default": "0", "read_only": 1, "in_list_view": 1}
+    {"fieldname": "review_count", "fieldtype": "Int", "label": "Review Count", "default": "0", "read_only": 1, "in_list_view": 1},
+    {"fieldname": "section_variants", "fieldtype": "Section Break", "label": "Variants"},
+    {"fieldname": "has_variants", "fieldtype": "Check", "label": "Has Variants", "default": "0",
+     "description": "This Product is a template/parent grouping several variants (e.g. one T-Shirt with Size/Color options) — it is not sold directly. Customers pick a specific variant on the product page."},
+    {"fieldname": "col_break_variants", "fieldtype": "Column Break"},
+    {"fieldname": "variant_of", "fieldtype": "Link", "label": "Variant Of", "options": "Product",
+     "description": "Set on a specific sellable variant (e.g. 'T-Shirt — Red, L') to link it back to its template Product. A variant has its own slug, Vendor Listings, and Vendor Stock — it's a full Product in its own right, just grouped under a template for display."},
+    {"fieldname": "variant_attributes", "fieldtype": "Table", "label": "Variant Attributes", "options": "Product Variant Attribute",
+     "description": "What distinguishes this variant from its siblings, e.g. Size=Large, Color=Red. Only meaningful when variant_of is set."}
   ],
   "title_field": "product_name",
   "search_fields": "product_name,slug",

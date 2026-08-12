@@ -21,6 +21,11 @@
   "section_break_desc",
   "description",
   "image",
+  "section_break_ecommerce",
+  "meta_title",
+  "meta_description",
+  "column_break_ecommerce",
+  "tags",
   "section_break_location",
   "latitude",
   "longitude",
@@ -118,6 +123,33 @@
    "fieldname": "image",
    "fieldtype": "Attach Image",
    "label": "Image",
+   "description": "Set by a middleware user. Never overwritten by franchise sync."
+  },
+  {
+   "fieldname": "section_break_ecommerce",
+   "fieldtype": "Section Break",
+   "label": "Ecommerce"
+  },
+  {
+   "fieldname": "meta_title",
+   "fieldtype": "Data",
+   "label": "Meta Title",
+   "description": "Set by a middleware user. Never overwritten by franchise sync."
+  },
+  {
+   "fieldname": "meta_description",
+   "fieldtype": "Small Text",
+   "label": "Meta Description",
+   "description": "Set by a middleware user. Never overwritten by franchise sync."
+  },
+  {
+   "fieldname": "column_break_ecommerce",
+   "fieldtype": "Column Break"
+  },
+  {
+   "fieldname": "tags",
+   "fieldtype": "Data",
+   "label": "Tags (comma separated)",
    "description": "Set by a middleware user. Never overwritten by franchise sync."
   },
   {

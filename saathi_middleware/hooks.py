@@ -138,6 +138,42 @@ app_license = "mit"
 # ---------------
 # Hook on document methods and events
 
+doc_events = {
+    "SM Site Config": {
+        "on_update": "saathi_middleware.api.cms._bust_site_config_cache",
+    },
+    "SM Navigation Item": {
+        "on_update": "saathi_middleware.api.cms._bust_navigation_cache",
+    },
+    "SM Banner": {
+        "on_update": "saathi_middleware.api.cms._bust_banner_cache",
+    },
+    "SM Site Page": {
+        "on_update": "saathi_middleware.api.cms._bust_page_cache",
+    },
+    "SM Blog Post": {
+        "on_update": "saathi_middleware.api.cms._bust_blog_cache",
+    },
+    "SM Hero Slide": {
+        "on_update": "saathi_middleware.api.cms._bust_home_content_cache",
+    },
+    "SM Seasonal Banner": {
+        "on_update": "saathi_middleware.api.cms._bust_home_content_cache",
+    },
+    "SM Trust Badge": {
+        "on_update": "saathi_middleware.api.cms._bust_home_content_cache",
+    },
+    "SM Product Rail Heading": {
+        "on_update": "saathi_middleware.api.cms._bust_home_content_cache",
+    },
+    "SM Homepage Settings": {
+        "on_update": "saathi_middleware.api.cms._bust_home_content_cache",
+    },
+    "SM Website Content": {
+        "on_update": "saathi_middleware.api.cms._bust_content_cache",
+    },
+}
+
 # Scheduled Tasks
 # ---------------
 
@@ -265,6 +301,8 @@ fixtures = [
     ]]]},
     {"dt": "SM Pending Verification"},
     {"dt": "SM Cart"},
+    {"dt": "SM Site Config"},
+    {"dt": "SM Homepage Settings"},
 ]
 
 # ── Permissions ───────────────────────────────────────────────────────────────

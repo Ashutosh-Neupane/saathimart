@@ -5,6 +5,9 @@
   "istable": 1,
   "fields": [
     {"fieldname": "vendor", "fieldtype": "Link", "label": "Vendor", "options": "Vendor", "in_list_view": 1},
+    {"fieldname": "vendor_name", "fieldtype": "Data", "label": "Vendor Name", "read_only": 1,
+     "fetch_from": "vendor.vendor_name", "in_list_view": 1,
+     "description": "Vendor.name is an autoname hash, not the vendor's business name — this fetched column is what actually shows in the fulfillments grid instead of the unreadable id."},
     {"fieldname": "vendor_order_id", "fieldtype": "Data", "label": "Vendor Order ID", "in_list_view": 1},
     {"fieldname": "status", "fieldtype": "Select", "label": "Status",
      "options": "Pending\nConfirmed\nPreparing\nOut for Delivery\nDelivered\nCancelled",

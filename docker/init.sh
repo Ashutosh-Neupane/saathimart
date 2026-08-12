@@ -127,6 +127,35 @@ else:
 PYEOF
 cd "$BENCH"
 
+# Seed System Settings.currency so every Currency-fieldtype field (Order
+# totals, Vendor Payout amounts, Product prices, ...) formats with the Rs
+# symbol instead of Frappe's factory-default USD/$ — this is the framework's
+# own global currency default, separate from (and not set by) this app's own
+# Settings.currency field, which only covers this app's own "NPR 123"-style
+# text formatting, not native Currency field rendering.
+echo "Configuring default currency..."
+cd "$BENCH/sites"
+"$BENCH/env/bin/python" - "$SITE" <<'PYEOF'
+import sys
+import frappe
+site = sys.argv[1]
+frappe.init(site, sites_path='/home/frappe/bench/sites')
+frappe.connect()
+if frappe.db.exists('Currency', 'NPR') and not frappe.db.get_value('Currency', 'NPR', 'enabled'):
+    frappe.db.set_value('Currency', 'NPR', 'enabled', 1)
+# frappe.db.set_value (not get_single().save()) — System Settings has other
+# mandatory fields (language, time_zone) that a fresh site never had a Setup
+# Wizard run to fill in, so a normal .save() throws MandatoryError even
+# though currency is the only field actually being touched here.
+if frappe.db.get_value('System Settings', 'System Settings', 'currency') != 'NPR':
+    frappe.db.set_value('System Settings', 'System Settings', 'currency', 'NPR')
+    frappe.db.commit()
+    print('  Default currency set to NPR')
+else:
+    print('  Default currency already NPR, leaving as-is')
+PYEOF
+cd "$BENCH"
+
 # `frappe.app:application` (the raw WSGI callable gunicorn would otherwise
 # import) never serves /assets or /files — that middleware only gets
 # applied inside frappe.app.serve(), which `bench serve`/`bench start`'s

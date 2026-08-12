@@ -58,7 +58,6 @@
   {"fieldname": "onboarding_order_sequence", "fieldtype": "Int", "label": "Onboarding Order Sequence", "default": "0", "read_only": 1,
    "description": "1 = this customer's first order, 2 = second, 0 = not eligible / not computed. Recorded for audit even when the discount was 0."}
  ],
- "title_field": "name",
  "search_fields": "customer_name,customer_email,customer_phone",
  "permissions": [
   {"role": "SM Admin", "read": 1, "write": 1, "create": 1, "delete": 1},

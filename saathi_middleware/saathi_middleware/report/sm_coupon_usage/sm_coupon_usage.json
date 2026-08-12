@@ -1,0 +1,1 @@
+{"name":"SM Coupon Usage","module":"Saathi Middleware","doctype":"Report","custom":0,"report_name":"SM Coupon Usage","is_standard":"Yes","ref_doctype":"Saathi Order","report_type":"Script Report","roles":[{"role":"SM Admin"},{"role":"SM Vendor"}]}

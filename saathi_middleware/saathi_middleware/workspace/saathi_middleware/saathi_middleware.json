@@ -1,6 +1,6 @@
 {
  "charts": [],
- "content": "[{\"id\":\"sm-header\",\"type\":\"header\",\"data\":{\"text\":\"<span class=\\\"h4\\\">Saathi Middleware</span>\",\"col\":12}},{\"id\":\"sm-card-catalog\",\"type\":\"card\",\"data\":{\"card_name\":\"Catalog\",\"col\":4}},{\"id\":\"sm-card-ecommerce\",\"type\":\"card\",\"data\":{\"card_name\":\"Ecommerce\",\"col\":4}},{\"id\":\"sm-card-content\",\"type\":\"card\",\"data\":{\"card_name\":\"Content\",\"col\":4}},{\"id\":\"sm-card-settings\",\"type\":\"card\",\"data\":{\"card_name\":\"Settings\",\"col\":4}}]",
+ "content": "[{\"id\":\"sm-header\",\"type\":\"header\",\"data\":{\"text\":\"<span class=\\\"h4\\\">Saathi Middleware</span>\",\"col\":12}},{\"id\":\"sm-card-catalog\",\"type\":\"card\",\"data\":{\"card_name\":\"Catalog\",\"col\":4}},{\"id\":\"sm-card-ecommerce\",\"type\":\"card\",\"data\":{\"card_name\":\"Ecommerce\",\"col\":4}},{\"id\":\"sm-card-loyalty\",\"type\":\"card\",\"data\":{\"card_name\":\"Loyalty\",\"col\":4}},{\"id\":\"sm-card-content\",\"type\":\"card\",\"data\":{\"card_name\":\"Content\",\"col\":4}},{\"id\":\"sm-card-settings\",\"type\":\"card\",\"data\":{\"card_name\":\"Settings\",\"col\":4}}]",
  "creation": "2026-08-12 00:00:00.000000",
  "custom_blocks": [],
  "docstatus": 0,
@@ -55,7 +55,7 @@
    "hidden": 0,
    "is_query_report": 0,
    "label": "Ecommerce",
-   "link_count": 3,
+   "link_count": 4,
    "link_type": "DocType",
    "onboard": 0,
    "type": "Card Break"
@@ -86,6 +86,55 @@
    "label": "Saathi Payment Mode",
    "link_count": 0,
    "link_to": "Saathi Payment Mode",
+   "link_type": "DocType",
+   "onboard": 0,
+   "type": "Link"
+  },
+  {
+   "hidden": 0,
+   "is_query_report": 0,
+   "label": "SM Coupon",
+   "link_count": 0,
+   "link_to": "SM Coupon",
+   "link_type": "DocType",
+   "onboard": 0,
+   "type": "Link"
+  },
+  {
+   "hidden": 0,
+   "is_query_report": 0,
+   "label": "Loyalty",
+   "link_count": 3,
+   "link_type": "DocType",
+   "onboard": 0,
+   "type": "Card Break"
+  },
+  {
+   "hidden": 0,
+   "is_query_report": 0,
+   "label": "SM Loyalty Program",
+   "link_count": 0,
+   "link_to": "SM Loyalty Program",
+   "link_type": "DocType",
+   "onboard": 0,
+   "type": "Link"
+  },
+  {
+   "hidden": 0,
+   "is_query_report": 0,
+   "label": "SM Loyalty Tier",
+   "link_count": 0,
+   "link_to": "SM Loyalty Tier",
+   "link_type": "DocType",
+   "onboard": 0,
+   "type": "Link"
+  },
+  {
+   "hidden": 0,
+   "is_query_report": 0,
+   "label": "SM Loyalty Point Entry",
+   "link_count": 0,
+   "link_to": "SM Loyalty Point Entry",
    "link_type": "DocType",
    "onboard": 0,
    "type": "Link"

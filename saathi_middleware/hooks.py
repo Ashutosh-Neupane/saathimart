@@ -181,6 +181,7 @@ scheduler_events = {
 	"cron": {
 		"*/5 * * * *": ["saathi_middleware.api.order.retry_failed_order_syncs"],
 		"0 2 * * *": ["saathi_middleware.api.auth_full.cleanup_expired_verifications"],
+		"0 3 * * *": ["saathi_middleware.api.loyalty.expire_old_points"],
 	},
 	"hourly": [
 		"saathi_middleware.api.cart.expire_abandoned_carts",
@@ -303,6 +304,9 @@ fixtures = [
     {"dt": "SM Cart"},
     {"dt": "SM Site Config"},
     {"dt": "SM Homepage Settings"},
+    {"dt": "SM Coupon"},
+    {"dt": "SM Loyalty Program"},
+    {"dt": "SM Loyalty Point Entry"},
 ]
 
 # ── Permissions ───────────────────────────────────────────────────────────────

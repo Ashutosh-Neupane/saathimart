@@ -28,6 +28,13 @@
    "column_break_totals",
    "subtotal",
    "grand_total",
+   "section_break_discounts",
+   "coupon_code",
+   "coupon_discount",
+   "loyalty_points_redeemed",
+   "loyalty_discount",
+   "column_break_loyalty",
+   "loyalty_points_earned",
    "section_break_erpnext_sync",
    "sync_status",
    "erpnext_customer",
@@ -167,6 +174,47 @@
     "label": "Grand Total",
     "read_only": 1,
     "in_list_view": 1
+   },
+   {
+    "fieldname": "section_break_discounts",
+    "fieldtype": "Section Break",
+    "label": "Discounts"
+   },
+   {
+    "fieldname": "coupon_code",
+    "fieldtype": "Data",
+    "label": "Coupon Code"
+   },
+   {
+    "fieldname": "coupon_discount",
+    "fieldtype": "Currency",
+    "label": "Coupon Discount",
+    "default": "0",
+    "read_only": 1
+   },
+   {
+    "fieldname": "loyalty_points_redeemed",
+    "fieldtype": "Float",
+    "label": "Points Redeemed",
+    "default": "0"
+   },
+   {
+    "fieldname": "loyalty_discount",
+    "fieldtype": "Currency",
+    "label": "Loyalty Discount",
+    "default": "0",
+    "read_only": 1
+   },
+   {
+    "fieldname": "column_break_loyalty",
+    "fieldtype": "Column Break"
+   },
+   {
+    "fieldname": "loyalty_points_earned",
+    "fieldtype": "Float",
+    "label": "Points Earned",
+    "default": "0",
+    "read_only": 1
    },
    {
     "fieldname": "section_break_erpnext_sync",

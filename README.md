@@ -307,10 +307,14 @@ it existed but had no coverage against real sandbox credentials.
 ## Known limitations
 
 - No real-time stock push to the frontend (polling only today).
-- No product variants (size/color/etc.).
 - No multi-warehouse support per vendor.
 - Single-currency (NPR), no localization.
 - No delivery-partner tracking app.
+
+Product variants (size/color/etc.) are supported: `Product.has_variants`
+marks a template, `variant_of` links a variant back to it, and
+`get_product`/`list_products` handle the template-vs-variant browsing and
+pricing split — see `api/products.py`.
 
 ## Common pitfalls
 

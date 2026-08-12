@@ -1,0 +1,43 @@
+{
+  "name": "SM Site Config",
+  "module": "Saathi Middleware",
+  "doctype": "DocType",
+  "issingle": 1,
+  "fields": [
+   {"fieldname": "site_title", "fieldtype": "Data", "label": "Site Title", "default": "SaathiMart"},
+   {"fieldname": "tagline", "fieldtype": "Data", "label": "Tagline"},
+   {"fieldname": "legal_name", "fieldtype": "Data", "label": "Legal Name"},
+   {"fieldname": "copyright_year", "fieldtype": "Int", "label": "Copyright Year"},
+   {"fieldname": "logo", "fieldtype": "Attach Image", "label": "Logo"},
+   {"fieldname": "favicon", "fieldtype": "Attach Image", "label": "Favicon"},
+   {"fieldname": "navbar_announcement_text", "fieldtype": "Data", "label": "Navbar Announcement Text"},
+   {"fieldname": "col_break_1", "fieldtype": "Column Break"},
+   {"fieldname": "primary_color", "fieldtype": "Color", "label": "Primary Color", "default": "#16a34a"},
+   {"fieldname": "secondary_color", "fieldtype": "Color", "label": "Secondary Color", "default": "#15803d"},
+   {"fieldname": "font_family", "fieldtype": "Data", "label": "Font Family", "default": "Inter"},
+   {"fieldname": "section_contact", "fieldtype": "Section Break", "label": "Contact"},
+   {"fieldname": "contact_email", "fieldtype": "Data", "label": "Contact Email", "options": "Email"},
+   {"fieldname": "contact_phone", "fieldtype": "Data", "label": "Contact Phone"},
+   {"fieldname": "address", "fieldtype": "Small Text", "label": "Address"},
+   {"fieldname": "col_break_2", "fieldtype": "Column Break"},
+   {"fieldname": "facebook_url", "fieldtype": "Data", "label": "Facebook URL"},
+   {"fieldname": "instagram_url", "fieldtype": "Data", "label": "Instagram URL"},
+   {"fieldname": "twitter_url", "fieldtype": "Data", "label": "Twitter/X URL"},
+   {"fieldname": "section_newsletter", "fieldtype": "Section Break", "label": "Newsletter"},
+   {"fieldname": "newsletter_email_label", "fieldtype": "Data", "label": "Email Field Label", "default": "Email Address"},
+   {"fieldname": "newsletter_placeholder", "fieldtype": "Data", "label": "Email Field Placeholder", "default": "you@example.com"},
+   {"fieldname": "newsletter_button_label", "fieldtype": "Data", "label": "Subscribe Button Label", "default": "Subscribe"},
+   {"fieldname": "section_seo", "fieldtype": "Section Break", "label": "SEO Defaults"},
+   {"fieldname": "meta_title", "fieldtype": "Data", "label": "Default Meta Title"},
+   {"fieldname": "meta_description", "fieldtype": "Small Text", "label": "Default Meta Description"},
+   {"fieldname": "og_image", "fieldtype": "Attach Image", "label": "Default OG Image"},
+   {"fieldname": "section_scripts", "fieldtype": "Section Break", "label": "Scripts"},
+   {"fieldname": "google_analytics_id", "fieldtype": "Data", "label": "Google Analytics ID"},
+   {"fieldname": "facebook_pixel_id", "fieldtype": "Data", "label": "Facebook Pixel ID"},
+   {"fieldname": "head_scripts", "fieldtype": "Code", "label": "Head Scripts (HTML)", "options": "HTML"},
+   {"fieldname": "body_scripts", "fieldtype": "Code", "label": "Body Scripts (HTML)", "options": "HTML"}
+  ],
+  "permissions": [
+   {"role": "SM Admin", "read": 1, "write": 1}
+  ]
+}

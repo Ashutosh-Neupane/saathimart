@@ -28,7 +28,11 @@
     {"fieldname": "priority", "fieldtype": "Int", "label": "Priority", "default": "0", "description": "Higher = preferred when all else is equal"},
     {"fieldname": "section_sync", "fieldtype": "Section Break", "label": "Sync"},
     {"fieldname": "last_updated", "fieldtype": "Datetime", "label": "Last Updated", "read_only": 1},
-    {"fieldname": "last_sync_at", "fieldtype": "Datetime", "label": "Last Sync At", "read_only": 1}
+    {"fieldname": "last_sync_at", "fieldtype": "Datetime", "label": "Last Sync At", "read_only": 1},
+    {"fieldname": "last_event_id", "fieldtype": "Data", "label": "Last Event ID", "read_only": 1,
+     "description": "UUID of the last processed price.update event for idempotency"},
+    {"fieldname": "last_event_seq", "fieldtype": "Int", "label": "Last Event Seq", "read_only": 1,
+     "description": "Monotonically increasing sequence of the last processed price.update event — same pattern as Vendor Stock.last_event_seq"}
   ],
   "title_field": "vendor",
   "permissions": [

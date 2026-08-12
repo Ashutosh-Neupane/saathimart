@@ -6,7 +6,7 @@ def get_data(filters=None):
     result = frappe.db.get_value(
         "Order",
         {"creation": [">=", today()], "payment_status": "Paid"},
-        "SUM(grand_total)",
+        {"SUM": "grand_total"},
     )
     return {
         "value": result or 0,

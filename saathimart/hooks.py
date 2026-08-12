@@ -31,11 +31,17 @@ doc_events = {
         "on_update":    "saathimart.events.publisher.on_order_updated",
     },
     "Product": {
-        "on_update": "saathimart.events.publisher.on_product_updated",
-        "on_trash":  "saathimart.events.publisher.on_product_deleted",
+        "after_insert": "saathimart.events.publisher.on_product_created",
+        "on_update":    "saathimart.events.publisher.on_product_updated",
+        "on_trash":     "saathimart.events.publisher.on_product_deleted",
     },
     "Review": {
         "on_update": "saathimart.api.reviews._update_product_rating",
+    },
+    "Vendor Listing": {
+        "after_insert": "saathimart.events.publisher.on_vendor_listing_changed",
+        "on_update":    "saathimart.events.publisher.on_vendor_listing_changed",
+        "on_trash":     "saathimart.events.publisher.on_vendor_listing_changed",
     },
     "Vendor": {
         "on_update": "saathimart.events.publisher.on_vendor_updated",

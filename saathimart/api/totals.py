@@ -7,9 +7,10 @@ Mirrors ERPNext's calculation order exactly:
   3. Taxes         (each tax row computed on net_total or previous_row_total)
   4. Grand total   (net_total + total_taxes)
   5. Coupon        (percentage or fixed, applied on net_total)
-  6. Loyalty       (fixed discount, applied after coupon)
-  7. Delivery      (added back — not discounted)
-  8. Rounding      (round to nearest paisa)
+  6. Onboarding    (zone-configured first/second-order discount, applied after coupon)
+  7. Loyalty       (fixed discount, applied after coupon + onboarding)
+  8. Delivery      (added back — not discounted)
+  9. Rounding      (round to nearest paisa)
 
 No ERPNext import. Works purely on the Order document dict / frappe doc.
 """
@@ -42,6 +43,7 @@ def calculate_taxes_and_totals(doc):
     _calculate_net_total(doc)
     _calculate_taxes(doc)
     _calculate_coupon_discount(doc)
+    _calculate_onboarding_discount(doc)
     _calculate_loyalty_discount(doc)
     _calculate_grand_total(doc)
     _round_totals(doc)
@@ -112,7 +114,73 @@ def _calculate_coupon_discount(doc):
         _set(doc, "free_delivery", 0)
 
 
-# ── Step 5: loyalty discount ──────────────────────────────────────────────────
+# ── Step 5: onboarding discount (location-based first/second order) ───────────
+
+def _get_customer_order_sequence(customer_email, exclude_order_name=None):
+    """
+    1-indexed count of this customer's orders including the current one — 1
+    for their very first order, 2 for their second, etc. Counts every prior
+    Order row regardless of status (including Cancelled) so a customer
+    can't reset onboarding eligibility by cancelling and re-placing.
+    """
+    if not customer_email:
+        return 0
+    filters = {"customer_email": customer_email}
+    if exclude_order_name:
+        filters["name"] = ["!=", exclude_order_name]
+    return frappe.db.count("Order", filters) + 1
+
+
+def _calculate_onboarding_discount(doc):
+    """
+    Auto-applied discount on a customer's first/second order, rate set per
+    Delivery Zone — no coupon code needed. Location-based the same way
+    earn_points()'s zone loyalty_multiplier is: the rate lives on the order's
+    delivery_zone, not on the customer or a global setting, so the same
+    customer's first order can be discounted differently depending on which
+    zone it's delivered to.
+    """
+    zone_name = doc.get("delivery_zone")
+    customer_email = doc.get("customer_email") or ""
+    if not zone_name or not customer_email:
+        _set(doc, "onboarding_discount", 0.0)
+        _set(doc, "onboarding_order_sequence", 0)
+        return
+
+    zone = frappe.db.get_value(
+        "Delivery Zone", zone_name,
+        ["first_order_discount_pct", "second_order_discount_pct", "onboarding_max_discount_amount"],
+        as_dict=True,
+    )
+    if not zone:
+        _set(doc, "onboarding_discount", 0.0)
+        _set(doc, "onboarding_order_sequence", 0)
+        return
+
+    sequence = _get_customer_order_sequence(customer_email, exclude_order_name=doc.get("name"))
+    _set(doc, "onboarding_order_sequence", sequence)
+
+    if sequence == 1:
+        pct = flt(zone.first_order_discount_pct)
+    elif sequence == 2:
+        pct = flt(zone.second_order_discount_pct)
+    else:
+        pct = 0.0
+
+    if pct <= 0:
+        _set(doc, "onboarding_discount", 0.0)
+        return
+
+    net_after_coupon = flt(doc.get("net_total") or 0) - flt(doc.get("coupon_discount") or 0)
+    discount = net_after_coupon * (pct / 100)
+    max_discount = flt(zone.onboarding_max_discount_amount)
+    if max_discount > 0:
+        discount = min(discount, max_discount)
+
+    _set(doc, "onboarding_discount", round(max(discount, 0), 2))
+
+
+# ── Step 6: loyalty discount ──────────────────────────────────────────────────
 
 def _calculate_loyalty_discount(doc):
     points = flt(doc.get("loyalty_points_redeemed") or 0)
@@ -122,41 +190,47 @@ def _calculate_loyalty_discount(doc):
         return
 
     customer_email = doc.get("customer_email") or ""
-    net_after_coupon = flt(doc.get("net_total") or 0) - flt(doc.get("coupon_discount") or 0)
+    net_after_discounts = (
+        flt(doc.get("net_total") or 0)
+        - flt(doc.get("coupon_discount") or 0)
+        - flt(doc.get("onboarding_discount") or 0)
+    )
 
     try:
         from saathimart.api.loyalty import calculate_redemption_discount
-        result = calculate_redemption_discount(customer_email, points, net_after_coupon)
+        result = calculate_redemption_discount(customer_email, points, net_after_discounts)
         _set(doc, "loyalty_discount", flt(result.get("discount") or 0))
         _set(doc, "loyalty_points_redeemed", flt(result.get("points_used") or 0))
     except Exception:
         _set(doc, "loyalty_discount", 0.0)
 
 
-# ── Step 6: grand total ───────────────────────────────────────────────────────
+# ── Step 7: grand total ───────────────────────────────────────────────────────
 
 def _calculate_grand_total(doc):
-    net_total        = flt(doc.get("net_total") or 0)
-    total_taxes      = flt(doc.get("total_taxes") or 0)
-    coupon_discount  = flt(doc.get("coupon_discount") or 0)
-    loyalty_discount = flt(doc.get("loyalty_discount") or 0)
-    delivery_charge  = flt(doc.get("delivery_charge") or 0)
-    manual_discount  = flt(doc.get("discount_amount") or 0)
+    net_total           = flt(doc.get("net_total") or 0)
+    total_taxes         = flt(doc.get("total_taxes") or 0)
+    coupon_discount     = flt(doc.get("coupon_discount") or 0)
+    onboarding_discount = flt(doc.get("onboarding_discount") or 0)
+    loyalty_discount    = flt(doc.get("loyalty_discount") or 0)
+    delivery_charge     = flt(doc.get("delivery_charge") or 0)
+    manual_discount     = flt(doc.get("discount_amount") or 0)
 
     if doc.get("free_delivery"):
         delivery_charge = 0.0
 
-    total_discount = coupon_discount + loyalty_discount + manual_discount
+    total_discount = coupon_discount + onboarding_discount + loyalty_discount + manual_discount
     grand_total = net_total + total_taxes - total_discount + delivery_charge
     _set(doc, "grand_total", rounded(max(grand_total, 0), 2))
     _set(doc, "total_discount", rounded(total_discount, 2))
 
 
-# ── Step 7: rounding ──────────────────────────────────────────────────────────
+# ── Step 8: rounding ──────────────────────────────────────────────────────────
 
 def _round_totals(doc):
     for field in ("subtotal", "net_total", "total_taxes", "grand_total",
-                  "coupon_discount", "loyalty_discount", "total_discount", "delivery_charge"):
+                  "coupon_discount", "onboarding_discount", "loyalty_discount",
+                  "total_discount", "delivery_charge"):
         if doc.get(field) is not None:
             _set(doc, field, rounded(flt(doc.get(field)), 2))
 
@@ -215,6 +289,7 @@ def preview_order_totals(items, delivery_zone=None, coupon_code=None,
     order_dict = {
         "items":                   resolved_items,
         "delivery_charge":         delivery_charge,
+        "delivery_zone":           delivery_zone or "",
         "coupon_code":             coupon_code or "",
         "loyalty_points_redeemed": flt(loyalty_points),
         "customer_email":          customer_email or frappe.session.user,
@@ -229,8 +304,13 @@ def preview_order_totals(items, delivery_zone=None, coupon_code=None,
     if s.enable_loyalty and s.loyalty_program:
         program = frappe.get_doc("Loyalty Program", s.loyalty_program)
         if program.is_active:
+            zone_multiplier = 1.0
+            if delivery_zone:
+                zone_multiplier = flt(frappe.db.get_value(
+                    "Delivery Zone", delivery_zone, "loyalty_multiplier"
+                ) or 1.0)
             earned_preview = round(
-                flt(order_dict["grand_total"]) * flt(program.collection_factor), 2
+                flt(order_dict["grand_total"]) * flt(program.collection_factor) * zone_multiplier, 2
             )
 
     result = {
@@ -239,6 +319,8 @@ def preview_order_totals(items, delivery_zone=None, coupon_code=None,
         "net_total":                    order_dict["net_total"],
         "total_taxes":                  order_dict["total_taxes"],
         "coupon_discount":              order_dict["coupon_discount"],
+        "onboarding_discount":          order_dict["onboarding_discount"],
+        "onboarding_order_sequence":    order_dict["onboarding_order_sequence"],
         "loyalty_discount":             order_dict["loyalty_discount"],
         "total_discount":               order_dict["total_discount"],
         "delivery_charge":              order_dict["delivery_charge"],

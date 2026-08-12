@@ -6,9 +6,14 @@ frappe.ui.form.on("Product", {
 			}
 		});
 
-		if (frm.doc.stock_qty <= frm.doc.low_stock_threshold && frm.doc.track_inventory) {
-			frm.dashboard.add_comment(__("⚠️ Low stock"), "orange", true);
-		}
+		// A per-product low-stock banner doesn't make sense in a
+		// multi-vendor model anyway — "low stock" is a Vendor Listing
+		// concept (see Vendor Stock Report), not a single number on
+		// Product. This used to check frm.doc.low_stock_threshold, a
+		// field that was removed from Product entirely by the v1_to_v2
+		// migration (see saathimart/migrations/v1_to_v2.py) — the check
+		// silently never fired again after that, since the field just
+		// read back undefined.
 
 		if (frm.doc.status === "Active") {
 			frm.add_custom_button(__("Mark Inactive"), () => {
@@ -29,9 +34,10 @@ frappe.ui.form.on("Product", {
 		}
 	},
 
-	price(frm) {
-		if (frm.doc.compare_price && frm.doc.compare_price < frm.doc.price) {
-			frappe.msgprint(__("Compare price should be higher than selling price."));
-		}
-	},
+	// price/compare_price used to have a compare-price validation handler
+	// here, but they're Python-only properties (saathimart.saathimart.doctype.
+	// product.product.Product.price/.compare_price), derived from Vendor
+	// Listing — never real, editable form fields on Product, so this
+	// handler could never actually fire. Moved to vendor_listing.js, where
+	// price/compare_price are real fields someone actually types into.
 });

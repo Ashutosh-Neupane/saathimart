@@ -15,7 +15,7 @@ frappe.ui.form.on("Cart", {
 					{ fieldname: "customer_phone", fieldtype: "Data",        label: "Phone",          reqd: 1 },
 					{ fieldname: "delivery_address", fieldtype: "Small Text", label: "Delivery Address", reqd: 1 },
 					{ fieldname: "payment_method", fieldtype: "Select",      label: "Payment Method",
-					  options: "COD\neSewa\nKhalti\nBank Transfer", default: "COD" },
+					  options: "COD\neSewa\nBank Transfer", default: "COD" },
 				], (values) => {
 					frappe.call({
 						method: "saathimart.api.orders.checkout",

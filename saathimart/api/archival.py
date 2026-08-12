@@ -8,7 +8,6 @@ from frappe.utils import add_days, now_datetime
 
 from saathimart.api.settings import (
     get_retain_webhook_events_days,
-    get_retain_sync_outbox_days,
     get_retain_cart_days,
     get_retain_orders_days,
 )
@@ -31,15 +30,17 @@ def archive_old_data():
         LIMIT 1000
     """, cutoff)
 
-    # Sync Outbox
-    outbox_days = get_retain_sync_outbox_days()
-    cutoff = add_days(now_datetime(), days=-outbox_days)
-    frappe.db.sql("""
-        DELETE FROM `tabSync Outbox`
-        WHERE status IN ('Sent', 'Dead')
-          AND creation < %s
-        LIMIT 1000
-    """, cutoff)
+    # NOTE: there used to be a "Sync Outbox" cleanup block here — that
+    # doctype belongs to the saathimart_vendor app and only exists in a
+    # vendor site's own database, never the hub's. The raw DELETE FROM
+    # `tabSync Outbox` was throwing "table doesn't exist" every single run,
+    # which (since this all runs in one transaction) aborted the entire
+    # job before it ever reached the cart/order archival below — meaning
+    # none of archive_old_data()'s cleanup had ever actually completed.
+    # The equivalent job now lives on the vendor side —
+    # saathimart_vendor.tasks.archive_old_outbox — where that table
+    # actually is. Settings.retain_sync_outbox_days is left in place
+    # (harmless, just unused here) rather than touched as part of this fix.
 
     # Old carts
     cart_days = get_retain_cart_days()

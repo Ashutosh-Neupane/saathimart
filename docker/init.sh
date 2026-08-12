@@ -140,9 +140,27 @@ import frappe.app
 application = frappe.app.application_with_statics()
 EOF
 
-# Create Procfile for bench start with full gunicorn path
+# Create Procfile for bench start with full gunicorn path.
+#
+# web-only was silently dropping the entire async side of this app: every
+# frappe.enqueue() call (order.new delivery, the instant-delivery path
+# added for order/product/barcode sync, etc.) just piles up in Redis
+# forever with nothing consuming it, and every scheduler cron job
+# (drain_event_queue, archive_old_data, reconcile jobs, payment polling)
+# never fires at all without a `bench schedule` process ticking. Confirmed
+# live via `bench doctor` — Workers online: 0, hundreds of jobs queued and
+# never processed, after days of this container running web-only.
+#
+# worker/schedule (like the webhook-secret-seeding step earlier in this
+# script) must run with cwd = $BENCH/sites, not bench root: Frappe's
+# per-site log handler builds its file path as a relative join of site +
+# "logs" + logfile, so any other cwd throws FileNotFoundError trying to
+# open sites/<site>/logs/database.log — confirmed live, worker/schedule
+# crash-looped every few seconds against $BENCH before this fix.
 cat > "$BENCH/Procfile" <<'EOF'
 web: cd /home/frappe/bench/sites && /home/frappe/bench/env/bin/gunicorn --bind 0.0.0.0:8000 gunicorn_wsgi:application
+worker: cd /home/frappe/bench/sites && /usr/local/bin/bench worker --queue short,default,long
+schedule: cd /home/frappe/bench/sites && /usr/local/bin/bench schedule
 EOF
 
 echo "=== SaathiMart ready at http://localhost:8000 ==="

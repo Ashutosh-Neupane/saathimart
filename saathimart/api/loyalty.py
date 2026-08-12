@@ -64,6 +64,23 @@ def get_tier(customer_email: str, program_name: str) -> dict:
 
 # ── Earn ──────────────────────────────────────────────────────────────────────
 
+def _get_zone_loyalty_multiplier(order_name: str) -> float:
+    """
+    Location-based loyalty rate: the multiplier lives on the order's
+    Delivery Zone (Delivery Zone.loyalty_multiplier), not on the customer —
+    the same customer earns at a different rate depending on which zone the
+    order was delivered to. Defaults to 1.0 (no change) when the order has
+    no zone or the zone has no override.
+    """
+    if not order_name:
+        return 1.0
+    zone = frappe.db.get_value("Order", order_name, "delivery_zone")
+    if not zone:
+        return 1.0
+    multiplier = frappe.db.get_value("Delivery Zone", zone, "loyalty_multiplier")
+    return flt(multiplier) if multiplier is not None else 1.0
+
+
 def earn_points(customer_email: str, order_name: str, order_amount: float) -> float:
     """
     Calculate and record points earned for a delivered/paid order.
@@ -77,10 +94,11 @@ def earn_points(customer_email: str, order_name: str, order_amount: float) -> fl
     if not program.is_active:
         return 0.0
 
-    # Apply tier multiplier
+    # Apply tier multiplier and the order's zone-based loyalty multiplier
     tier_info = get_tier(customer_email, program.name)
-    multiplier = tier_info["current_tier"]["multiplier"]
-    base_points = flt(order_amount) * flt(program.collection_factor) * multiplier
+    tier_multiplier = tier_info["current_tier"]["multiplier"]
+    zone_multiplier = _get_zone_loyalty_multiplier(order_name)
+    base_points = flt(order_amount) * flt(program.collection_factor) * tier_multiplier * zone_multiplier
     points = round(base_points, 2)
 
     if points <= 0:

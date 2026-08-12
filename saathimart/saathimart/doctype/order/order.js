@@ -31,7 +31,7 @@ frappe.ui.form.on("Order", {
 
 			// Initiate payment for unpaid online orders
 			if (frm.doc.payment_status === "Unpaid" &&
-				["eSewa", "Khalti"].includes(frm.doc.payment_method)) {
+				["eSewa"].includes(frm.doc.payment_method)) {
 				frm.add_custom_button(__("Initiate Payment"), () => {
 					frappe.call({
 						method: "saathimart.api.payments.initiate_payment",

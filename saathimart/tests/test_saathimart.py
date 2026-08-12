@@ -21,6 +21,48 @@ import frappe
 from frappe.utils import flt, today, add_days
 
 
+# ── Module-level fixture isolation ──────────────────────────────────────────
+# Settings is a Frappe Single — TestLoyalty, TestLocationBasedLoyalty, and
+# TestEsewaSignature all overwrite the one real row for this site (loyalty
+# program + eSewa credentials), and this file uses plain unittest.TestCase
+# (not frappe.tests.utils.FrappeTestCase), which gives no automatic per-test
+# rollback. Left unrestored, a live hub's real loyalty/payment config
+# silently ends up holding test fixture values after `bench run-tests`
+# finishes — the vendor side of this codebase hit the equivalent bug for
+# real (Vendor Config.hub_url) and it broke live sync until manually caught.
+# setUpModule/tearDownModule run exactly once around this whole file's test
+# run, so whatever was really configured before the suite ran is restored
+# after, without touching the individual tests that rely on mutating it
+# mid-suite.
+_SETTINGS_FIELDS = [
+    "enable_loyalty", "loyalty_program", "esewa_merchant_code", "payment_sandbox_mode",
+]
+_original_settings = None
+_original_esewa_secret = None
+
+
+def setUpModule():
+    global _original_settings, _original_esewa_secret
+    frappe.set_user("Administrator")
+    doc = frappe.get_single("Settings")
+    _original_settings = {f: doc.get(f) for f in _SETTINGS_FIELDS}
+    _original_esewa_secret = doc.get_password("esewa_secret_key", raise_exception=False)
+
+
+def tearDownModule():
+    if _original_settings is None:
+        return
+    frappe.set_user("Administrator")
+    doc = frappe.get_single("Settings")
+    for field, value in _original_settings.items():
+        doc.set(field, value)
+    if _original_esewa_secret is not None:
+        doc.esewa_secret_key = _original_esewa_secret
+    doc.flags.ignore_mandatory = True
+    doc.save(ignore_permissions=True)
+    frappe.db.commit()
+
+
 # ── Helpers ───────────────────────────────────────────────────────────────────
 
 def _make_product(name, price=100, stock=50, prices=None):
@@ -92,7 +134,9 @@ def _make_product(name, price=100, stock=50, prices=None):
     return doc
 
 
-def _make_zone(name, charge=80, free_above=1500):
+def _make_zone(name, charge=80, free_above=1500, loyalty_multiplier=1,
+               first_order_discount_pct=0, second_order_discount_pct=0,
+               onboarding_max_discount_amount=0):
     if frappe.db.exists("Delivery Zone", name):
         return frappe.get_doc("Delivery Zone", name)
     doc = frappe.new_doc("Delivery Zone")
@@ -100,6 +144,10 @@ def _make_zone(name, charge=80, free_above=1500):
     doc.delivery_charge    = charge
     doc.free_delivery_above = free_above
     doc.is_active          = 1
+    doc.loyalty_multiplier = loyalty_multiplier
+    doc.first_order_discount_pct = first_order_discount_pct
+    doc.second_order_discount_pct = second_order_discount_pct
+    doc.onboarding_max_discount_amount = onboarding_max_discount_amount
     doc.insert(ignore_permissions=True)
     return doc
 
@@ -308,6 +356,44 @@ class TestVendorPricing(unittest.TestCase):
                 if r.vendor == self.vendor_a.name and not r.delivery_zone]
         self.assertEqual(len(rows), 1)
 
+    def test_price_update_event_is_idempotent_on_event_id(self):
+        from saathimart.api.events import _apply_price_update
+        from saathimart.saathimart.doctype.product.product import get_effective_price
+
+        event_id = frappe.generate_hash(length=10)
+        _apply_price_update({
+            "product_id": self.product.name, "vendor": self.vendor_a.name,
+            "price": 150, "event_id": event_id, "event_seq": 5,
+        })
+        # A retried push carrying the same event_id but a different price
+        # (e.g. the vendor's HTTP client timed out waiting for a response
+        # the hub actually sent) must not re-apply.
+        _apply_price_update({
+            "product_id": self.product.name, "vendor": self.vendor_a.name,
+            "price": 999, "event_id": event_id, "event_seq": 5,
+        })
+        price = get_effective_price(self.product, vendor=self.vendor_a.name)
+        self.assertEqual(price, 150)
+
+    def test_price_update_event_out_of_order_seq_is_ignored(self):
+        from saathimart.api.events import _apply_price_update
+        from saathimart.saathimart.doctype.product.product import get_effective_price
+
+        _apply_price_update({
+            "product_id": self.product.name, "vendor": self.vendor_a.name,
+            "price": 200, "event_id": frappe.generate_hash(length=10), "event_seq": 10,
+        })
+        # Now that receive()/bulk_receive() apply events via deferred
+        # background jobs (see _process_inbound_event), an older push can
+        # arrive and get processed after a newer one — event_seq=7 arriving
+        # after event_seq=10 was already applied must not roll price back.
+        _apply_price_update({
+            "product_id": self.product.name, "vendor": self.vendor_a.name,
+            "price": 50, "event_id": frappe.generate_hash(length=10), "event_seq": 7,
+        })
+        price = get_effective_price(self.product, vendor=self.vendor_a.name)
+        self.assertEqual(price, 200)
+
     def test_price_update_event_ignores_missing_vendor(self):
         from saathimart.api.events import _apply_price_update
         from saathimart.saathimart.doctype.product.product import get_effective_price
@@ -388,6 +474,51 @@ class TestVendorPricing(unittest.TestCase):
         self.assertNotEqual(result_a["net_total"], result_b["net_total"])
         self.assertEqual(result_a["net_total"], 90)
         self.assertEqual(result_b["net_total"], 95)
+
+
+# ── Test: product serialization exposes stock/backorder to the frontend ─────
+# _serialize_product's payload (list_products/get_product) is what a
+# frontend would use to decide whether "Add to Cart" should be enabled —
+# stock_qty and track_inventory alone aren't enough to make that call
+# correctly, since a backorder-allowed listing at 0 stock should still be
+# purchasable.
+
+class TestProductStockSerialization(unittest.TestCase):
+
+    def setUp(self):
+        frappe.set_user("Administrator")
+        self.product = _make_product("Stock Serialization Product", price=200, prices=[])
+
+    def _set_listing(self, allow_backorder, available_qty):
+        vendor = _make_vendor(
+            f"Stock Serialization Vendor {allow_backorder}-{available_qty}",
+            slug=f"stock-serialization-vendor-{allow_backorder}-{available_qty}",
+        )
+        vl = frappe.new_doc("Vendor Listing")
+        vl.vendor = vendor.name
+        vl.product = self.product.name
+        vl.price = 200
+        vl.track_inventory = 1
+        vl.allow_backorder = allow_backorder
+        vl.priority = 10  # outrank _make_product's own default listing
+        vl.status = "Active"
+        vl.insert(ignore_permissions=True)
+        _seed_vendor_stock(vendor.name, self.product.name, available=available_qty)
+        return vendor
+
+    def test_get_product_exposes_allow_backorder_true(self):
+        from saathimart.api.products import get_product
+        vendor = self._set_listing(allow_backorder=1, available_qty=0)
+        result = get_product(self.product.slug, vendor=vendor.name)
+        self.assertEqual(result["allow_backorder"], 1)
+        self.assertEqual(result["stock_qty"], 0)
+
+    def test_get_product_exposes_allow_backorder_false(self):
+        from saathimart.api.products import get_product
+        vendor = self._set_listing(allow_backorder=0, available_qty=5)
+        result = get_product(self.product.slug, vendor=vendor.name)
+        self.assertEqual(result["allow_backorder"], 0)
+        self.assertEqual(result["stock_qty"], 5)
 
 
 # ── Test: calculate_taxes_and_totals ─────────────────────────────────────────
@@ -622,6 +753,180 @@ class TestLoyalty(unittest.TestCase):
         self.assertEqual(get_balance(self.TEST_EMAIL), balance_before - 100)
 
 
+# ── Test: Location-based loyalty + onboarding discount ────────────────────────
+# Delivery Zone.loyalty_multiplier / first_order_discount_pct /
+# second_order_discount_pct — same "rate lives on the zone, not the
+# customer" pattern as everything else location-based in this codebase
+# (ST_Distance_Sphere vendor sorting, delivery_charge per zone).
+
+class TestLocationBasedLoyalty(unittest.TestCase):
+
+    TEST_EMAIL = "zone_loyalty_test@saathimart.np"
+
+    def setUp(self):
+        frappe.set_user("Administrator")
+        if not frappe.db.exists("Loyalty Program", "Test Rewards"):
+            prog = frappe.new_doc("Loyalty Program")
+            prog.program_name = "Test Rewards"
+            prog.is_active = 1
+            prog.collection_factor = 0.01
+            prog.redemption_factor = 1.0
+            prog.min_points_to_redeem = 50
+            prog.max_redemption_per_order_pct = 20
+            prog.point_expiry_days = 365
+            prog.insert(ignore_permissions=True)
+
+        s = frappe.get_single("Settings")
+        s.enable_loyalty = 1
+        s.loyalty_program = "Test Rewards"
+        s.save(ignore_permissions=True)
+
+        frappe.db.delete("Loyalty Point Entry", {"customer_email": self.TEST_EMAIL})
+        frappe.db.commit()
+
+        self.product = _make_product("Zone Loyalty Product", price=1000, prices=[])
+        self.zone_bonus = _make_zone("Zone Loyalty Bonus", loyalty_multiplier=2)
+        self.zone_plain = _make_zone("Zone Loyalty Plain", loyalty_multiplier=1)
+
+    def _make_order(self, zone, customer_email=None):
+        order = frappe.new_doc("Order")
+        order.customer_name = "Zone Loyalty Customer"
+        order.customer_email = customer_email or self.TEST_EMAIL
+        order.customer_phone = "9800000000"
+        order.delivery_address = "Test Address"
+        order.delivery_zone = zone
+        order.payment_method = "COD"
+        order.append("items", {
+            "product": self.product.name, "product_name": self.product.product_name,
+            "qty": 1, "rate": 1000,
+        })
+        order.insert(ignore_permissions=True)
+        return order
+
+    def test_zone_multiplier_boosts_earned_points(self):
+        from saathimart.api.loyalty import earn_points, get_balance
+        order = self._make_order(self.zone_bonus.name)
+        # 1000 × 0.01 collection_factor × 1.0 tier × 2.0 zone multiplier = 20
+        earned = earn_points(self.TEST_EMAIL, order.name, 1000)
+        self.assertEqual(earned, 20)
+        self.assertEqual(get_balance(self.TEST_EMAIL), 20)
+
+    def test_plain_zone_earns_standard_points(self):
+        from saathimart.api.loyalty import earn_points
+        order = self._make_order(self.zone_plain.name)
+        earned = earn_points(self.TEST_EMAIL, order.name, 1000)
+        self.assertEqual(earned, 10)
+
+    def test_no_zone_falls_back_to_standard_rate(self):
+        from saathimart.api.loyalty import earn_points
+        # order_name doesn't resolve to a real Order at all — must not error,
+        # must behave exactly like the un-zoned pre-existing tests.
+        earned = earn_points(self.TEST_EMAIL, "NOT-A-REAL-ORDER", 1000)
+        self.assertEqual(earned, 10)
+
+
+class TestOnboardingDiscount(unittest.TestCase):
+
+    TEST_EMAIL = "onboarding_test@saathimart.np"
+
+    def setUp(self):
+        frappe.set_user("Administrator")
+        self.zone = _make_zone(
+            "Zone Onboarding", first_order_discount_pct=20, second_order_discount_pct=10,
+        )
+        self.zone_capped = _make_zone(
+            "Zone Onboarding Capped", first_order_discount_pct=50,
+            onboarding_max_discount_amount=100,
+        )
+        self.zone_plain = _make_zone("Zone Onboarding Plain")
+        frappe.db.delete("Order", {"customer_email": self.TEST_EMAIL})
+        frappe.db.commit()
+
+    def _base_order(self, zone, customer_email=None):
+        return {
+            "items": [{"product": "X", "qty": 1, "rate": 1000, "amount": 0}],
+            "delivery_charge": 0,
+            "discount_amount": 0,
+            "coupon_code": "",
+            "loyalty_points_redeemed": 0,
+            "customer_email": customer_email or self.TEST_EMAIL,
+            "delivery_zone": zone,
+            "taxes": [],
+        }
+
+    def _place_real_order(self, zone):
+        """Insert a real Order row so later sequence-count lookups see it."""
+        product = _make_product("Onboarding Filler Product", price=1000, prices=[])
+        order = frappe.new_doc("Order")
+        order.customer_name = "Onboarding Customer"
+        order.customer_email = self.TEST_EMAIL
+        order.customer_phone = "9800000000"
+        order.delivery_address = "Test Address"
+        order.delivery_zone = zone
+        order.payment_method = "COD"
+        order.append("items", {
+            "product": product.name, "product_name": product.product_name,
+            "qty": 1, "rate": 1000,
+        })
+        order.insert(ignore_permissions=True)
+        return order
+
+    def test_first_order_gets_zone_discount(self):
+        from saathimart.api.totals import calculate_taxes_and_totals
+        order = self._base_order(self.zone.name)
+        calculate_taxes_and_totals(order)
+        self.assertEqual(order["onboarding_order_sequence"], 1)
+        # net_total 1000 × 20% = 200
+        self.assertEqual(order["onboarding_discount"], 200)
+
+    def test_second_order_gets_lower_zone_discount(self):
+        from saathimart.api.totals import calculate_taxes_and_totals
+        self._place_real_order(self.zone.name)  # customer's 1st order, now in DB
+
+        order = self._base_order(self.zone.name)
+        calculate_taxes_and_totals(order)
+        self.assertEqual(order["onboarding_order_sequence"], 2)
+        # net_total 1000 × 10% = 100
+        self.assertEqual(order["onboarding_discount"], 100)
+
+    def test_third_order_gets_no_onboarding_discount(self):
+        from saathimart.api.totals import calculate_taxes_and_totals
+        self._place_real_order(self.zone.name)
+        self._place_real_order(self.zone.name)
+
+        order = self._base_order(self.zone.name)
+        calculate_taxes_and_totals(order)
+        self.assertEqual(order["onboarding_order_sequence"], 3)
+        self.assertEqual(order["onboarding_discount"], 0)
+
+    def test_discount_capped_by_zone_max(self):
+        from saathimart.api.totals import calculate_taxes_and_totals
+        order = self._base_order(self.zone_capped.name)
+        calculate_taxes_and_totals(order)
+        # 1000 × 50% = 500, capped at 100
+        self.assertEqual(order["onboarding_discount"], 100)
+
+    def test_zone_with_no_onboarding_rates_applies_nothing(self):
+        from saathimart.api.totals import calculate_taxes_and_totals
+        order = self._base_order(self.zone_plain.name)
+        calculate_taxes_and_totals(order)
+        self.assertEqual(order["onboarding_discount"], 0)
+
+    def test_no_zone_applies_nothing(self):
+        from saathimart.api.totals import calculate_taxes_and_totals
+        order = self._base_order(zone=None)
+        calculate_taxes_and_totals(order)
+        self.assertEqual(order["onboarding_discount"], 0)
+        self.assertEqual(order["onboarding_order_sequence"], 0)
+
+    def test_onboarding_discount_reduces_grand_total(self):
+        from saathimart.api.totals import calculate_taxes_and_totals
+        order = self._base_order(self.zone.name)
+        calculate_taxes_and_totals(order)
+        # net_total 1000 - onboarding 200 = 800
+        self.assertEqual(order["grand_total"], 800)
+
+
 # ── Test: Cart ────────────────────────────────────────────────────────────────
 
 class TestCart(unittest.TestCase):
@@ -655,6 +960,92 @@ class TestCart(unittest.TestCase):
         add_to_cart(self.SESSION, self.product.name, qty=3)
         cart = get_cart(self.SESSION)
         self.assertEqual(cart["items"][0]["qty"], 4)
+
+    def test_add_to_cart_out_of_stock_raises(self):
+        from saathimart.api.cart import add_to_cart
+        vendor = _make_vendor("Out Of Stock Vendor", slug="out-of-stock-vendor")
+        vl = frappe.new_doc("Vendor Listing")
+        vl.vendor = vendor.name
+        vl.product = self.product.name
+        vl.price = 200
+        vl.track_inventory = 1
+        vl.allow_backorder = 0
+        vl.status = "Active"
+        vl.insert(ignore_permissions=True)
+        _seed_vendor_stock(vendor.name, self.product.name, available=0)
+
+        with self.assertRaises(frappe.ValidationError):
+            add_to_cart(self.SESSION, self.product.name, qty=1, vendor=vendor.name)
+
+    def test_add_to_cart_more_than_available_raises(self):
+        from saathimart.api.cart import add_to_cart
+        vendor = _make_vendor("Limited Stock Vendor", slug="limited-stock-vendor")
+        vl = frappe.new_doc("Vendor Listing")
+        vl.vendor = vendor.name
+        vl.product = self.product.name
+        vl.price = 200
+        vl.track_inventory = 1
+        vl.allow_backorder = 0
+        vl.status = "Active"
+        vl.insert(ignore_permissions=True)
+        _seed_vendor_stock(vendor.name, self.product.name, available=3)
+
+        with self.assertRaises(frappe.ValidationError):
+            add_to_cart(self.SESSION, self.product.name, qty=4, vendor=vendor.name)
+
+    def test_add_to_cart_allows_backorder_when_flagged(self):
+        from saathimart.api.cart import add_to_cart, get_cart
+        vendor = _make_vendor("Backorder Vendor", slug="backorder-vendor")
+        vl = frappe.new_doc("Vendor Listing")
+        vl.vendor = vendor.name
+        vl.product = self.product.name
+        vl.price = 200
+        vl.track_inventory = 1
+        vl.allow_backorder = 1
+        vl.status = "Active"
+        vl.insert(ignore_permissions=True)
+        _seed_vendor_stock(vendor.name, self.product.name, available=0)
+
+        add_to_cart(self.SESSION, self.product.name, qty=2, vendor=vendor.name)
+        cart = get_cart(self.SESSION)
+        self.assertEqual(cart["items"][0]["qty"], 2)
+
+    def test_add_to_cart_ignores_stock_when_not_tracked(self):
+        from saathimart.api.cart import add_to_cart, get_cart
+        vendor = _make_vendor("Untracked Stock Vendor", slug="untracked-stock-vendor")
+        vl = frappe.new_doc("Vendor Listing")
+        vl.vendor = vendor.name
+        vl.product = self.product.name
+        vl.price = 200
+        vl.track_inventory = 0
+        vl.allow_backorder = 0
+        vl.status = "Active"
+        vl.insert(ignore_permissions=True)
+        _seed_vendor_stock(vendor.name, self.product.name, available=0)
+
+        add_to_cart(self.SESSION, self.product.name, qty=2, vendor=vendor.name)
+        cart = get_cart(self.SESSION)
+        self.assertEqual(cart["items"][0]["qty"], 2)
+
+    def test_add_to_cart_second_add_blocked_once_combined_qty_exceeds_stock(self):
+        """Availability is checked against the combined qty (already-in-cart
+        + this add), not just the new qty in isolation — otherwise two
+        3-unit adds against 5 available stock would both succeed."""
+        from saathimart.api.cart import add_to_cart
+        vendor = _make_vendor("Combined Qty Vendor", slug="combined-qty-vendor")
+        vl = frappe.new_doc("Vendor Listing")
+        vl.vendor = vendor.name
+        vl.product = self.product.name
+        vl.price = 200
+        vl.track_inventory = 1
+        vl.allow_backorder = 0
+        vl.status = "Active"
+        vl.insert(ignore_permissions=True)
+        _seed_vendor_stock(vendor.name, self.product.name, available=5)
+
+        add_to_cart(self.SESSION, self.product.name, qty=3, vendor=vendor.name)
+        with self.assertRaises(frappe.ValidationError):
+            add_to_cart(self.SESSION, self.product.name, qty=3, vendor=vendor.name)
 
     def test_update_cart_item(self):
         from saathimart.api.cart import add_to_cart, update_cart_item, get_cart
@@ -920,18 +1311,48 @@ class TestCheckoutVendorRouting(unittest.TestCase):
         stock_b = get_vendor_stock(self.vendor_b.name, self.product.name)
         self.assertEqual(stock_b["available_qty"], 10)
 
-    def test_checkout_insufficient_vendor_stock_raises(self):
+    def test_add_to_cart_insufficient_vendor_stock_raises(self):
+        """
+        add_to_cart() now rejects a qty the vendor can't fulfill up front
+        (see api/cart.py's availability guard) instead of silently letting
+        it sit in the cart until checkout's atomic_reserve_batch fails —
+        the whole point being a customer finds out immediately, not at
+        payment time.
+        """
         from saathimart.api.cart import add_to_cart
         from saathimart.api.stock import get_vendor_stock
         frappe.set_user("Guest")
-        add_to_cart(self.SESSION, self.product.name, qty=999, vendor=self.vendor_a.name)
+        with self.assertRaises(frappe.ValidationError):
+            add_to_cart(self.SESSION, self.product.name, qty=999, vendor=self.vendor_a.name)
         frappe.set_user("Administrator")
+        # rejected add must not have touched stock at all
+        stock = get_vendor_stock(self.vendor_a.name, self.product.name)
+        self.assertEqual(stock["available_qty"], 10)
+
+    def test_checkout_insufficient_vendor_stock_raises(self):
+        """
+        checkout()'s atomic_reserve_batch remains the authoritative,
+        race-safe guard even though add_to_cart() now also checks up front:
+        stock can still drop between add-to-cart and checkout (another
+        customer buying the last units in between). Simulate that by
+        adding a qty that WAS available at add-to-cart time, then draining
+        the vendor's stock before checking out.
+        """
+        from saathimart.api.cart import add_to_cart
+        from saathimart.api.stock import get_vendor_stock
+        frappe.set_user("Guest")
+        add_to_cart(self.SESSION, self.product.name, qty=5, vendor=self.vendor_a.name)
+        frappe.set_user("Administrator")
+
+        # Someone else buys out the rest of vendor_a's stock in the meantime
+        frappe.db.set_value("Vendor Stock", f"{self.vendor_a.name}-{self.product.name}",
+                             "available_qty", 0)
 
         with self.assertRaises(frappe.ValidationError):
             self._checkout()
         # failed reservation must not have partially applied
         stock = get_vendor_stock(self.vendor_a.name, self.product.name)
-        self.assertEqual(stock["available_qty"], 10)
+        self.assertEqual(stock["available_qty"], 0)
 
     def test_checkout_mixed_vendor_cart_creates_separate_fulfillments(self):
         """
@@ -1455,6 +1876,91 @@ class TestVendorStockEvents(unittest.TestCase):
         stock = get_vendor_stock(self.vendor.name, self.product.name)
         self.assertEqual(stock["available_qty"], 10)
         self.assertEqual(stock["reserved_qty"], 0)
+
+
+# ── Test: bulk_receive ────────────────────────────────────────────────────────
+
+class TestBulkReceive(unittest.TestCase):
+
+    def setUp(self):
+        frappe.set_user("Administrator")
+        self.vendor = _make_vendor("Bulk Receive Vendor", slug="bulk-receive-vendor")
+        self.product_a = _make_product("Bulk Receive Product A", price=100, prices=[])
+        self.product_b = _make_product("Bulk Receive Product B", price=200, prices=[])
+
+    def test_bulk_receive_applies_every_event_in_the_batch(self):
+        from saathimart.api.events import bulk_receive, _process_inbound_event
+        result = bulk_receive(events=[
+            {"event": "price.update", "payload": {
+                "product_id": self.product_a.name, "vendor": self.vendor.name, "price": 111,
+            }},
+            {"event": "price.update", "payload": {
+                "product_id": self.product_b.name, "vendor": self.vendor.name, "price": 222,
+            }},
+        ])
+        self.assertTrue(all(r["ok"] for r in result["results"]))
+        # bulk_receive only queues events (Webhook Event, status=Queued) and
+        # fast-acks — application happens in the deferred job. Run it
+        # directly here rather than relying on the real background worker.
+        for r in result["results"]:
+            _process_inbound_event(r["webhook_event"])
+        self.assertEqual(
+            frappe.db.get_value("Vendor Listing", {"product": self.product_a.name, "vendor": self.vendor.name}, "price"),
+            111,
+        )
+        self.assertEqual(
+            frappe.db.get_value("Vendor Listing", {"product": self.product_b.name, "vendor": self.vendor.name}, "price"),
+            222,
+        )
+
+    def test_bulk_receive_creates_webhook_event_audit_rows(self):
+        from saathimart.api.events import bulk_receive
+        event_id = frappe.generate_hash(length=10)
+        bulk_receive(events=[
+            {"event": "price.update", "payload": {
+                "product_id": self.product_a.name, "vendor": self.vendor.name,
+                "price": 333, "event_id": event_id,
+            }},
+        ])
+        self.assertTrue(frappe.db.exists("Webhook Event", {"event_id": event_id}))
+
+    def test_bulk_receive_is_idempotent_on_event_id(self):
+        from saathimart.api.events import bulk_receive, _process_inbound_event
+        event_id = frappe.generate_hash(length=10)
+        payload = {
+            "product_id": self.product_a.name, "vendor": self.vendor.name,
+            "price": 444, "event_id": event_id,
+        }
+        first = bulk_receive(events=[{"event": "price.update", "payload": payload}])
+        _process_inbound_event(first["results"][0]["webhook_event"])
+        # A second bulk call carrying the same event_id (e.g. a vendor
+        # retrying an entire batch after a timeout) must not double-apply.
+        result = bulk_receive(events=[{"event": "price.update", "payload": {**payload, "price": 999}}])
+        self.assertEqual(result["results"][0].get("message"), "already_processed")
+        self.assertEqual(
+            frappe.db.get_value("Vendor Listing", {"product": self.product_a.name, "vendor": self.vendor.name}, "price"),
+            444,  # not 999 — the retried duplicate was skipped, not re-applied
+        )
+        self.assertEqual(frappe.db.count("Webhook Event", {"event_id": event_id}), 1)
+
+    def test_bulk_receive_continues_after_one_event_fails(self):
+        from saathimart.api.events import bulk_receive, _process_inbound_event
+        result = bulk_receive(events=[
+            {"event": "price.update", "payload": {"product_id": "NOT-A-REAL-PRODUCT-ID"}},
+            {"event": "price.update", "payload": {
+                "product_id": self.product_a.name, "vendor": self.vendor.name, "price": 555,
+            }},
+        ])
+        # Each queued event is processed as its own independent deferred
+        # job, so the malformed first event (which _apply_price_update's
+        # own missing-field guard logs and returns from without raising)
+        # can't abort the second one — confirm it still applied.
+        for r in result["results"]:
+            _process_inbound_event(r["webhook_event"])
+        self.assertEqual(
+            frappe.db.get_value("Vendor Listing", {"product": self.product_a.name, "vendor": self.vendor.name}, "price"),
+            555,
+        )
 
 
 # ── Test: eSewa signature ─────────────────────────────────────────────────────

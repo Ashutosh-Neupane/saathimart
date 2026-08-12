@@ -294,6 +294,7 @@ def _serialize_product(doc, _listings_map=None, _stock_map=None, _vendor_locatio
 
     stock_qty = flt(best_listing.available_qty) if best_listing else 0
     track_inventory = best_listing.track_inventory if best_listing else 1
+    allow_backorder = best_listing.allow_backorder if best_listing else 0
     vendor = best_listing.vendor if best_listing else None
     sku = best_listing.sku if best_listing else ""
     vendor_product_id = best_listing.vendor_product_id if best_listing else ""
@@ -309,6 +310,7 @@ def _serialize_product(doc, _listings_map=None, _stock_map=None, _vendor_locatio
         "thumbnail": primary_media or doc.thumbnail,
         "stock_qty": stock_qty,
         "track_inventory": track_inventory,
+        "allow_backorder": allow_backorder,
         "category": doc.category,
         "vendor": vendor,
         "vendor_name": getattr(best_listing, "vendor_name", "") or "",

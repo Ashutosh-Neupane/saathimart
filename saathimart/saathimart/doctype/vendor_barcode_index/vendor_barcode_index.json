@@ -1,0 +1,17 @@
+{
+  "name": "Vendor Barcode Index",
+  "module": "Saathimart",
+  "doctype": "DocType",
+  "autoname": "format:{vendor}-{barcode}",
+  "fields": [
+    {"fieldname": "vendor", "fieldtype": "Link", "label": "Vendor", "options": "Vendor",
+     "reqd": 1, "in_list_view": 1},
+    {"fieldname": "barcode", "fieldtype": "Data", "label": "Barcode", "reqd": 1,
+     "in_list_view": 1, "search_index": 1,
+     "description": "A barcode this vendor has told the hub it can supply — registered from the vendor's own ERPNext Item Barcode records, not created by the hub. Lets on_product_created look up which (usually few) vendors actually carry a new product's barcode instead of broadcasting to every vendor site."},
+    {"fieldname": "last_registered", "fieldtype": "Datetime", "label": "Last Registered", "read_only": 1}
+  ],
+  "permissions": [
+    {"role": "SM Admin", "read": 1, "write": 1, "create": 1, "delete": 1}
+  ]
+}

@@ -5,3 +5,4 @@
 # Patches that run AFTER schema sync (use when populating new fields)
 saathimart.patches.add_vendor_listing_parent_columns
 saathimart.patches.add_performance_indexes
+saathimart.patches.backfill_product_display_price

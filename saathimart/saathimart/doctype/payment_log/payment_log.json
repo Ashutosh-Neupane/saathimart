@@ -7,7 +7,7 @@
  "fields": [
   {"fieldname": "order", "fieldtype": "Link", "label": "Order", "options": "Order", "reqd": 1, "in_list_view": 1},
   {"fieldname": "gateway", "fieldtype": "Select", "label": "Gateway",
-   "options": "eSewa\nKhalti\nCOD\nBank Transfer", "in_list_view": 1},
+   "options": "eSewa\nCOD\nBank Transfer", "in_list_view": 1},
   {"fieldname": "status", "fieldtype": "Select", "label": "Status",
    "options": "Success\nFailed\nPending", "default": "Pending", "in_list_view": 1},
   {"fieldname": "col_break_1", "fieldtype": "Column Break"},

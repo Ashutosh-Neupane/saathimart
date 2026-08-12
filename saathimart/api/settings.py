@@ -49,8 +49,6 @@ def is_gateway_enabled(gateway: str) -> bool:
     s = get_settings()
     if gateway == "eSewa":
         return bool(getattr(s, "enable_esewa", 1))
-    if gateway == "Khalti":
-        return bool(getattr(s, "enable_khalti", 0))
     return False
 
 
@@ -61,11 +59,6 @@ def get_gateway_credentials(gateway: str) -> dict:
             "merchant_code": getattr(s, "esewa_merchant_code", "") or "EPAYTEST",
             "secret_key": s.get_password("esewa_secret_key", raise_exception=False) or "",
             "base_url": (getattr(s, "esewa_base_url", None) or "").rstrip("/") or None,
-        }
-    if gateway == "Khalti":
-        return {
-            "secret_key": s.get_password("khalti_secret_key", raise_exception=False) or "",
-            "base_url": (getattr(s, "khalti_base_url", None) or "").rstrip("/") or None,
         }
     return {}
 

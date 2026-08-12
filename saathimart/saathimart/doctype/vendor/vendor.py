@@ -36,6 +36,9 @@ class Vendor(Document):
         return frappe.db.get_value(
             "Vendor Stock",
             {"vendor": self.name},
-            ["SUM(available_qty) AS total_available", "SUM(physical_qty) AS total_physical"],
+            [
+                {"SUM": "available_qty", "as": "total_available"},
+                {"SUM": "physical_qty", "as": "total_physical"},
+            ],
             as_dict=True,
         ) or {"total_available": 0, "total_physical": 0}

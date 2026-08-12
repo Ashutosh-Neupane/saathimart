@@ -18,43 +18,34 @@ from frappe.utils import today, add_days, nowdate, flt
 
 
 def _serialize_product(row):
-    """Turn a Product doc / dict into a consistent frontend-friendly dict."""
-    if isinstance(row, dict):
-        return {
-            "name": row.get("name"),
-            "product_name": row.get("product_name"),
-            "slug": row.get("slug"),
-            "price": flt(row.get("price") or 0),
-            "compare_price": flt(row.get("compare_price") or 0),
-            "thumbnail": row.get("thumbnail"),
-            "stock_qty": flt(row.get("stock_qty") or 0),
-            "track_inventory": row.get("track_inventory", 1),
-            "category": row.get("category"),
-            "vendor": row.get("vendor"),
-            "short_description": row.get("short_description", ""),
-            "is_on_sale": flt(row.get("compare_price") or 0) > flt(row.get("price") or 0),
-            "discount_pct": 0,
-        }
-    doc = row
-    price = flt(doc.price or 0)
-    compare = flt(doc.compare_price or 0)
-    discount = 0
-    if compare > price:
-        discount = round(((compare - price) / compare) * 100, 1)
+    """
+    Turn a plain dict into a consistent frontend-friendly product dict.
+
+    Only ever takes a dict now — there used to be a second branch here that
+    accepted a raw Product Document and read doc.price/doc.compare_price/
+    doc.stock_qty/doc.track_inventory/doc.vendor directly off it. None of
+    those are real fields on Product (pricing lives on Vendor Listing,
+    stock on Vendor Stock) — Frappe Documents return None for undefined
+    attributes rather than raising, so that branch was silently emitting
+    price=0 for every product it touched (see _get_recommended, its only
+    caller) instead of erroring where you'd notice. Every caller now
+    resolves price via Vendor Listing first and passes a dict, same as
+    _get_deals/_get_bestsellers always did.
+    """
     return {
-        "name": doc.name,
-        "product_name": doc.product_name,
-        "slug": doc.slug,
-        "price": price,
-        "compare_price": compare,
-        "thumbnail": doc.thumbnail,
-        "stock_qty": flt(doc.stock_qty or 0),
-        "track_inventory": doc.track_inventory,
-        "category": doc.category,
-        "vendor": doc.vendor,
-        "short_description": doc.short_description or "",
-        "is_on_sale": compare > price,
-        "discount_pct": discount,
+        "name": row.get("name"),
+        "product_name": row.get("product_name"),
+        "slug": row.get("slug"),
+        "price": flt(row.get("price") or 0),
+        "compare_price": flt(row.get("compare_price") or 0),
+        "thumbnail": row.get("thumbnail"),
+        "stock_qty": flt(row.get("stock_qty") or 0),
+        "track_inventory": row.get("track_inventory", 1),
+        "category": row.get("category"),
+        "vendor": row.get("vendor"),
+        "short_description": row.get("short_description", ""),
+        "is_on_sale": flt(row.get("compare_price") or 0) > flt(row.get("price") or 0),
+        "discount_pct": 0,
     }
 
 
@@ -226,9 +217,21 @@ def _get_deals(limit=20, customer_lat=None, customer_lng=None, max_radius=None):
 
 
 def _get_bestsellers(limit=10, customer_lat=None, customer_lng=None, max_radius=None):
+    # Product carries no live price of its own — Vendor Listing does, one
+    # row per (vendor, product) — but it does carry display_price/
+    # display_compare_price, a cache kept in sync by
+    # saathimart.events.publisher.on_vendor_listing_changed whenever any
+    # Vendor Listing for a product changes. That's what a plain read here
+    # is against, same idea as saathi_middleware keeping price directly on
+    # the row it queries, without giving up Vendor Listing as the real
+    # source of truth for checkout. (This function used to select p.price/
+    # p.compare_price directly off tabProduct — columns that never
+    # existed there — which threw a raw MySQLdb.OperationalError and
+    # 500'd the whole homepage payload, every single call.)
     data = frappe.db.sql("""
-        SELECT oi.product, p.product_name, p.slug, p.price, p.compare_price,
-               p.thumbnail, p.category, SUM(oi.qty) as total_qty
+        SELECT oi.product, p.product_name, p.slug, p.thumbnail, p.category,
+               p.display_price as price, p.display_compare_price as compare_price,
+               SUM(oi.qty) as total_qty
         FROM `tabOrder Item` oi
         JOIN `tabOrder` o ON oi.parent = o.name
         LEFT JOIN `tabProduct` p ON oi.product = p.name
@@ -241,6 +244,9 @@ def _get_bestsellers(limit=10, customer_lat=None, customer_lng=None, max_radius=
 
     result = []
     for r in data:
+        if not r.price:
+            continue  # no active listing anywhere — nothing to actually sell right now
+
         # Blinkit-style radius filter
         if customer_lat is not None and customer_lng is not None and max_radius is not None:
             from saathimart.api.products import _get_best_vendor_listing, _preload_listing_data
@@ -277,10 +283,16 @@ def _get_recommended(limit=12, customer_lat=None, customer_lng=None, max_radius=
     # pool instead.
     import random
 
+    # display_price is the same cached-from-Vendor-Listing field
+    # _get_bestsellers reads — see its docstring. Filtering status=Active
+    # AND display_price>0 in the query itself (rather than fetching a
+    # random pool and discarding zero-price rows after the fact) means the
+    # random sample is actually drawn from products someone can buy.
     pool = frappe.get_list(
         "Product",
-        filters={"status": "Active"},
-        fields=["name", "product_name", "slug", "category"],
+        filters={"status": "Active", "display_price": [">", 0]},
+        fields=["name", "product_name", "slug", "category", "thumbnail",
+                "short_description", "display_price", "display_compare_price"],
         order_by="creation desc",
         limit_page_length=max(limit * 4, 50),
     )
@@ -302,7 +314,19 @@ def _get_recommended(limit=12, customer_lat=None, customer_lng=None, max_radius=
             if not best or flt(getattr(best, "distance_km", 0) or 0) > max_radius:
                 continue
 
-        result.append(_serialize_product(frappe.get_doc("Product", p["name"])))
+        result.append(_serialize_product({
+            "name": p["name"],
+            "product_name": p["product_name"],
+            "slug": p["slug"],
+            "price": p["display_price"],
+            "compare_price": p["display_compare_price"],
+            "thumbnail": p["thumbnail"],
+            "category": p["category"],
+            "vendor": None,
+            "short_description": p["short_description"] or "",
+            "stock_qty": 0,
+            "track_inventory": 1,
+        }))
     return result
 
 

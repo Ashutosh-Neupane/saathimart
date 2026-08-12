@@ -1,7 +1,12 @@
 """
-Payment gateway integration — eSewa v2 + Khalti.
+Payment gateway integration — eSewa v2.
 Adapted from trevo_ecommerce. No ERPNext dependency.
 All accounting is against SM Order, not Sales Order.
+
+Khalti support was removed (untested against real sandbox credentials,
+disabled by default via Settings.enable_khalti) rather than left as a
+never-verified code path. Settings still has payment_method/gateway options
+for it removed too — see settings.json, order.json, cart.js.
 """
 from __future__ import annotations
 
@@ -61,7 +66,7 @@ def _frontend_redirect(path, **params):
 def _redirect(url):
     """Send the shopper's browser to `url`. Used by the gateway-facing
     callback endpoints, which are hit via a top-level browser redirect
-    from eSewa/Khalti — never via fetch/XHR."""
+    from eSewa — never via fetch/XHR."""
     frappe.local.response["type"] = "redirect"
     frappe.local.response["location"] = url
 
@@ -71,7 +76,7 @@ def _redirect(url):
 @frappe.whitelist(allow_guest=True)
 def initiate_payment(method, order_id, customer_info=None):
     """
-    Initiate eSewa or Khalti payment for an SM Order.
+    Initiate eSewa payment for an SM Order.
     Returns gateway payload the frontend uses to redirect.
     """
     method = (method or "").lower()
@@ -90,11 +95,6 @@ def initiate_payment(method, order_id, customer_info=None):
         if not getattr(s, "enable_esewa", 1):
             frappe.throw(_("eSewa is not enabled."))
         return _initiate_esewa(s, order_id, amount, sandbox)
-
-    if method == "khalti":
-        if not getattr(s, "enable_khalti", 0):
-            frappe.throw(_("Khalti is not enabled."))
-        return _initiate_khalti(s, order_id, amount, sandbox, customer_info or {})
 
     frappe.throw(_("Unsupported payment method: {0}").format(method))
 
@@ -142,57 +142,6 @@ def _initiate_esewa(s, order_id, amount, sandbox):
         },
         "order_id": order_id,
     }
-
-
-def _initiate_khalti(s, order_id, amount, sandbox, customer_info):
-    secret_key = _get_password(s, "khalti_secret_key")
-    if not secret_key:
-        frappe.throw(_("Khalti Secret Key not configured in SM Settings."))
-    if secret_key.lower().startswith("key "):
-        secret_key = secret_key.split(" ", 1)[1].strip()
-
-    return_url = f"{_api_method_url('khalti_callback')}?order_id={order_id}"
-
-    gw_base = (
-        getattr(s, "khalti_base_url", None)
-        or ("https://dev.khalti.com/api/v2" if sandbox else "https://khalti.com/api/v2")
-    ).rstrip("/")
-
-    payload = {
-        "return_url": return_url,
-        "website_url": _base_url(),
-        "amount": int(amount * 100),
-        "purchase_order_id": order_id,
-        "purchase_order_name": f"SaathiMart Order {order_id}",
-        "customer_info": {
-            "name": customer_info.get("name", "Customer"),
-            "email": customer_info.get("email", "customer@example.com"),
-            "phone": customer_info.get("phone", "9800000000"),
-        },
-    }
-
-    try:
-        resp = requests.post(
-            f"{gw_base}/epayment/initiate/",
-            headers={"Authorization": f"key {secret_key}", "Content-Type": "application/json"},
-            data=json.dumps(payload),
-            timeout=20,
-        )
-        data = resp.json()
-        if not resp.ok:
-            frappe.throw(_("Khalti initiation failed: {0}").format(data.get("detail", resp.text)))
-        return {
-            "gateway": "Khalti",
-            "sandbox": sandbox,
-            "payment_url": data.get("payment_url"),
-            "pidx": data.get("pidx"),
-            "order_id": order_id,
-        }
-    except frappe.ValidationError:
-        raise
-    except Exception:
-        frappe.log_error(frappe.get_traceback(), "Khalti Initiation Error")
-        frappe.throw(_("Failed to initiate Khalti payment. Please try again."))
 
 
 # ── Verify ────────────────────────────────────────────────────────────────────
@@ -290,43 +239,6 @@ def esewa_failure(data=None, **kwargs):
 
 
 @frappe.whitelist(allow_guest=True)
-def khalti_callback(pidx=None, order_id=None, **kwargs):
-    """Khalti redirects here with ?pidx=...&order_id=... (order_id from our own return_url)."""
-    if not pidx:
-        return _redirect(_frontend_redirect(
-            "/payment/failure", order_id=order_id, error="Missing pidx",
-        ))
-
-    result = _lookup_khalti(pidx)
-    if not result.get("ok"):
-        if order_id and frappe.db.exists("Order", order_id):
-            _mark_order_failed(order_id, gateway="Khalti", message=result.get("error"))
-        return _redirect(_frontend_redirect(
-            "/payment/failure", order_id=order_id, error=result.get("error"),
-        ))
-
-    resolved_order = result.get("purchase_order_id") or order_id
-    if not resolved_order or not frappe.db.exists("Order", resolved_order):
-        return _redirect(_frontend_redirect("/payment/failure", error="Order not found"))
-
-    if result.get("status") != "Completed":
-        _mark_order_failed(resolved_order, gateway="Khalti", message=f"Status: {result.get('status')}")
-        return _redirect(_frontend_redirect(
-            "/payment/failure", order_id=resolved_order,
-            error=f"Payment not completed: {result.get('status')}",
-        ))
-
-    _mark_order_paid(
-        resolved_order,
-        gateway="Khalti",
-        reference=result.get("transaction_id", ""),
-        transaction_uid=pidx,
-        amount=flt(result.get("total_amount", 0)) / 100,
-    )
-    return _redirect(_frontend_redirect("/payment/success", order_id=resolved_order, gateway="Khalti"))
-
-
-@frappe.whitelist(allow_guest=True)
 def verify_esewa_status(order_id):
     """Poll eSewa transaction status API — used by cron to catch lost callbacks."""
     s = _settings()
@@ -374,35 +286,6 @@ def _decode_esewa_data(data, kwargs):
     if kwargs.get("signed_field_names"):
         return kwargs
     return None
-
-
-def _lookup_khalti(pidx):
-    s = _settings()
-    secret_key = _get_password(s, "khalti_secret_key")
-    if not secret_key:
-        return {"ok": False, "error": "Khalti Secret Key not configured"}
-    if secret_key.lower().startswith("key "):
-        secret_key = secret_key.split(" ", 1)[1].strip()
-
-    sandbox = bool(getattr(s, "payment_sandbox_mode", 1))
-    gw_base = (
-        getattr(s, "khalti_base_url", None)
-        or ("https://dev.khalti.com/api/v2" if sandbox else "https://khalti.com/api/v2")
-    ).rstrip("/")
-
-    try:
-        resp = requests.post(
-            f"{gw_base}/epayment/lookup/",
-            headers={"Authorization": f"key {secret_key}", "Content-Type": "application/json"},
-            data=json.dumps({"pidx": pidx}),
-            timeout=20,
-        )
-        data = resp.json()
-        if not resp.ok:
-            return {"ok": False, "error": data.get("detail", "Lookup failed")}
-        return {"ok": True, **data}
-    except Exception as e:
-        return {"ok": False, "error": str(e)}
 
 
 def _mark_order_paid(order_id, gateway, reference, transaction_uid, amount):

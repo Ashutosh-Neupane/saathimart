@@ -3,8 +3,13 @@ Event publisher — pushes events to Redis and drains the SM Webhook Event queue
 
 Flow:
   1. doc_event hook calls on_order_created / on_product_updated etc.
-  2. These enqueue an SM Webhook Event record (status=Queued).
-  3. drain_event_queue (cron every 2 min) picks Queued events and:
+  2. These enqueue an SM Webhook Event record (status=Queued) and immediately
+     schedule its delivery on a background worker (see _schedule_immediate_delivery)
+     — delivery normally happens within a second or two of the triggering
+     action, not on the next cron tick.
+  3. drain_event_queue (cron every 2 min) is the fallback/retry sweep: it
+     picks up anything still Queued (the instant delivery failed, the worker
+     pool was backed up, etc.) and:
      a. Publishes to Redis pub/sub channel (for real-time subscribers).
      b. POSTs to vendor frappe_site_url if configured.
   4. Vendor sites can also poll via GET /api/method/saathimart.api.events.poll.
@@ -12,26 +17,44 @@ Flow:
 import json
 import uuid
 import urllib.parse
+from datetime import datetime, timezone
 
 import frappe
 import requests
 from frappe.utils import now_datetime, add_to_date
 
+from saathimart.api.utils import safe_enqueue
+
 
 # ── Internal helpers ──────────────────────────────────────────────────────────
 
 def _get_next_vendor_event_seq(vendor):
-    """Return the next monotonically increasing event sequence for a vendor."""
-    last = frappe.db.get_value("Vendor", vendor, "last_event_seq") or 0
-    seq = last + 1
-    frappe.db.set_value("Vendor", vendor, "last_event_seq", seq)
-    return seq
+    """
+    Return the next monotonically increasing event sequence for a vendor.
+
+    Does the increment as a single atomic UPDATE rather than Python-level
+    get-then-set — the previous version (SELECT last_event_seq, then
+    frappe.db.set_value(last + 1)) raced under concurrent events for the
+    same vendor: two requests could both read the same `last`, then both
+    write the same `last + 1`, handing out a duplicate event_seq. An UPDATE
+    holds the row lock for the read-modify-write, so concurrent callers
+    serialize instead of racing.
+    """
+    frappe.db.sql(
+        "UPDATE `tabVendor` SET last_event_seq = COALESCE(last_event_seq, 0) + 1 WHERE name = %s",
+        (vendor,),
+    )
+    return frappe.db.get_value("Vendor", vendor, "last_event_seq")
 
 
 def _enqueue(event_type, payload, target_site=None, target_vendor=None, event_id=None):
     """
     Create an SM Webhook Event record for async delivery. Idempotent — if
     an event with the same event_id already exists, it is not duplicated.
+    Also schedules immediate delivery (see _schedule_immediate_delivery) so
+    a vendor doesn't wait on the next drain_event_queue cron tick — that
+    cron becomes the retry/fallback sweep for anything the instant path
+    missed, rather than the only delivery path.
     """
     if not event_id:
         event_id = str(uuid.uuid4())
@@ -52,6 +75,39 @@ def _enqueue(event_type, payload, target_site=None, target_vendor=None, event_id
     doc.target_vendor = target_vendor or ""
     doc.payload = json.dumps(payload, default=str)
     doc.insert(ignore_permissions=True)
+
+    if doc.target_site:
+        _schedule_immediate_delivery(doc.name)
+
+
+def _schedule_immediate_delivery(event_name):
+    """
+    Enqueue delivery of a single event right away instead of waiting for the
+    next drain_event_queue cron tick.
+
+    enqueue_after_commit=True defers the actual RQ job until this DB
+    transaction commits — without it, a worker on a different DB connection
+    could pick the job up and query for a Webhook Event row that isn't
+    visible yet (this call typically runs inside a doc_event hook, i.e.
+    inside the same transaction as the order/status change that triggered
+    it). job_id + deduplicate=True means if drain_event_queue's cron sweep
+    also picks up this same still-Queued row before this job has run (a
+    narrow window — only possible if the worker pool is backed up), only
+    one delivery attempt actually gets queued.
+    """
+    settings = frappe.get_single("Settings")
+    secret = settings.get_password("webhook_secret", raise_exception=False) or ""
+    max_retries = settings.max_webhook_retries or 3
+    safe_enqueue(
+        "saathimart.events.publisher._deliver_event_async",
+        event_name=event_name,
+        secret=secret,
+        max_retries=max_retries,
+        queue="default",
+        enqueue_after_commit=True,
+        job_id=f"deliver-webhook-event-{event_name}",
+        deduplicate=True,
+    )
 
 
 def _publish_to_redis(event_type, payload):
@@ -115,6 +171,114 @@ def on_order_created(doc, method):
            event_id=f"order.created.{doc.name}.{f.vendor}")
 
 
+def on_product_created(doc, method):
+    """
+    A new Product was just created on the hub. Broadcast it to every vendor
+    with a reachable site so a vendor who already stocks this physical item
+    (i.e. it's in their ERPNext Item Barcode records under some Item of
+    theirs) gets auto-mapped with zero manual work — see
+    saathimart_vendor.api.receive._handle_new_product. Vendors who don't
+    already carry it get nothing; this is not a "please go stock this"
+    notification, it only ever acts when there's already a real barcode
+    match on the vendor's side.
+
+    Requires Product.sku to be set — that's the only barcode-like field
+    available on a brand-new Product (Vendor Listing.barcode doesn't exist
+    yet, nothing has been listed against this product by anyone).
+
+    The actual per-vendor fan-out (_broadcast_new_product) runs in a
+    background worker rather than here: looping over every vendor inline
+    would make every single product save do O(vendor count) DB writes
+    before the admin's save() call even returns — noticeable once there
+    are more than a handful of vendors, and especially bad for anything
+    that bulk-creates products (e.g. scripts/seed.py inserting many
+    Products in a loop, each one triggering this hook).
+    """
+    if not doc.sku:
+        return
+
+    safe_enqueue(
+        "saathimart.events.publisher._broadcast_new_product",
+        product_id=doc.name,
+        barcode=doc.sku,
+        product_name=doc.product_name,
+        queue="short",
+        enqueue_after_commit=True,
+        job_id=f"broadcast-new-product-{doc.name}",
+        deduplicate=True,
+    )
+
+
+def _broadcast_new_product(product_id, barcode, product_name):
+    """
+    Background worker (see on_product_created). Notifies only the vendors
+    who have actually told the hub they can supply this exact barcode
+    (Vendor Barcode Index, populated by vendors pushing barcode.register
+    whenever they add an ERPNext Item Barcode — see
+    saathimart-vendor/event_handlers/mapping.py) — NOT every vendor.
+
+    This used to loop over every vendor with a reachable site regardless of
+    whether they had anything to do with this product: at 1,000 vendors,
+    every single product creation generated 1,000 Webhook Event rows and
+    1,000 outbound HTTP deliveries, the overwhelming majority of which
+    would find no matching barcode and do nothing. Matching against the
+    index instead turns that into a handful of targeted notifications (in
+    the common case, zero) — no fan-out, no thundering herd on
+    create_vendor_listing, no event-table bloat.
+
+    The match count itself is *not* bounded, though — a barcode genuinely
+    carried by every vendor (a universally-stocked item) still returns
+    every vendor from the index, and notifying all of them is correct, not
+    wasteful (every one of those really does need mapping). What would
+    still be wrong is doing that notification as one long sequential loop
+    in a single background job — same "one worker, unbounded loop, lost or
+    partial on a crash/timeout" risk as the original broadcast, just gated
+    behind a real-match-count instead of the full vendor table. So this
+    chunks matches the same way reconcile_stock() chunks mapping batches:
+    each chunk is its own small, independently-retryable background job.
+    """
+    matches = frappe.get_all(
+        "Vendor Barcode Index",
+        filters={"barcode": barcode},
+        fields=["vendor"],
+    )
+    if not matches:
+        return
+
+    chunk_size = 50
+    for i in range(0, len(matches), chunk_size):
+        chunk = [m.vendor for m in matches[i:i + chunk_size]]
+        safe_enqueue(
+            "saathimart.events.publisher._notify_vendors_of_matching_product_chunk",
+            vendors=chunk,
+            product_id=product_id,
+            barcode=barcode,
+            product_name=product_name,
+            queue="short",
+            job_id=f"broadcast-new-product-chunk-{product_id}-{i // chunk_size}",
+            deduplicate=True,
+        )
+
+
+def _notify_vendors_of_matching_product_chunk(vendors, product_id, barcode, product_name):
+    """One bounded chunk of _broadcast_new_product's matches, its own background job."""
+    for vendor in vendors:
+        _notify_vendor_of_matching_product(vendor, product_id, barcode, product_name)
+
+
+def _notify_vendor_of_matching_product(vendor, product_id, barcode, product_name):
+    """Send a single, targeted product.new to exactly one vendor that's confirmed to carry this barcode."""
+    vendor_url = frappe.db.get_value("Vendor", vendor, "frappe_site_url")
+    if not vendor_url:
+        return
+    _enqueue("product.new", {
+        "product_id": product_id,
+        "barcode": barcode,
+        "product_name": product_name,
+    }, target_site=vendor_url, target_vendor=vendor,
+       event_id=f"product.new.{product_id}.{vendor}")
+
+
 def on_order_updated(doc, method):
     """
     Fires on every doc.save() after insert — i.e. hub/admin-driven status
@@ -161,6 +325,47 @@ def on_vendor_updated(doc, method):
     _publish_to_redis("vendor.updated", {"vendor_id": doc.name, "status": doc.status})
 
 
+def on_vendor_listing_changed(doc, method):
+    """
+    Keep Product.display_price/display_compare_price in sync with the
+    cheapest active Vendor Listing, whenever any Vendor Listing for this
+    product is created, updated, or deleted (hooked here — a single
+    doctype-level hook — rather than in every individual call site that
+    writes a Vendor Listing price, which is exactly the kind of duplicated
+    logic that let saathimart.api.home's bestsellers/recommended sections
+    drift out of sync with reality and 500/silently-zero for a while).
+
+    display_price exists purely to make bulk list/browse reads (homepage
+    rails, search results) a plain field read instead of a join or a
+    separate query per section — modelled on how saathi_middleware keeps
+    price directly on the row it queries. Vendor Listing stays the actual
+    source of truth: checkout, the product detail page, and anything
+    vendor-specific still resolve price from Vendor Listing directly, this
+    cache is display-only and is never read at checkout time.
+    """
+    product = doc.product
+    if not product:
+        return
+
+    filters = {"product": product, "status": "Active"}
+    if method == "on_trash":
+        # The row being deleted still physically exists in the DB at the
+        # point on_trash fires (the actual DELETE happens after) — exclude
+        # it explicitly so a deleted listing's price doesn't linger in the
+        # cache for one extra recompute.
+        filters["name"] = ["!=", doc.name]
+
+    agg = frappe.db.get_value(
+        "Vendor Listing", filters,
+        [{"MIN": "price", "as": "price"}, {"MAX": "compare_price", "as": "compare_price"}],
+        as_dict=True,
+    )
+    frappe.db.set_value("Product", product, {
+        "display_price": agg.price if agg and agg.price else 0,
+        "display_compare_price": agg.compare_price if agg and agg.compare_price else 0,
+    }, update_modified=False)
+
+
 # ── Scheduled: drain queue ────────────────────────────────────────────────────
 
 def drain_event_queue():
@@ -178,12 +383,14 @@ def drain_event_queue():
     )
 
     for evt in events:
-        frappe.enqueue(
+        safe_enqueue(
             "saathimart.events.publisher._deliver_event_async",
             event_name=evt.name,
             secret=secret,
             max_retries=max_retries,
             queue="default",
+            job_id=f"deliver-webhook-event-{evt.name}",
+            deduplicate=True,
         )
 
 
@@ -209,12 +416,12 @@ def _deliver_event(evt, secret, max_retries):
             if vendor_site_url:
                 host_header = urllib.parse.urlparse(vendor_site_url).hostname
             parsed = urllib.parse.urlparse(target_url)
-            if parsed.hostname in ("localhost", "vendor1.localhost"):
-                target_url = parsed._replace(netloc="vendor:8000").geturl()
+            if parsed.hostname in ("localhost", "vendor1.localhost", "vendor2.localhost", "vendor3.localhost"):
+                target_url = parsed._replace(netloc="vendors:8000").geturl()
 
         headers = {
             "X-SM-Secret": vendor_secret,
-            "X-SM-Timestamp": str(int(now_datetime().timestamp())),
+            "X-SM-Timestamp": str(int(datetime.now(timezone.utc).timestamp())),
             "Content-Type": "application/json",
         }
         if host_header:

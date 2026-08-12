@@ -10,10 +10,30 @@ Single source of truth for:
 import hashlib
 import hmac
 import json
+from datetime import datetime, timezone
 
 import frappe
 from frappe import _
 from frappe.utils import now_datetime
+
+
+def safe_enqueue(*args, **kwargs):
+    """
+    frappe.enqueue(), but never lets a background-job scheduling failure
+    break the caller. frappe.enqueue() itself can raise QueueOverloaded
+    (Frappe's own cap on pending RQ jobs) when nothing is draining the
+    queue fast enough — several call sites here run synchronously inside a
+    request a customer or vendor is waiting on, so an uncaught
+    QueueOverloaded wouldn't just skip an optimization, it would fail the
+    whole request. Shared here (rather than duplicated per-module) so
+    saathimart.events.publisher and saathimart.api.events both get the
+    same protection from one place — same pattern as
+    saathimart_vendor.utils.safe_enqueue on the vendor side.
+    """
+    try:
+        frappe.enqueue(*args, **kwargs)
+    except Exception:
+        frappe.log_error(frappe.get_traceback(), "Background job scheduling failed")
 
 
 def rate_limit(key, limit=10, window_seconds=60):
@@ -106,7 +126,7 @@ def verify_hub_timestamp(max_age_seconds=300):
         event_time = float(ts)
     except (TypeError, ValueError):
         frappe.throw(_("Invalid timestamp"), frappe.AuthenticationError)
-    if abs(now_datetime().timestamp() - event_time) > max_age_seconds:
+    if abs(datetime.now(timezone.utc).timestamp() - event_time) > max_age_seconds:
         frappe.throw(_("Request timestamp too old"), frappe.AuthenticationError)
 
 

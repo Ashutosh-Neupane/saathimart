@@ -15,7 +15,7 @@
   {"fieldname": "payment_status", "fieldtype": "Select", "label": "Payment Status",
    "options": "Unpaid\nPaid\nPartially Paid\nRefunded", "default": "Unpaid"},
   {"fieldname": "payment_method", "fieldtype": "Select", "label": "Payment Method",
-   "options": "COD\neSewa\nKhalti\nBank Transfer"},
+   "options": "COD\neSewa\nBank Transfer"},
    {"fieldname": "section_items", "fieldtype": "Section Break", "label": "Items"},
    {"fieldname": "items", "fieldtype": "Table", "label": "Items", "options": "Order Item", "reqd": 1},
    {"fieldname": "section_fulfillments", "fieldtype": "Section Break", "label": "Vendor Fulfillments"},
@@ -52,7 +52,11 @@
   {"fieldname": "col_break_loyalty", "fieldtype": "Column Break"},
   {"fieldname": "loyalty_points_earned", "fieldtype": "Float", "label": "Points Earned", "default": "0", "read_only": 1},
   {"fieldname": "coupon_code", "fieldtype": "Data", "label": "Coupon Code"},
-  {"fieldname": "coupon_discount", "fieldtype": "Currency", "label": "Coupon Discount", "default": "0", "read_only": 1}
+  {"fieldname": "coupon_discount", "fieldtype": "Currency", "label": "Coupon Discount", "default": "0", "read_only": 1},
+  {"fieldname": "onboarding_discount", "fieldtype": "Currency", "label": "Onboarding Discount", "default": "0", "read_only": 1,
+   "description": "Auto-applied first/second-order discount from the delivery zone's onboarding rates — see Delivery Zone.first_order_discount_pct"},
+  {"fieldname": "onboarding_order_sequence", "fieldtype": "Int", "label": "Onboarding Order Sequence", "default": "0", "read_only": 1,
+   "description": "1 = this customer's first order, 2 = second, 0 = not eligible / not computed. Recorded for audit even when the discount was 0."}
  ],
  "title_field": "name",
  "search_fields": "customer_name,customer_email,customer_phone",

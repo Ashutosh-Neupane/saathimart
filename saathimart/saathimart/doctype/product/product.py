@@ -46,25 +46,32 @@ class Product(Document):
         prices = [flt(l.compare_price) for l in self._get_listings() if flt(l.compare_price) > 0]
         return max(prices) if prices else 0
 
-    @property
-    def stock_qty(self):
-        total = 0
-        for l in self._get_listings():
-            total += flt(l.available_qty) + flt(l.reserved_qty)
-        return total
-
-    @property
-    def track_inventory(self):
-        return any(l.track_inventory for l in self._get_listings())
+    # stock_qty, track_inventory, and sku are deliberately NOT properties
+    # here, unlike vendor/price/compare_price/etc. below — those have no
+    # backing column at all (removed from product.json by the v1_to_v2
+    # migration), so a property is the only way to read them and there's
+    # no ambiguity. stock_qty/track_inventory/sku *do* still have a real
+    # stored column (product.json), used directly by real code:
+    # saathimart.saathimart.doctype.stock_ledger_entry.stock_ledger_entry.make_entry()
+    # (the legacy pooled-stock fallback for stock events with no vendor_id),
+    # lookup_by_barcode()'s legacy fallback, and
+    # events.publisher.on_product_created's barcode broadcast.
+    #
+    # A @property with the same name as a real field is a Python data
+    # descriptor — it always wins over instance __dict__ on `doc.attr`
+    # access, REGARDLESS of what's actually stored in the database. That
+    # was live here: doc.sku on a freshly-inserted Product always returned
+    # "" (no Vendor Listing can exist yet for a brand-new product), even
+    # though the admin's typed SKU had been correctly written to the raw
+    # column — confirmed live, `frappe.db.get_value(..., "sku")` returned
+    # the real value while `doc.sku` returned "" for the exact same row.
+    # That silently broke on_product_created's entire barcode-matching
+    # path — see saathimart/events/publisher.py — since every hook there
+    # reads `doc.sku` on the just-inserted Document, not a raw query.
 
     @property
     def allow_backorder(self):
         return any(l.allow_backorder for l in self._get_listings())
-
-    @property
-    def sku(self):
-        listings = self._get_listings()
-        return listings[0].sku if listings else ""
 
     @property
     def barcode(self):

@@ -9,7 +9,7 @@ from frappe import _
 from frappe.utils import now_datetime, add_to_date
 
 from saathimart.api.constants import VALID_ORDER_TRANSITIONS
-from saathimart.api.utils import guest_rate_limit, verify_hub_secret, verify_hub_timestamp
+from saathimart.api.utils import guest_rate_limit, verify_hub_secret, verify_hub_timestamp, safe_enqueue
 
 
 def _validate_order_transition(order, new_status):
@@ -28,23 +28,41 @@ def _validate_order_transition(order, new_status):
 @frappe.whitelist(allow_guest=True)
 def poll(since=None, limit=50):
     """
-    Vendor sites call GET /api/method/saathimart.api.events.poll
-    to pull events since a given timestamp.
-    Header: X-SM-Secret must match SM Settings.webhook_secret
+    Vendor sites call GET /api/method/saathimart.api.events.poll to catch up
+    on events they may have missed — a site that was down when
+    drain_event_queue tried to push, or an event that exhausted its retries
+    and went Dead, previously had no way back into the vendor's hands short
+    of someone noticing and manually resyncing. Ordered by event_seq (this
+    vendor's own monotonic, gap-free counter — see
+    publisher._get_next_vendor_event_seq) rather than wall-clock creation
+    time, which doesn't paginate as cleanly and is vulnerable to clock skew.
+
+    Scoped to events targeted at the *calling* vendor only (previously this
+    returned every vendor's Sent events to whoever asked — a real
+    cross-vendor data leak, not just an inefficiency).
+
+    Headers: X-SM-Secret (or the vendor's own webhook_secret) + X-Vendor-ID.
+    `since` — the last event_seq this vendor has already processed
+    (Vendor Config.last_hub_event_seq on their side); omit/0 to pull
+    everything targeted at this vendor.
     """
     guest_rate_limit("events.poll", limit=100, window_seconds=60)
     verify_hub_secret("events.poll")
 
-    filters = {"status": "Sent"}
+    vendor_id = frappe.request.headers.get("X-Vendor-ID", "") if frappe.request else ""
+    if not vendor_id:
+        frappe.throw(_("X-Vendor-ID header is required"), frappe.AuthenticationError)
+
+    filters = {"target_vendor": vendor_id}
     if since:
-        filters["creation"] = [">", since]
+        filters["event_seq"] = [">", int(since)]
 
     events = frappe.get_list(
         "Webhook Event",
         filters=filters,
-        fields=["name", "event_type", "payload", "creation"],
+        fields=["name", "event_type", "event_seq", "payload", "status", "creation"],
         limit=int(limit),
-        order_by="creation asc",
+        order_by="event_seq asc",
     )
     return {
         "events": [
@@ -56,10 +74,81 @@ def poll(since=None, limit=50):
 
 
 @frappe.whitelist(allow_guest=True)
+def bulk_receive(events=None):
+    """
+    Bulk inbound webhook from vendor sites. Accepts an array of events and
+    processes each with the SAME handlers as `receive` — including the
+    same idempotency check and Webhook Event audit-trail insert `receive`
+    does per event, not just the same dispatch. A bulk delivery isn't
+    exempt from either guarantee just because it arrived as one HTTP call
+    instead of several: without this, a retried bulk batch (e.g. the
+    vendor's HTTP client times out waiting for a response the hub actually
+    sent) would silently re-apply every event in it a second time, and
+    none of these events would show up in the Webhook Event desk list the
+    way every other inbound event does.
+
+    Payload: {"events": [{"event": "stock.receipt", "payload": {...}}, ...]}
+
+    Fast-acks: each event is durably recorded (status=Queued) and its actual
+    application (_handle_inbound) is deferred to a background job. This
+    endpoint runs on the same worker pool that serves the customer-facing
+    Next.js frontend — a burst of vendor pushes running _handle_inbound's DB
+    work inline here would compete with that traffic for workers instead of
+    just handing off and returning.
+    """
+    guest_rate_limit("events.bulk_receive", limit=100, window_seconds=60)
+    verify_hub_timestamp()
+    verify_hub_secret("events.bulk_receive")
+    events = events or []
+    if not isinstance(events, list):
+        frappe.throw(_("events must be a list"))
+
+    results = []
+    for evt in events:
+        event_name = evt.get("event")
+        payload = evt.get("payload") or {}
+        event_id = payload.get("event_id") if isinstance(payload, dict) else None
+
+        if event_id and frappe.db.get_value("Webhook Event", {"event_id": event_id}, "name"):
+            results.append({"ok": True, "event": event_name, "message": "already_processed"})
+            continue
+
+        try:
+            doc = frappe.new_doc("Webhook Event")
+            doc.event_type = f"inbound.{event_name}"
+            doc.event_id = event_id or str(uuid.uuid4())
+            doc.payload = json.dumps(payload, default=str)
+            doc.status = "Queued"
+            doc.insert(ignore_permissions=True)
+
+            safe_enqueue(
+                "saathimart.api.events._process_inbound_event",
+                webhook_event_name=doc.name,
+                queue="default",
+                enqueue_after_commit=True,
+                deduplicate=True,
+                job_id=f"process-inbound-{doc.name}",
+            )
+            results.append({"ok": True, "event": event_name, "webhook_event": doc.name})
+        except Exception as e:
+            results.append({"ok": False, "event": event_name, "error": str(e)[:200]})
+            frappe.log_error(
+                frappe.get_traceback(),
+                f"bulk_receive failed for {event_name}",
+            )
+
+    frappe.db.commit()
+    return {"results": results}
+
+
+@frappe.whitelist(allow_guest=True)
 def receive(event=None, payload=None):
     """
     Inbound webhook from vendor sites back to central hub.
     e.g. vendor confirms order, updates stock, pushes price change.
+
+    Fast-acks the same way bulk_receive does — see its docstring — instead
+    of running _handle_inbound inline on a web worker.
     """
     guest_rate_limit("events.receive", limit=1000, window_seconds=60)
     verify_hub_timestamp()
@@ -78,16 +167,50 @@ def receive(event=None, payload=None):
     doc.event_type = f"inbound.{event}"
     doc.event_id = event_id or str(uuid.uuid4())
     doc.payload = json.dumps(payload or {}, default=str)
-    doc.status = "Sent"
+    doc.status = "Queued"
     doc.insert(ignore_permissions=True)
 
-    _handle_inbound(event, payload or {})
+    safe_enqueue(
+        "saathimart.api.events._process_inbound_event",
+        webhook_event_name=doc.name,
+        queue="default",
+        enqueue_after_commit=True,
+        deduplicate=True,
+        job_id=f"process-inbound-{doc.name}",
+    )
     return {"ok": True}
+
+
+def _process_inbound_event(webhook_event_name):
+    """
+    Background-job counterpart to receive()/bulk_receive() — runs the actual
+    order/stock/price application (_handle_inbound) off the web worker pool.
+    Mirrors publisher._deliver_event_async's shape: load the Webhook Event
+    doc by name, do the work, record the outcome with frappe.db.set_value +
+    an explicit commit (a worker job doesn't get the auto-commit a web
+    request does).
+    """
+    evt = frappe.get_doc("Webhook Event", webhook_event_name)
+    event = (evt.event_type or "").removeprefix("inbound.")
+    payload = json.loads(evt.payload or "{}")
+    try:
+        _handle_inbound(event, payload)
+        frappe.db.set_value("Webhook Event", webhook_event_name, "status", "Sent")
+    except Exception as e:
+        frappe.log_error(frappe.get_traceback(), f"Inbound event processing failed: {event}")
+        frappe.db.set_value("Webhook Event", webhook_event_name, {
+            "status": "Failed",
+            "dead_letter_reason": str(e)[:500],
+        })
+    frappe.db.commit()
 
 
 def _handle_inbound(event, payload):
     if event == "order.confirmed" and payload.get("order_id"):
         _apply_order_status(payload, "Confirmed")
+
+    elif event == "order.preparing" and payload.get("order_id"):
+        _apply_order_status(payload, "Preparing")
 
     elif event == "order.dispatched" and payload.get("order_id"):
         _apply_order_status(payload, "Out for Delivery")
@@ -111,6 +234,12 @@ def _handle_inbound(event, payload):
 
     elif event == "price.update":
         _apply_price_update(payload)
+
+    elif event == "barcode.register":
+        _apply_barcode_register(payload)
+
+    elif event == "barcode.unregister":
+        _apply_barcode_unregister(payload)
 
     frappe.db.commit()
 
@@ -287,10 +416,23 @@ def _apply_price_update(payload):
       compare_price — optional MRP / compare price
       delivery_zone — optional zone restriction
       sku          — optional vendor SKU
+      event_id     — optional UUID, replayed pushes with a seen event_id are
+                     idempotent no-ops
+      event_seq    — optional per-vendor monotonic sequence (already sent by
+                     event_handlers/pricing.py on the vendor side). Guards
+                     against applying an update out of order — this matters
+                     now that receive()/bulk_receive() defer application to
+                     a background job (see _process_inbound_event) instead
+                     of applying inline in arrival order, so two pushes for
+                     the same listing can reach here in either order. Same
+                     pattern as Vendor Stock's last_event_seq guard in
+                     api/stock.py._validate_event.
     """
     product_id = payload.get("product_id")
     vendor     = payload.get("vendor")
     new_price  = frappe.utils.flt(payload.get("price") or 0)
+    event_id   = payload.get("event_id")
+    event_seq  = payload.get("event_seq")
 
     if not product_id or not vendor or new_price <= 0:
         frappe.log_error(
@@ -326,6 +468,20 @@ def _apply_price_update(payload):
     )
 
     if existing:
+        current = frappe.db.get_value(
+            "Vendor Listing", existing, ["last_event_seq", "last_event_id"], as_dict=True
+        )
+        if event_id and current.last_event_id == event_id:
+            return  # already applied — vendor retry, not an error
+        if event_seq is not None and current.last_event_seq and event_seq <= current.last_event_seq:
+            frappe.log_error(
+                f"price.update: out-of-order event seq={event_seq} <= "
+                f"last_seq={current.last_event_seq} for vendor={vendor} "
+                f"product={product_id} — ignored",
+                "Price Update — Stale Event",
+            )
+            return
+
         doc = frappe.get_doc("Vendor Listing", existing)
         doc.price = new_price
         if compare_price > 0:
@@ -339,6 +495,10 @@ def _apply_price_update(payload):
         doc.status = "Active"
         doc.last_updated = now_datetime()
         doc.last_sync_at = now_datetime()
+        if event_id:
+            doc.last_event_id = event_id
+        if event_seq is not None:
+            doc.last_event_seq = event_seq
         doc.save(ignore_permissions=True)
     else:
         doc = frappe.new_doc("Vendor Listing")
@@ -359,7 +519,63 @@ def _apply_price_update(payload):
         doc.estimated_delivery_minutes = 20
         doc.last_updated = now_datetime()
         doc.last_sync_at = now_datetime()
+        doc.last_event_id = event_id or ""
+        doc.last_event_seq = event_seq or 0
         doc.insert(ignore_permissions=True)
+
+
+def _apply_barcode_register(payload):
+    """
+    Vendor tells the hub "I can supply this barcode" — pushed whenever an
+    ERPNext Item Barcode is added/updated on the vendor's site (see
+    saathimart-vendor/event_handlers/mapping.py::on_item_barcode_change).
+
+    This is what lets on_product_created look up which (usually few, often
+    zero) vendors actually carry a new product's barcode instead of
+    broadcasting product.new to every vendor site — see
+    Vendor Barcode Index and publisher.py::_broadcast_new_product.
+
+    payload keys: vendor, barcode
+    """
+    vendor = payload.get("vendor")
+    barcode = payload.get("barcode")
+    if not vendor or not barcode:
+        return
+    if not frappe.db.exists("Vendor", vendor):
+        frappe.log_error(f"barcode.register: unknown vendor {vendor}", "Barcode Register")
+        return
+
+    name = f"{vendor}-{barcode}"
+    if frappe.db.exists("Vendor Barcode Index", name):
+        frappe.db.set_value("Vendor Barcode Index", name, "last_registered", now_datetime())
+    else:
+        frappe.new_doc("Vendor Barcode Index", vendor=vendor, barcode=barcode,
+                        last_registered=now_datetime()).insert(ignore_permissions=True)
+
+    # The product might already exist on the hub — in that case this vendor
+    # doesn't need to wait for some *future* product.new broadcast, since
+    # there won't be one for a product created in the past. Match right now
+    # and notify just this one vendor.
+    product = frappe.db.get_value("Product", {"sku": barcode}, ["name", "product_name"], as_dict=True)
+    if product:
+        from saathimart.events.publisher import _notify_vendor_of_matching_product
+        _notify_vendor_of_matching_product(vendor, product.name, barcode, product.product_name)
+
+
+def _apply_barcode_unregister(payload):
+    """
+    Vendor removed a barcode from an ERPNext Item (see
+    saathimart-vendor/event_handlers/mapping.py::_sync_item_barcodes) —
+    remove the matching Vendor Barcode Index row so a future product with
+    this barcode doesn't notify a vendor who no longer actually carries it.
+
+    payload keys: vendor, barcode
+    """
+    vendor = payload.get("vendor")
+    barcode = payload.get("barcode")
+    if not vendor or not barcode:
+        return
+    frappe.db.delete("Vendor Barcode Index", {"vendor": vendor, "barcode": barcode})
 
 
 @frappe.whitelist(allow_guest=True)

@@ -110,6 +110,7 @@ def add_to_cart(session_id, product, qty=1, vendor=None, delivery_zone=None, cus
 
     rate = flt(vl[0].price)
     track_inventory = vl[0].track_inventory
+    allow_backorder = vl[0].allow_backorder
 
     cart = _get_or_create_cart(session_id)
 
@@ -120,12 +121,34 @@ def add_to_cart(session_id, product, qty=1, vendor=None, delivery_zone=None, cus
     cart.save(ignore_permissions=True)
 
     # If same product + same vendor already in cart, increment qty
-    for item in cart.items:
-        if item.product == product and (item.get("vendor") or None) == vendor:
-            item.qty += qty
-            item.amount = item.qty * item.rate
-            cart.save(ignore_permissions=True)
-            return cart.as_dict()
+    existing_item = next(
+        (item for item in cart.items
+         if item.product == product and (item.get("vendor") or None) == vendor),
+        None,
+    )
+    total_qty = qty + (existing_item.qty if existing_item else 0)
+
+    # Server-side availability guard — this vendor's Vendor Stock, not
+    # Vendor Listing.available_qty (that column is display-only, refreshed
+    # only at product-listing read time; Vendor Stock is the live number).
+    # A disabled "Add to Cart" button in a frontend is cosmetic without
+    # this: nothing stops a direct API call from adding an unavailable item
+    # otherwise, and the only enforcement before this was checkout's
+    # atomic_reserve_batch — which still remains the final, race-safe
+    # guard for the gap between adding to cart and actually checking out.
+    if track_inventory and not allow_backorder:
+        stock = _get_vendor_stock(vendor, product)
+        available = flt(stock["available_qty"])
+        if available <= 0:
+            frappe.throw(_("This product is currently out of stock at this vendor"))
+        if total_qty > available:
+            frappe.throw(_("Only {0} unit(s) available for this product at this vendor").format(available))
+
+    if existing_item:
+        existing_item.qty = total_qty
+        existing_item.amount = existing_item.qty * existing_item.rate
+        cart.save(ignore_permissions=True)
+        return cart.as_dict()
 
     cart.append("items", {
         "product": product,
@@ -196,13 +219,26 @@ def clear_cart(session_id):
 def get_cart_summary(session_id):
     """
     Lightweight cart summary for the cart badge and mini-cart.
-    Returns item count, subtotal, and line summaries.
+    Returns item count, subtotal, line summaries, and whether this cart
+    will split into multiple deliveries at checkout.
+
+    checkout() already returns a full vendor_fulfillments breakdown, but
+    only *after* the order is placed and paid for — by then it's too late
+    for the customer to have known upfront that a mixed-vendor cart arrives
+    as separate deliveries with separate ETAs. add_to_cart() silently
+    assigns a vendor per line (see saathimart.api.products.select_best_vendor),
+    so a cart can already be multi-vendor without the customer ever having
+    been told. This is the earliest point — cart preview, pre-checkout —
+    where that can actually be surfaced.
     """
     cart = _get_or_create_cart(session_id)
     items = []
     total_qty = 0
     subtotal = 0.0
+    vendors_in_cart = set()
     for item in cart.items:
+        if item.vendor:
+            vendors_in_cart.add(item.vendor)
         qty = flt(item.qty or 0)
         amount = flt(item.amount or 0)
         total_qty += qty
@@ -239,6 +275,8 @@ def get_cart_summary(session_id):
         "subtotal": round(subtotal, 2),
         "items": items,
         "status": cart.status,
+        "vendor_count": len(vendors_in_cart),
+        "will_split_into_multiple_deliveries": len(vendors_in_cart) > 1,
     }
 
 

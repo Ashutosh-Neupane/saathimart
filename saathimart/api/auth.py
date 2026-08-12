@@ -52,7 +52,6 @@ def extend_bootinfo(bootinfo):
         "loyalty_enabled": bool(getattr(s, "enable_loyalty", 0)),
         "coupons_enabled": bool(getattr(s, "enable_coupons", 0)),
         "esewa_enabled":   bool(getattr(s, "enable_esewa", 0)),
-        "khalti_enabled":  bool(getattr(s, "enable_khalti", 0)),
         "sandbox_mode":    bool(getattr(s, "payment_sandbox_mode", 0)),
     }
 

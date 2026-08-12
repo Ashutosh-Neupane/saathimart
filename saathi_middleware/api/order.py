@@ -83,17 +83,29 @@ def create_order(**payload):
 			"delivery_longitude": payload.get("delivery_longitude"),
 			"delivery_charges": payload.get("delivery_charges") or 0,
 			"placed_at": now_datetime(),
+			"coupon_code": payload.get("coupon_code") or "",
+			"loyalty_points_redeemed": flt(payload.get("loyalty_points") or 0),
 			"items": order_items,
 		}
 	)
 	order.insert(ignore_permissions=True)
 	frappe.db.commit()
 
+	if order.coupon_code:
+		try:
+			from saathi_middleware.saathi_middleware.doctype.sm_coupon.sm_coupon import increment_coupon_usage
+			increment_coupon_usage(order.coupon_code, user=payload.get("customer_email"), order=order.name)
+		except Exception:
+			pass
+
 	if payment_mode.is_online:
 		return {
 			"order": order.name,
 			"status": "awaiting_payment",
 			"grand_total": order.grand_total,
+			"coupon_discount": order.coupon_discount,
+			"loyalty_discount": order.loyalty_discount,
+			"loyalty_points_earned": order.loyalty_points_earned,
 		}
 
 	frappe.enqueue(
@@ -106,6 +118,9 @@ def create_order(**payload):
 		"order": order.name,
 		"status": "placed",
 		"grand_total": order.grand_total,
+		"coupon_discount": order.coupon_discount,
+		"loyalty_discount": order.loyalty_discount,
+		"loyalty_points_earned": order.loyalty_points_earned,
 	}
 
 
@@ -113,7 +128,8 @@ def create_order(**payload):
 @rate_limit(key="checkout", limit=20, seconds=60)
 def checkout(session_id, customer_name, customer_mobile, delivery_address,
              payment_mode, delivery_city=None, delivery_latitude=None,
-             delivery_longitude=None, delivery_charges=0, customer_email=None):
+             delivery_longitude=None, delivery_charges=0, coupon_code=None,
+             loyalty_points=0, customer_email=None):
 	cart = frappe.db.get_value(
 		"SM Cart", {"session_id": session_id, "status": "Active"}, "name"
 	)
@@ -130,6 +146,10 @@ def checkout(session_id, customer_name, customer_mobile, delivery_address,
 		"delivery_latitude": delivery_latitude,
 		"delivery_longitude": delivery_longitude,
 	})
+
+	if coupon_code:
+		from saathi_middleware.saathi_middleware.doctype.sm_coupon.sm_coupon import validate_coupon
+		validate_coupon(coupon_code, flt(cart_doc.subtotal or 0), user=customer_email, franchise=franchise.name)
 
 	order_items = []
 	for item in cart_doc.items:
@@ -154,10 +174,19 @@ def checkout(session_id, customer_name, customer_mobile, delivery_address,
 		"delivery_longitude": flt(delivery_longitude) if delivery_longitude else None,
 		"delivery_charges": flt(delivery_charges) or 0,
 		"placed_at": now_datetime(),
+		"coupon_code": coupon_code or "",
+		"loyalty_points_redeemed": flt(loyalty_points) or 0,
 		"items": order_items,
 	})
 	order.insert(ignore_permissions=True)
 	frappe.db.commit()
+
+	if order.coupon_code:
+		try:
+			from saathi_middleware.saathi_middleware.doctype.sm_coupon.sm_coupon import increment_coupon_usage
+			increment_coupon_usage(order.coupon_code, user=customer_email, order=order.name)
+		except Exception:
+			pass
 
 	cart_doc.db_set("status", "CheckedOut")
 
@@ -166,6 +195,9 @@ def checkout(session_id, customer_name, customer_mobile, delivery_address,
 			"order": order.name,
 			"status": "awaiting_payment",
 			"grand_total": order.grand_total,
+			"coupon_discount": order.coupon_discount,
+			"loyalty_discount": order.loyalty_discount,
+			"loyalty_points_earned": order.loyalty_points_earned,
 		}
 
 	frappe.enqueue(
@@ -178,6 +210,9 @@ def checkout(session_id, customer_name, customer_mobile, delivery_address,
 		"order": order.name,
 		"status": "placed",
 		"grand_total": order.grand_total,
+		"coupon_discount": order.coupon_discount,
+		"loyalty_discount": order.loyalty_discount,
+		"loyalty_points_earned": order.loyalty_points_earned,
 	}
 
 

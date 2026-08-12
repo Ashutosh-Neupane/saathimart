@@ -1,0 +1,26 @@
+{
+  "name": "SM Cart",
+  "module": "Saathi Middleware",
+  "doctype": "DocType",
+  "autoname": "SM-CART-.YYYY.-.#####",
+  "fields": [
+   {"fieldname": "session_id", "fieldtype": "Data", "label": "Session ID", "unique": 1},
+   {"fieldname": "user", "fieldtype": "Link", "label": "User", "options": "User"},
+   {"fieldname": "source_site", "fieldtype": "Data", "label": "Source Site"},
+   {"fieldname": "col_break_1", "fieldtype": "Column Break"},
+   {"fieldname": "status", "fieldtype": "Select", "label": "Status",
+    "options": "Active\nCheckedOut\nAbandoned\nExpired", "default": "Active"},
+   {"fieldname": "expires_at", "fieldtype": "Datetime", "label": "Expires At"},
+   {"fieldname": "customer_lat", "fieldtype": "Float", "label": "Customer Latitude", "precision": 9},
+   {"fieldname": "customer_lng", "fieldtype": "Float", "label": "Customer Longitude", "precision": 9},
+   {"fieldname": "section_items", "fieldtype": "Section Break", "label": "Items"},
+   {"fieldname": "items", "fieldtype": "Table", "label": "Items", "options": "SM Cart Item"},
+   {"fieldname": "section_totals", "fieldtype": "Section Break", "label": "Totals"},
+   {"fieldname": "subtotal", "fieldtype": "Currency", "label": "Subtotal", "read_only": 1},
+   {"fieldname": "coupon_code", "fieldtype": "Data", "label": "Coupon Code"}
+  ],
+  "permissions": [
+   {"role": "SM Admin", "read": 1, "write": 1, "create": 1, "delete": 1},
+   {"role": "Guest", "read": 1, "write": 1, "create": 1}
+  ]
+}

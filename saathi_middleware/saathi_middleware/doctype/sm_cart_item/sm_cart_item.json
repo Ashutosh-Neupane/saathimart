@@ -1,0 +1,19 @@
+{
+  "name": "SM Cart Item",
+  "module": "Saathi Middleware",
+  "doctype": "DocType",
+  "istable": 1,
+  "fields": [
+   {"fieldname": "product", "fieldtype": "Link", "label": "Product",
+    "options": "Saathi Item", "reqd": 1, "in_list_view": 1},
+   {"fieldname": "product_name", "fieldtype": "Data", "label": "Product Name",
+    "fetch_from": "product.item_name", "in_list_view": 1},
+   {"fieldname": "franchise", "fieldtype": "Link", "label": "Franchise",
+    "options": "Franchise", "in_list_view": 1},
+   {"fieldname": "qty", "fieldtype": "Float", "label": "Qty",
+    "reqd": 1, "default": "1", "in_list_view": 1},
+   {"fieldname": "rate", "fieldtype": "Currency", "label": "Rate",
+    "in_list_view": 1},
+   {"fieldname": "amount", "fieldtype": "Currency", "label": "Amount", "read_only": 1}
+  ]
+}

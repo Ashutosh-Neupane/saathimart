@@ -314,6 +314,11 @@ fixtures = [
 has_permission = {
     "Saathi Order":    "saathi_middleware.api.auth.has_order_permission",
     "SM Cart":         "saathi_middleware.api.auth.has_cart_permission",
+    "SM Address":      "saathi_middleware.api.auth.has_address_permission",
+}
+
+permission_query_conditions = {
+    "SM Address": "saathi_middleware.api.auth.get_address_permission_query_conditions",
 }
 
 # ── Boot info ─────────────────────────────────────────────────────────

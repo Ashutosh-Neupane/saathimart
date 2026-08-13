@@ -1,0 +1,38 @@
+{
+ "custom_fields": [
+  {
+   "fieldname": "sb_saathi_notifications",
+   "fieldtype": "Section Break",
+   "label": "Saathi Notification Preferences",
+   "insert_after": "form_navigation_buttons",
+   "dt": "User"
+  },
+  {
+   "fieldname": "notify_order_updates",
+   "fieldtype": "Check",
+   "label": "Notify: Order Updates",
+   "default": "1",
+   "insert_after": "sb_saathi_notifications",
+   "dt": "User"
+  },
+  {
+   "fieldname": "notify_promotions",
+   "fieldtype": "Check",
+   "label": "Notify: Promotions",
+   "default": "0",
+   "insert_after": "notify_order_updates",
+   "dt": "User"
+  },
+  {
+   "fieldname": "notify_delivery_reminders",
+   "fieldtype": "Check",
+   "label": "Notify: Delivery Reminders",
+   "default": "1",
+   "insert_after": "notify_promotions",
+   "dt": "User"
+  }
+ ],
+ "property_setters": [],
+ "doctype": "User",
+ "sync_on_migrate": 1
+}

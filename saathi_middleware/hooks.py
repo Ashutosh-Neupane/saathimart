@@ -152,6 +152,7 @@ app_license = "mit"
 scheduler_events = {
 	"cron": {
 		"*/5 * * * *": ["saathi_middleware.api.order.retry_failed_order_syncs"],
+		"*/10 * * * *": ["saathi_middleware.api.order.poll_franchise_order_status"],
 	},
 }
 

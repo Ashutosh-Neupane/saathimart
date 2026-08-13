@@ -23,4 +23,4 @@ class SaathiOrder(Document):
 			row.amount = flt(row.qty) * flt(row.rate)
 			subtotal += row.amount
 		self.subtotal = subtotal
-		self.grand_total = subtotal + flt(self.delivery_charges)
+		self.grand_total = subtotal - flt(self.discount_amount) + flt(self.delivery_charges)

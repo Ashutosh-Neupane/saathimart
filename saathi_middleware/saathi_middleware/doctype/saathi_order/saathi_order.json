@@ -12,6 +12,7 @@
   "column_break_header",
   "payment_mode",
   "payment_status",
+  "cancel_reason",
   "section_break_customer",
   "customer_name",
   "customer_mobile",
@@ -28,6 +29,8 @@
   "items",
   "column_break_totals",
   "subtotal",
+  "coupon_code",
+  "discount_amount",
   "grand_total",
   "section_break_erpnext_sync",
   "sync_status",
@@ -81,6 +84,12 @@
    "options": "Pending\nPaid\nCOD Pending\nFailed\nRefunded",
    "default": "Pending",
    "in_list_view": 1
+  },
+  {
+   "fieldname": "cancel_reason",
+   "fieldtype": "Small Text",
+   "label": "Cancel Reason",
+   "read_only": 1
   },
   {
    "fieldname": "section_break_customer",
@@ -169,6 +178,21 @@
    "fieldtype": "Currency",
    "label": "Subtotal",
    "read_only": 1
+  },
+  {
+   "fieldname": "coupon_code",
+   "fieldtype": "Link",
+   "options": "Saathi Coupon",
+   "label": "Coupon Code",
+   "read_only": 1
+  },
+  {
+   "fieldname": "discount_amount",
+   "fieldtype": "Currency",
+   "label": "Discount Amount",
+   "read_only": 1,
+   "default": "0",
+   "description": "Computed server-side against the item subtotal, before delivery charges. Never trusted from the client."
   },
   {
    "fieldname": "grand_total",

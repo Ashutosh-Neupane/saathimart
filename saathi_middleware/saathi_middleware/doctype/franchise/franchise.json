@@ -22,6 +22,11 @@
   "latitude",
   "longitude",
   "serviceable_radius_km",
+  "section_break_delivery_charge",
+  "delivery_base_charge",
+  "free_delivery_upto_km",
+  "column_break_delivery_charge",
+  "delivery_per_km_rate",
   "section_break_contact",
   "contact_person",
   "contact_phone",
@@ -32,6 +37,8 @@
   "column_break_erpnext",
   "erpnext_default_warehouse",
   "erpnext_selling_price_list",
+  "erpnext_delivery_charge_account",
+  "erpnext_taxes_and_charges_template",
   "section_break_erpnext_auth",
   "erpnext_api_key",
   "column_break_erpnext_auth",
@@ -128,6 +135,35 @@
    "default": "5"
   },
   {
+   "fieldname": "section_break_delivery_charge",
+   "fieldtype": "Section Break",
+   "label": "Delivery Charge"
+  },
+  {
+   "fieldname": "delivery_base_charge",
+   "fieldtype": "Currency",
+   "label": "Base Delivery Charge",
+   "default": "0",
+   "description": "Flat charge added to every order from this franchise, before the per-km rate."
+  },
+  {
+   "fieldname": "free_delivery_upto_km",
+   "fieldtype": "Float",
+   "label": "Free Delivery Up To (km)",
+   "default": "0",
+   "description": "Distance from the franchise within which no per-km charge applies. The base charge still applies."
+  },
+  {
+   "fieldname": "column_break_delivery_charge",
+   "fieldtype": "Column Break"
+  },
+  {
+   "fieldname": "delivery_per_km_rate",
+   "fieldtype": "Currency",
+   "label": "Per KM Rate (Beyond Free Distance)",
+   "default": "0"
+  },
+  {
    "fieldname": "section_break_contact",
    "fieldtype": "Section Break",
    "label": "Contact"
@@ -179,6 +215,18 @@
    "fieldname": "erpnext_selling_price_list",
    "fieldtype": "Data",
    "label": "Selling Price List"
+  },
+  {
+   "fieldname": "erpnext_delivery_charge_account",
+   "fieldtype": "Data",
+   "label": "Delivery Charge Account",
+   "description": "Income account on the franchise's site that the delivery charge is booked against on each Sales Order (added as an Actual-type Sales Taxes and Charges row, not a stock item). Without this set, delivery_charges is still shown to the customer but never reaches the franchise's own books."
+  },
+  {
+   "fieldname": "erpnext_taxes_and_charges_template",
+   "fieldtype": "Data",
+   "label": "Taxes and Charges Template (VAT)",
+   "description": "Exact Sales Taxes and Charges Template name on the franchise's own site, e.g. \"Nepal Tax - SRPL\". Must already have Included in Print Rate checked if this franchise's item prices are VAT-inclusive shelf prices (the normal case). Left blank means no VAT row is added -- only set this once the franchise's own template is confirmed correct, since this feeds their CBMS/IRD reporting directly."
   },
   {
    "fieldname": "section_break_erpnext_auth",

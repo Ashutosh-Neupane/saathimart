@@ -216,6 +216,77 @@ def checkout(session_id, customer_name, customer_mobile, delivery_address,
 	}
 
 
+@frappe.whitelist(allow_guest=True)
+@rate_limit(key="calculate_cart_totals", limit=60, seconds=60)
+def calculate_cart_totals(session_id, coupon_code=None, loyalty_points=0, delivery_charges=0):
+	"""
+	Preview what checkout() would actually charge for the current cart —
+	same subtotal/coupon/loyalty pipeline, but read-only: no order is
+	created, no coupon usage incremented, no points deducted. Safe to call
+	on every keystroke while the customer types a coupon code or a
+	points-to-redeem amount on the cart page.
+	"""
+	cart = frappe.db.get_value(
+		"SM Cart", {"session_id": session_id, "status": "Active"}, "name"
+	)
+	if not cart:
+		frappe.throw("Cart not found or already checked out")
+
+	cart_doc = frappe.get_doc("SM Cart", cart)
+	if not cart_doc.items:
+		frappe.throw("Cart is empty")
+
+	subtotal = sum(flt(item.qty) * flt(item.rate) for item in cart_doc.items)
+	delivery_charges = flt(delivery_charges) or 0
+	user = frappe.session.user if frappe.session.user != "Guest" else None
+
+	coupon_discount = 0.0
+	coupon_error = None
+	applied_coupon_code = None
+	if coupon_code:
+		franchise = cart_doc.items[0].franchise
+		try:
+			from saathi_middleware.saathi_middleware.doctype.sm_coupon.sm_coupon import validate_coupon
+			result = validate_coupon(coupon_code, subtotal, user=user, franchise=franchise)
+			coupon_discount = flt(result.get("discount", 0))
+			if result.get("free_delivery"):
+				delivery_charges = 0
+			applied_coupon_code = coupon_code
+		except frappe.ValidationError as e:
+			coupon_error = str(e)
+
+	loyalty_discount = 0.0
+	loyalty_points_applied = 0.0
+	loyalty_error = None
+	loyalty_points = flt(loyalty_points)
+	if loyalty_points:
+		if not user:
+			loyalty_error = "Login required to redeem points"
+		else:
+			from saathi_middleware.api.loyalty import calculate_redemption_discount
+			result = calculate_redemption_discount(user, loyalty_points, subtotal)
+			if result.get("ok"):
+				loyalty_discount = flt(result.get("discount", 0))
+				loyalty_points_applied = flt(result.get("points_used", 0))
+			else:
+				loyalty_error = result.get("error")
+
+	grand_total = subtotal + delivery_charges - coupon_discount - loyalty_discount
+
+	return {
+		"subtotal": round(subtotal, 2),
+		"delivery_charges": round(delivery_charges, 2),
+		"coupon_code": applied_coupon_code,
+		"coupon_discount": round(coupon_discount, 2),
+		"coupon_error": coupon_error,
+		"loyalty_points_requested": loyalty_points,
+		"loyalty_points_applied": round(loyalty_points_applied, 2),
+		"loyalty_discount": round(loyalty_discount, 2),
+		"loyalty_error": loyalty_error,
+		"grand_total": round(grand_total, 2),
+	}
+
+
 @frappe.whitelist()
 def list_orders(customer_mobile=None, page=1, page_size=20):
 	page = max(1, int(page))

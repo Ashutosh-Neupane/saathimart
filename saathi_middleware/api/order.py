@@ -5,6 +5,7 @@ import frappe
 from frappe.rate_limiter import rate_limit
 from frappe.utils import flt, now_datetime, today
 
+from saathi_middleware.api.cart import resolve_item_code
 from saathi_middleware.utils import erpnext_client
 
 
@@ -35,7 +36,6 @@ def get_order_status(order, customer_mobile):
 		order,
 		[
 			"name",
-			"order_status",
 			"payment_status",
 			"payment_mode",
 			"customer_mobile",
@@ -46,7 +46,6 @@ def get_order_status(order, customer_mobile):
 		],
 		as_dict=True,
 	)
-	# Same response for "doesn't exist" and "web doesn't match" -- an order ID alone must never be enough to confirm it exists or see whose it is.
 	if not order_doc or order_doc.customer_mobile != customer_mobile:
 		frappe.throw("Order not found", frappe.DoesNotExistError)
 	del order_doc["customer_mobile"]
@@ -238,8 +237,11 @@ def create_order(**payload):
 		frappe.db.commit()
 
 	if payment_mode.is_online:
-		# Online payment isn't wired up yet: order stays Placed/Pending until a (future) payment confirmation flips payment_status to Paid and pushes it.
-		return {"order": order.name, "status": "awaiting_payment", "grand_total": order.grand_total}
+		return {
+			"order": order.name,
+			"status": "awaiting_payment",
+			"grand_total": order.grand_total,
+		}
 
 	frappe.enqueue(
 		"saathi_middleware.api.order.push_order_job",
@@ -247,7 +249,119 @@ def create_order(**payload):
 		order_name=order.name,
 		enqueue_after_commit=True,
 	)
-	return {"order": order.name, "status": "placed", "grand_total": order.grand_total}
+	return {
+		"order": order.name,
+		"status": "placed",
+		"grand_total": order.grand_total,
+	}
+
+
+@frappe.whitelist(allow_guest=True)
+@rate_limit(key="checkout", limit=20, seconds=60)
+def checkout(session_id, customer_name, customer_mobile, delivery_address,
+             payment_mode, delivery_city=None, delivery_latitude=None,
+             delivery_longitude=None, delivery_charges=0, customer_email=None):
+	cart = frappe.db.get_value(
+		"SM Cart", {"session_id": session_id, "status": "Active"}, "name"
+	)
+	if not cart:
+		frappe.throw("Cart not found or already checked out")
+
+	cart_doc = frappe.get_doc("SM Cart", cart)
+	if not cart_doc.items:
+		frappe.throw("Cart is empty")
+
+	payment = _get_payment_mode(payment_mode)
+	franchise = _get_serviceable_franchise({
+		"franchise": cart_doc.items[0].franchise if cart_doc.items else None,
+		"delivery_latitude": delivery_latitude,
+		"delivery_longitude": delivery_longitude,
+	})
+
+	order_items = []
+	for item in cart_doc.items:
+		order_items.append({
+			"item_code": resolve_item_code(item.product, item.franchise),
+			"item_name": item.product_name,
+			"franchise": item.franchise or franchise.name,
+			"qty": flt(item.qty),
+			"rate": flt(item.rate),
+		})
+
+	order = frappe.get_doc({
+		"doctype": "Saathi Order",
+		"franchise": franchise.name,
+		"payment_mode": payment.name,
+		"customer_name": customer_name,
+		"customer_mobile": customer_mobile,
+		"customer_email": customer_email or "",
+		"delivery_address": delivery_address,
+		"delivery_city": delivery_city or "",
+		"delivery_latitude": flt(delivery_latitude) if delivery_latitude else None,
+		"delivery_longitude": flt(delivery_longitude) if delivery_longitude else None,
+		"delivery_charges": flt(delivery_charges) or 0,
+		"placed_at": now_datetime(),
+		"items": order_items,
+	})
+	order.insert(ignore_permissions=True)
+	frappe.db.commit()
+
+	cart_doc.db_set("status", "CheckedOut")
+
+	if payment.is_online:
+		return {
+			"order": order.name,
+			"status": "awaiting_payment",
+			"grand_total": order.grand_total,
+		}
+
+	frappe.enqueue(
+		"saathi_middleware.api.order.push_order_job",
+		queue="short",
+		order_name=order.name,
+		enqueue_after_commit=True,
+	)
+	return {
+		"order": order.name,
+		"status": "placed",
+		"grand_total": order.grand_total,
+	}
+
+
+@frappe.whitelist()
+def list_orders(customer_mobile=None, page=1, page_size=20):
+	page = max(1, int(page))
+	page_size = min(100, max(1, int(page_size)))
+
+	# Staff may look up any customer's orders by mobile for support; regular
+	# customers are scoped to their own session — list_orders uses
+	# frappe.get_list (permission-checked), but the has_order_permission hook
+	# only gates single-doc reads, not list queries, so accepting an
+	# arbitrary customer_mobile here would let any logged-in customer browse
+	# anyone else's order history just by guessing a mobile number.
+	if {"SM Admin", "SM Vendor"} & set(frappe.get_roles()):
+		if not customer_mobile:
+			frappe.throw("customer_mobile is required")
+		filters = {"customer_mobile": customer_mobile}
+	else:
+		if frappe.session.user == "Guest":
+			frappe.throw("Not logged in", frappe.PermissionError)
+		filters = {"customer_email": frappe.session.user}
+
+	orders = frappe.get_list(
+		"Saathi Order",
+		filters=filters,
+		fields=["name", "customer_name", "payment_status", "payment_mode",
+		        "grand_total", "creation", "sync_status"],
+		limit_start=(page - 1) * page_size,
+		limit=page_size,
+		order_by="creation desc",
+	)
+
+	for o in orders:
+		o["item_count"] = frappe.db.count("Saathi Order Item", {"parent": o["name"]})
+
+	return orders
 
 
 def _get_payment_mode(mode_name):
@@ -372,7 +486,6 @@ def _attempt_push(order, log):
 				order.delivery_charges,
 				order.discount_amount,
 			)
-			order.order_status = "Pushed"
 			order.save(ignore_permissions=True)
 			frappe.db.commit()
 
@@ -390,7 +503,6 @@ def _attempt_push(order, log):
 				)
 				order.payment_status = "COD Pending"
 
-		order.order_status = "Confirmed"
 		order.sync_status = "Success"
 		order.save(ignore_permissions=True)
 

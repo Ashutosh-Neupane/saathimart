@@ -51,21 +51,13 @@
    "in_list_view": 1,
    "description": "A single order is always fulfilled by exactly one franchise."
   },
-  {
-   "fieldname": "order_status",
-   "fieldtype": "Select",
-   "label": "Order Status",
-   "options": "Placed\nPushed\nConfirmed\nOut for Delivery\nDelivered\nCancelled",
-   "default": "Placed",
-   "in_list_view": 1
-  },
-  {
-   "fieldname": "placed_at",
-   "fieldtype": "Datetime",
-   "label": "Placed At",
-   "default": "now",
-   "in_list_view": 1
-  },
+   {
+    "fieldname": "placed_at",
+    "fieldtype": "Datetime",
+    "label": "Placed At",
+    "default": "now",
+    "in_list_view": 1
+   },
   {
    "fieldname": "column_break_header",
    "fieldtype": "Column Break"
@@ -269,6 +261,25 @@
    "role": "System Manager",
    "share": 1,
    "write": 1
+  },
+  {
+   "create": 1,
+   "email": 1,
+   "export": 1,
+   "print": 1,
+   "read": 1,
+   "report": 1,
+   "role": "SM Admin",
+   "write": 1
+  },
+  {
+   "read": 1,
+   "report": 1,
+   "role": "SM Vendor"
+  },
+  {
+   "read": 1,
+   "role": "SM Customer"
   }
  ],
  "sort_field": "creation",

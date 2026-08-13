@@ -180,6 +180,7 @@ doc_events = {
 scheduler_events = {
 	"cron": {
 		"*/5 * * * *": ["saathi_middleware.api.order.retry_failed_order_syncs"],
+		"*/10 * * * *": ["saathi_middleware.api.payments.poll_pending_esewa_orders"],
 		"0 2 * * *": ["saathi_middleware.api.auth_full.cleanup_expired_verifications"],
 		"0 3 * * *": ["saathi_middleware.api.loyalty.expire_old_points"],
 	},

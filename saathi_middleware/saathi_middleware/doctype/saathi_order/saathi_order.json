@@ -12,6 +12,8 @@
    "payment_mode",
    "payment_status",
    "status",
+   "payment_reference",
+   "esewa_transaction_uid",
    "section_break_customer",
    "customer_name",
    "customer_mobile",
@@ -89,6 +91,18 @@
    "default": "Pending",
    "in_list_view": 1,
    "description": "Customer-facing fulfillment status, distinct from payment_status/sync_status."
+  },
+  {
+   "fieldname": "payment_reference",
+   "fieldtype": "Data",
+   "label": "Payment Reference",
+   "read_only": 1
+  },
+  {
+   "fieldname": "esewa_transaction_uid",
+   "fieldtype": "Data",
+   "label": "eSewa Transaction UID",
+   "read_only": 1
   },
   {
    "fieldname": "section_break_customer",

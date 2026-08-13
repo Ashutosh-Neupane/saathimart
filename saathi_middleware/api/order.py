@@ -10,6 +10,26 @@ from saathi_middleware.api.constants import VALID_ORDER_TRANSITIONS
 from saathi_middleware.utils import erpnext_client
 
 
+def _send_order_confirmation_email(order):
+	"""
+	Best-effort order confirmation email — never blocks or fails checkout.
+	Called for COD/offline orders right after insert; online-payment orders
+	get this from the payment-success callback instead (api.payments),
+	once the payment is actually confirmed rather than merely initiated.
+	"""
+	if not order.customer_email:
+		return
+	try:
+		from saathi_middleware.api.mailing import send_order_confirmation
+		items_summary = [
+			{"product_name": i.item_name, "qty": i.qty, "rate": i.rate}
+			for i in order.items
+		]
+		send_order_confirmation(order.customer_email, order.name, order.grand_total, items_summary)
+	except Exception:
+		frappe.log_error(frappe.get_traceback(), f"Order confirmation email failed: {order.name}")
+
+
 def _haversine_km(lat1, lon1, lat2, lon2):
 	r = 6371
 	dlat = radians(lat2 - lat1)
@@ -198,6 +218,8 @@ def create_order(**payload):
 			"loyalty_points_earned": order.loyalty_points_earned,
 		}
 
+	_send_order_confirmation_email(order)
+
 	frappe.enqueue(
 		"saathi_middleware.api.order.push_order_job",
 		queue="short",
@@ -289,6 +311,8 @@ def checkout(session_id, customer_name, customer_mobile, delivery_address,
 			"loyalty_discount": order.loyalty_discount,
 			"loyalty_points_earned": order.loyalty_points_earned,
 		}
+
+	_send_order_confirmation_email(order)
 
 	frappe.enqueue(
 		"saathi_middleware.api.order.push_order_job",

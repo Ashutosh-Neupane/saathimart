@@ -7,7 +7,7 @@
 
 ## Test 1: Signup
 ```bash
-curl -s -X POST http://localhost:8002/api/method/saathimart.api.auth_full.signup \
+curl -s -X POST http://localhost:8002/api/method/saathi_middleware.api.auth_full.signup \
   -H "Host: saathi-mw.localhost" \
   -H "Content-Type: application/json" \
   -d '{"email":"testuser@example.com","full_name":"Test User","contact":"9876543210","password":"Test@1234","phone":"9876543210"}'
@@ -23,7 +23,7 @@ Expected: `[dev] OTP for testuser@example.com (signup): 123456`
 ## Test 3: Verify OTP
 Replace `123456` with actual OTP from logs.
 ```bash
-curl -s -X POST http://localhost:8002/api/method/saathimart.api.auth_full.verify_signup_otp \
+curl -s -X POST http://localhost:8002/api/method/saathi_middleware.api.auth_full.verify_signup_otp \
   -H "Host: saathi-mw.localhost" \
   -H "Content-Type: application/json" \
   -d '{"email":"testuser@example.com","otp":"123456"}'
@@ -32,7 +32,7 @@ Expected: `{"message":"Account verified successfully","email":"testuser@example.
 
 ## Test 4: Login
 ```bash
-curl -s -X POST http://localhost:8002/api/method/saathimart.api.auth_full.login \
+curl -s -X POST http://localhost:8002/api/method/saathi_middleware.api.auth_full.login \
   -H "Host: saathi-mw.localhost" \
   -H "Content-Type: application/json" \
   -d '{"usr":"testuser@example.com","pwd":"Test@1234"}'

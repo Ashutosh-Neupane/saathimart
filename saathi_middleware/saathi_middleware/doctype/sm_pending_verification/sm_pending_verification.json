@@ -10,7 +10,6 @@
     {"fieldname": "expires_at", "fieldtype": "Datetime", "label": "Expires At"}
   ],
   "permissions": [
-    {"role": "SM Admin", "read": 1, "write": 1, "create": 1, "delete": 1},
-    {"role": "Guest", "read": 1, "write": 1, "create": 1}
+    {"role": "SM Admin", "read": 1, "write": 1, "create": 1, "delete": 1}
   ]
 }

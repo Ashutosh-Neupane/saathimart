@@ -20,7 +20,6 @@
    {"fieldname": "coupon_code", "fieldtype": "Data", "label": "Coupon Code"}
   ],
   "permissions": [
-   {"role": "SM Admin", "read": 1, "write": 1, "create": 1, "delete": 1},
-   {"role": "Guest", "read": 1, "write": 1, "create": 1}
+   {"role": "SM Admin", "read": 1, "write": 1, "create": 1, "delete": 1}
   ]
 }

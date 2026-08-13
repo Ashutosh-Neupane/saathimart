@@ -146,6 +146,9 @@ def update_order_status(order, status):
 	doc.save(ignore_permissions=True)
 	frappe.db.commit()
 
+	from saathi_middleware.api.notifications import create_order_status_notification
+	create_order_status_notification(doc, status)
+
 	return {"ok": True, "status": doc.status}
 
 

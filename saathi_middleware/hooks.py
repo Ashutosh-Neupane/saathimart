@@ -138,21 +138,17 @@ app_license = "mit"
 # ---------------
 # Hook on document methods and events
 
-# doc_events = {
-# 	"*": {
-# 		"on_update": "method",
-# 		"on_cancel": "method",
-# 		"on_trash": "method"
-# 	}
-# }
-
 # Scheduled Tasks
 # ---------------
 
 scheduler_events = {
 	"cron": {
 		"*/5 * * * *": ["saathi_middleware.api.order.retry_failed_order_syncs"],
+		"0 2 * * *": ["saathi_middleware.api.auth_full.cleanup_expired_verifications"],
 	},
+	"hourly": [
+		"saathi_middleware.api.cart.expire_abandoned_carts",
+	],
 }
 
 # scheduler_events = {
@@ -261,4 +257,22 @@ scheduler_events = {
 # ------------
 # List of apps whose translatable strings should be excluded from this app's translations.
 # ignore_translatable_strings_from = []
+
+# ── Fixtures ──────────────────────────────────────────────────────────
+fixtures = [
+    {"dt": "Role", "filters": [["name", "in", [
+        "SM Admin", "SM Vendor", "SM Customer",
+    ]]]},
+    {"dt": "SM Pending Verification"},
+    {"dt": "SM Cart"},
+]
+
+# ── Permissions ───────────────────────────────────────────────────────────────
+has_permission = {
+    "Saathi Order":    "saathi_middleware.api.auth.has_order_permission",
+    "SM Cart":         "saathi_middleware.api.auth.has_cart_permission",
+}
+
+# ── Boot info ─────────────────────────────────────────────────────────
+extend_bootinfo = "saathi_middleware.api.auth.extend_bootinfo"
 

@@ -5,39 +5,38 @@
  "creation": "2026-08-10 00:00:00.000000",
  "doctype": "DocType",
  "engine": "InnoDB",
- "field_order": [
-  "franchise",
-  "order_status",
-  "placed_at",
-  "column_break_header",
-  "payment_mode",
-  "payment_status",
-  "section_break_customer",
-  "customer_name",
-  "customer_mobile",
-  "column_break_customer",
-  "customer_email",
-  "section_break_delivery",
-  "delivery_address",
-  "delivery_city",
-  "column_break_delivery",
-  "delivery_latitude",
-  "delivery_longitude",
-  "delivery_charges",
-  "section_break_items",
-  "items",
-  "column_break_totals",
-  "subtotal",
-  "grand_total",
-  "section_break_erpnext_sync",
-  "sync_status",
-  "erpnext_customer",
-  "erpnext_address",
-  "erpnext_sales_order",
-  "column_break_erpnext_sync",
-  "erpnext_sales_invoice",
-  "erpnext_delivery_note"
- ],
+  "field_order": [
+   "franchise",
+   "placed_at",
+   "column_break_header",
+   "payment_mode",
+   "payment_status",
+   "section_break_customer",
+   "customer_name",
+   "customer_mobile",
+   "column_break_customer",
+   "customer_email",
+   "section_break_delivery",
+   "delivery_address",
+   "delivery_city",
+   "column_break_delivery",
+   "delivery_latitude",
+   "delivery_longitude",
+   "delivery_charges",
+   "section_break_items",
+   "items",
+   "column_break_totals",
+   "subtotal",
+   "grand_total",
+   "section_break_erpnext_sync",
+   "sync_status",
+   "erpnext_customer",
+   "erpnext_address",
+   "erpnext_sales_order",
+   "column_break_erpnext_sync",
+   "erpnext_sales_invoice",
+   "erpnext_delivery_note"
+  ],
  "fields": [
   {
    "fieldname": "franchise",
@@ -48,21 +47,13 @@
    "in_list_view": 1,
    "description": "A single order is always fulfilled by exactly one franchise."
   },
-  {
-   "fieldname": "order_status",
-   "fieldtype": "Select",
-   "label": "Order Status",
-   "options": "Placed\nPushed\nConfirmed\nOut for Delivery\nDelivered\nCancelled",
-   "default": "Placed",
-   "in_list_view": 1
-  },
-  {
-   "fieldname": "placed_at",
-   "fieldtype": "Datetime",
-   "label": "Placed At",
-   "default": "now",
-   "in_list_view": 1
-  },
+   {
+    "fieldname": "placed_at",
+    "fieldtype": "Datetime",
+    "label": "Placed At",
+    "default": "now",
+    "in_list_view": 1
+   },
   {
    "fieldname": "column_break_header",
    "fieldtype": "Column Break"
@@ -170,18 +161,18 @@
    "label": "Subtotal",
    "read_only": 1
   },
-  {
-   "fieldname": "grand_total",
-   "fieldtype": "Currency",
-   "label": "Grand Total",
-   "read_only": 1,
-   "in_list_view": 1
-  },
-  {
-   "fieldname": "section_break_erpnext_sync",
-   "fieldtype": "Section Break",
-   "label": "ERPNext Sync"
-  },
+   {
+    "fieldname": "grand_total",
+    "fieldtype": "Currency",
+    "label": "Grand Total",
+    "read_only": 1,
+    "in_list_view": 1
+   },
+   {
+    "fieldname": "section_break_erpnext_sync",
+    "fieldtype": "Section Break",
+    "label": "ERPNext Sync"
+   },
   {
    "fieldname": "sync_status",
    "fieldtype": "Select",
@@ -245,6 +236,25 @@
    "role": "System Manager",
    "share": 1,
    "write": 1
+  },
+  {
+   "create": 1,
+   "email": 1,
+   "export": 1,
+   "print": 1,
+   "read": 1,
+   "report": 1,
+   "role": "SM Admin",
+   "write": 1
+  },
+  {
+   "read": 1,
+   "report": 1,
+   "role": "SM Vendor"
+  },
+  {
+   "read": 1,
+   "role": "SM Customer"
   }
  ],
  "sort_field": "creation",

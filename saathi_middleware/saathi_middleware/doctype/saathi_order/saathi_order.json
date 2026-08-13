@@ -11,6 +11,7 @@
    "column_break_header",
    "payment_mode",
    "payment_status",
+   "status",
    "section_break_customer",
    "customer_name",
    "customer_mobile",
@@ -79,6 +80,15 @@
    "options": "Pending\nPaid\nCOD Pending\nFailed\nRefunded",
    "default": "Pending",
    "in_list_view": 1
+  },
+  {
+   "fieldname": "status",
+   "fieldtype": "Select",
+   "label": "Status",
+   "options": "Pending\nConfirmed\nPreparing\nOut for Delivery\nDelivered\nCancelled\nRefunded",
+   "default": "Pending",
+   "in_list_view": 1,
+   "description": "Customer-facing fulfillment status, distinct from payment_status/sync_status."
   },
   {
    "fieldname": "section_break_customer",
@@ -266,7 +276,7 @@
  ],
  "index_web_pages_for_search": 0,
  "links": [],
- "modified": "2026-08-10 00:00:00.000000",
+ "modified": "2026-08-13 00:00:00.000000",
  "modified_by": "Administrator",
  "module": "Saathi Middleware",
  "name": "Saathi Order",

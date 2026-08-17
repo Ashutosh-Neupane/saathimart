@@ -86,7 +86,6 @@ class SaathiOrder(Document):
 		self.grand_total = (
 			flt(self.subtotal)
 			+ flt(self.delivery_charges)
-			- flt(self.discount_amount or 0)
 			- flt(self.coupon_discount or 0)
 			- flt(self.loyalty_discount or 0)
 		)

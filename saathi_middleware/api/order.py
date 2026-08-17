@@ -173,144 +173,11 @@ def update_order_status(order, status):
 
 
 @frappe.whitelist(allow_guest=True)
-@rate_limit(key="cancel_order", limit=20, seconds=60)
-def cancel_order(order, customer_mobile, reason=None):
-	order_doc = frappe.get_doc("Saathi Order", order)
-	if order_doc.customer_mobile != customer_mobile:
-		frappe.throw("Order not found", frappe.DoesNotExistError)
-
-	if order_doc.order_status == "Cancelled":
-		frappe.throw("This order is already cancelled")
-	if order_doc.payment_status == "Refunded":
-		frappe.throw("This order has already been refunded")
-
-	# Once paid, this becomes a refund request rather than a cancellation -- allowed even after Delivered, since that's exactly the case of a customer who received the goods and wants their money back. Only a not-yet-paid order can no longer be cancelled once
-	# delivered (in practice "Delivered" always implies "Paid" already -- the poller only ever sets one alongside the other -- so this mainly guards against a stale read).
-	if order_doc.payment_status != "Paid" and order_doc.order_status == "Delivered":
-		frappe.throw("This order has already been delivered and can no longer be cancelled")
-
-	if order_doc.erpnext_sales_order:
-		franchise = frappe.get_doc("Franchise", order_doc.franchise)
-		try:
-			_cancel_or_refund_on_franchise(order_doc, franchise)
-		except erpnext_client.ERPNextAPIError as e:
-			frappe.throw(f"Could not cancel this order right now: {e}")
-	else:
-		# Never even reached the franchise site yet -- nothing to reverse there.
-		order_doc.order_status = "Cancelled"
-
-	order_doc.cancel_reason = reason
-	order_doc.save(ignore_permissions=True)
-	frappe.db.commit()
-	return {"order": order_doc.name, "order_status": order_doc.order_status, "payment_status": order_doc.payment_status}
-
-
-def _cancel_or_refund_on_franchise(order, franchise):
-	if order.erpnext_sales_invoice:
-		# Money already collected (prepaid, or COD already billed) -- refund via credit note. The original Sales Order / Delivery Note / Sales Invoice are never touched or cancelled.
-		erpnext_client.create_credit_note(franchise, order.erpnext_sales_invoice)
-		order.payment_status = "Refunded"
-	else:
-		# Nothing collected yet -- reverse the stock commitment, in dependency order.
-		if order.erpnext_delivery_note:
-			erpnext_client.cancel_document(franchise, "Delivery Note", order.erpnext_delivery_note)
-		erpnext_client.cancel_document(franchise, "Sales Order", order.erpnext_sales_order)
-		if order.payment_status == "COD Pending":
-			order.payment_status = "Failed"
-
-	order.order_status = "Cancelled"
-
-
-@frappe.whitelist(allow_guest=True)
-@rate_limit(key="confirm_delivery", limit=20, seconds=60)
-def confirm_delivery(order, customer_mobile, amount_collected=None):
-	order_doc = frappe.get_doc("Saathi Order", order)
-	if order_doc.customer_mobile != customer_mobile:
-		frappe.throw("Order not found", frappe.DoesNotExistError)
-	if order_doc.order_status not in ("Pushed", "Confirmed"):
-		frappe.throw(f"Order is {order_doc.order_status}, cannot confirm delivery")
-
-	if not order_doc.erpnext_sales_invoice:
-		# COD, not yet billed -- this is what bills it, instead of middleware finding out later that someone billed it directly on the franchise's own ERPNext.
-		franchise = frappe.get_doc("Franchise", order_doc.franchise)
-		payment_mode = frappe.get_doc("Saathi Payment Mode", order_doc.payment_mode)
-		mode_of_payment = payment_mode.erpnext_mode_of_payment or payment_mode.mode_name
-		amount = flt(amount_collected) if amount_collected is not None else order_doc.grand_total
-		# COD always creates a Delivery Note at push time (see _attempt_push), which already moved the stock -- this invoice must not move it again.
-		order_doc.erpnext_sales_invoice = erpnext_client.create_paid_sales_invoice(
-			franchise, order_doc.erpnext_sales_order, mode_of_payment, amount, update_stock=0
-		)
-		order_doc.payment_status = "Paid"
-	# else: prepaid order, already billed and paid at push time -- nothing further to bill.
-
-	order_doc.order_status = "Delivered"
-	order_doc.save(ignore_permissions=True)
-	frappe.db.commit()
-	return {
-		"order": order_doc.name,
-		"order_status": order_doc.order_status,
-		"payment_status": order_doc.payment_status,
-	}
-
-
-def _validate_and_apply_coupon(coupon_code, franchise, customer_mobile, subtotal):
-	if not coupon_code:
-		return None, 0
-
-	if not frappe.db.exists("Saathi Coupon", coupon_code):
-		frappe.throw(f"Coupon {coupon_code} is not valid")
-	coupon = frappe.get_doc("Saathi Coupon", coupon_code)
-	if not coupon.is_active:
-		frappe.throw(f"Coupon {coupon_code} is not valid")
-
-	today = frappe.utils.today()
-	if coupon.valid_from and today < str(coupon.valid_from):
-		frappe.throw(f"Coupon {coupon_code} is not active yet")
-	if coupon.valid_to and today > str(coupon.valid_to):
-		frappe.throw(f"Coupon {coupon_code} has expired")
-
-	if flt(subtotal) < flt(coupon.min_order_amount):
-		frappe.throw(f"Coupon {coupon_code} requires a minimum order of {coupon.min_order_amount}")
-
-	if coupon.applicable_franchises:
-		allowed = {row.franchise for row in coupon.applicable_franchises}
-		if franchise.name not in allowed:
-			frappe.throw(f"Coupon {coupon_code} is not valid at {franchise.franchise_name}")
-
-	if coupon.usage_limit_total and frappe.db.count("Saathi Coupon Usage", {"coupon": coupon.name}) >= coupon.usage_limit_total:
-		frappe.throw(f"Coupon {coupon_code} has reached its usage limit")
-
-	if coupon.usage_limit_per_customer:
-		used_by_customer = frappe.db.count(
-			"Saathi Coupon Usage", {"coupon": coupon.name, "customer_mobile": customer_mobile}
-		)
-		if used_by_customer >= coupon.usage_limit_per_customer:
-			frappe.throw(f"Coupon {coupon_code} has already been used")
-
-	if coupon.discount_type == "Percentage":
-		discount = flt(subtotal) * flt(coupon.value) / 100
-		if coupon.max_discount_amount:
-			discount = min(discount, flt(coupon.max_discount_amount))
-	else:
-		discount = flt(coupon.value)
-
-	# Never discount more than the order itself is worth.
-	discount = min(discount, flt(subtotal))
-	return coupon.name, discount
-
-
-@frappe.whitelist(allow_guest=True)
 @rate_limit(key="create_order", limit=20, seconds=60)
 def create_order(**payload):
-	franchise, distance_km = _get_serviceable_franchise(payload)
+	franchise = _get_serviceable_franchise(payload)
 	payment_mode = _get_payment_mode(payload.get("payment_mode"))
 	order_items = _validate_and_price_items(franchise, payload.get("items") or [])
-	delivery_charges = _calculate_delivery_charges(franchise, distance_km)
-
-	subtotal = sum(flt(item["qty"]) * flt(item["rate"]) for item in order_items)
-	coupon_name, discount_amount = _validate_and_apply_coupon(
-		payload.get("coupon_code"), franchise, payload.get("customer_mobile"), subtotal
-	)
 
 	order = frappe.get_doc(
 		{
@@ -324,9 +191,7 @@ def create_order(**payload):
 			"delivery_city": payload.get("delivery_city"),
 			"delivery_latitude": payload.get("delivery_latitude"),
 			"delivery_longitude": payload.get("delivery_longitude"),
-			"delivery_charges": delivery_charges,
-			"coupon_code": coupon_name,
-			"discount_amount": discount_amount,
+			"delivery_charges": payload.get("delivery_charges") or 0,
 			"placed_at": now_datetime(),
 			"coupon_code": payload.get("coupon_code") or "",
 			"loyalty_points_redeemed": flt(payload.get("loyalty_points") or 0),
@@ -336,21 +201,12 @@ def create_order(**payload):
 	order.insert(ignore_permissions=True)
 	frappe.db.commit()
 
-	if coupon_name:
+	if order.coupon_code:
 		try:
 			from saathi_middleware.saathi_middleware.doctype.sm_coupon.sm_coupon import increment_coupon_usage
-			increment_coupon_usage(coupon_name, user=customer_email, order=order.name)
+			increment_coupon_usage(order.coupon_code, user=payload.get("customer_email"), order=order.name)
 		except Exception:
-			frappe.get_doc(
-				{
-					"doctype": "Saathi Coupon Usage",
-					"coupon": coupon_name,
-					"order": order.name,
-					"customer_mobile": customer_mobile,
-					"discount_amount": discount_amount,
-				}
-			).insert(ignore_permissions=True)
-			frappe.db.commit()
+			pass
 
 	if payment_mode.is_online:
 		return {
@@ -600,7 +456,6 @@ def _get_serviceable_franchise(payload):
 	if franchise.status != "Active":
 		frappe.throw(f"Franchise {site_code} is not active")
 
-	distance_km = None
 	lat = payload.get("delivery_latitude")
 	lng = payload.get("delivery_longitude")
 	if lat is not None and lng is not None and franchise.latitude and franchise.longitude:
@@ -608,16 +463,7 @@ def _get_serviceable_franchise(payload):
 		if distance_km > (franchise.serviceable_radius_km or 0):
 			frappe.throw(f"Delivery address is outside {franchise.franchise_name}'s serviceable area")
 
-	return franchise, distance_km
-
-
-def _calculate_delivery_charges(franchise, distance_km):
-	base = frappe.utils.flt(franchise.delivery_base_charge)
-	if distance_km is None:
-		return base
-	free_km = frappe.utils.flt(franchise.free_delivery_upto_km)
-	chargeable_km = max(0.0, distance_km - free_km)
-	return base + chargeable_km * frappe.utils.flt(franchise.delivery_per_km_rate)
+	return franchise
 
 
 def _validate_and_price_items(franchise, requested_items):
@@ -695,13 +541,7 @@ def _attempt_push(order, log):
 		if not order.erpnext_sales_order:
 			items = [{"item_code": row.item_code, "qty": row.qty, "rate": row.rate} for row in order.items]
 			order.erpnext_sales_order = erpnext_client.create_sales_order(
-				franchise,
-				order.erpnext_customer,
-				order.erpnext_address,
-				items,
-				today(),
-				order.delivery_charges,
-				order.discount_amount,
+				franchise, order.erpnext_customer, order.erpnext_address, items, today()
 			)
 			order.save(ignore_permissions=True)
 			frappe.db.commit()
@@ -757,54 +597,3 @@ def retry_failed_order_syncs():
 		order = frappe.get_doc("Saathi Order", order_name)
 		log = frappe.get_doc("Saathi Order Sync Log", order_name)
 		_attempt_push(order, log)
-
-
-def poll_franchise_order_status():
-	# Reads ERPNext's own status fields on the franchise site -- no franchise-side code involved. Delivered/Cancelled/Paid/Refunded/Failed only ever get set here, never by the push job, because they describe events (staff billing, staff cancelling) that happen on the franchise's own site after the push already completed.
-	names = frappe.get_all(
-		"Saathi Order",
-		filters={"order_status": ["in", ["Pushed", "Confirmed"]]},
-		pluck="name",
-		limit=200,
-	)
-	for order_name in names:
-		try:
-			_poll_single_order(order_name)
-		except Exception:
-			frappe.log_error(
-				title=f"Saathi Order status poll failed: {order_name}", message=frappe.get_traceback()
-			)
-
-
-def _poll_single_order(order_name):
-	order = frappe.get_doc("Saathi Order", order_name)
-	if not order.erpnext_sales_order:
-		return
-	franchise = frappe.get_doc("Franchise", order.franchise)
-
-	if order.erpnext_sales_invoice:
-		invoice_status = erpnext_client.get_document_status(franchise, "Sales Invoice", order.erpnext_sales_invoice)
-		if invoice_status == "Paid":
-			order.payment_status = "Paid"
-		elif invoice_status in ("Return", "Credit Note Issued"):
-			order.payment_status = "Refunded"
-
-	so_status = erpnext_client.get_document_status(franchise, "Sales Order", order.erpnext_sales_order)
-	if so_status in ("Cancelled", "Closed"):
-		if order.payment_status == "COD Pending":
-			# Goods were never paid for and the order is being abandoned -- COD delivery failed.
-			order.payment_status = "Failed"
-		order.order_status = "Cancelled"
-	elif so_status == "Completed":
-		# Fully delivered AND fully billed. For COD this is staff creating the Sales Invoice once cash is collected (a standard ERPNext action on their own site, not something middleware initiated) -- so go find that invoice and cache its name. Without this, a later cancel_order call would see erpnext_sales_invoice empty, wrongly conclude
-		# nothing was paid, and try to cancel a Sales Order that already has a paid invoice against it.
-		if not order.erpnext_sales_invoice:
-			order.erpnext_sales_invoice = erpnext_client.find_sales_invoice_for_order(
-				franchise, order.erpnext_sales_order
-			)
-		order.order_status = "Delivered"
-		if order.payment_status != "Refunded":
-			order.payment_status = "Paid"
-
-	order.save(ignore_permissions=True)
-	frappe.db.commit()

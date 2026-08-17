@@ -9,6 +9,17 @@
    {"fieldname": "section_loyalty", "fieldtype": "Section Break", "label": "Loyalty Program"},
    {"fieldname": "enable_loyalty", "fieldtype": "Check", "label": "Enable Loyalty Program"},
    {"fieldname": "loyalty_program", "fieldtype": "Link", "label": "Active Loyalty Program",
-    "options": "SM Loyalty Program", "depends_on": "eval:doc.enable_loyalty"}
+    "options": "SM Loyalty Program", "depends_on": "eval:doc.enable_loyalty"},
+   {"fieldname": "section_payments", "fieldtype": "Section Break", "label": "Payments"},
+   {"fieldname": "enable_esewa", "fieldtype": "Check", "label": "Enable eSewa", "default": "1"},
+   {"fieldname": "esewa_merchant_code", "fieldtype": "Data", "label": "eSewa Merchant Code", "default": "EPAYTEST"},
+   {"fieldname": "esewa_secret_key", "fieldtype": "Password", "label": "eSewa Secret Key"},
+   {"fieldname": "esewa_base_url", "fieldtype": "Data", "label": "eSewa Base URL",
+    "description": "Leave blank for default production/sandbox URL"},
+   {"fieldname": "section_payment_portal", "fieldtype": "Section Break", "label": "Payment Portal"},
+   {"fieldname": "payment_sandbox_mode", "fieldtype": "Check", "label": "Sandbox Mode", "default": "1",
+    "description": "Use sandbox/test endpoints for payment gateways"},
+   {"fieldname": "payment_portal_base_url", "fieldtype": "Data", "label": "Storefront Base URL",
+    "description": "Where shoppers land after payment (leave blank to use this site's own URL)"}
   ]
 }

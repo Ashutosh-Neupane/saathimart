@@ -27,6 +27,19 @@ def has_address_permission(doc, ptype):
     return doc.user == frappe.session.user
 
 
+def get_address_permission_query_conditions(user=None):
+    # has_permission alone only gates single-doc reads/writes, not list
+    # queries (frappe.get_list ignores it for filtering) — without this,
+    # any logged-in customer could list every other customer's saved
+    # addresses via the raw REST endpoint. list_addresses() already scopes
+    # itself with an explicit filter, but the raw REST route doesn't go
+    # through that function.
+    user = user or frappe.session.user
+    if "SM Admin" in frappe.get_roles(user):
+        return ""
+    return f"(`tabSM Address`.user = {frappe.db.escape(user)})"
+
+
 def get_user_token(user):
     doc = frappe.get_doc("User", user)
     if not doc.api_key:

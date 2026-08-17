@@ -5,6 +5,7 @@
  "creation": "2026-08-10 00:00:00.000000",
  "doctype": "DocType",
  "engine": "InnoDB",
+<<<<<<< HEAD
  "field_order": [
   "franchise",
   "order_status",
@@ -41,6 +42,47 @@
   "erpnext_sales_invoice",
   "erpnext_delivery_note"
  ],
+=======
+  "field_order": [
+   "franchise",
+   "placed_at",
+   "column_break_header",
+   "payment_mode",
+   "payment_status",
+   "section_break_customer",
+   "customer_name",
+   "customer_mobile",
+   "column_break_customer",
+   "customer_email",
+   "section_break_delivery",
+   "delivery_address",
+   "delivery_city",
+   "column_break_delivery",
+   "delivery_latitude",
+   "delivery_longitude",
+   "delivery_charges",
+   "section_break_items",
+   "items",
+   "column_break_totals",
+   "subtotal",
+   "grand_total",
+   "section_break_discounts",
+   "coupon_code",
+   "coupon_discount",
+   "loyalty_points_redeemed",
+   "loyalty_discount",
+   "column_break_loyalty",
+   "loyalty_points_earned",
+   "section_break_erpnext_sync",
+   "sync_status",
+   "erpnext_customer",
+   "erpnext_address",
+   "erpnext_sales_order",
+   "column_break_erpnext_sync",
+   "erpnext_sales_invoice",
+   "erpnext_delivery_note"
+  ],
+>>>>>>> origin/feat/cart-totals-preview
  "fields": [
   {
    "fieldname": "franchise",
@@ -165,39 +207,75 @@
    "fieldname": "column_break_totals",
    "fieldtype": "Column Break"
   },
-  {
-   "fieldname": "subtotal",
-   "fieldtype": "Currency",
-   "label": "Subtotal",
-   "read_only": 1
-  },
-  {
-   "fieldname": "coupon_code",
-   "fieldtype": "Link",
-   "options": "Saathi Coupon",
-   "label": "Coupon Code",
-   "read_only": 1
-  },
-  {
-   "fieldname": "discount_amount",
-   "fieldtype": "Currency",
-   "label": "Discount Amount",
-   "read_only": 1,
-   "default": "0",
-   "description": "Computed server-side against the item subtotal, before delivery charges. Never trusted from the client."
-  },
-  {
-   "fieldname": "grand_total",
-   "fieldtype": "Currency",
-   "label": "Grand Total",
-   "read_only": 1,
-   "in_list_view": 1
-  },
-  {
-   "fieldname": "section_break_erpnext_sync",
-   "fieldtype": "Section Break",
-   "label": "ERPNext Sync"
-  },
+   {
+    "fieldname": "subtotal",
+    "fieldtype": "Currency",
+    "label": "Subtotal",
+    "read_only": 1
+   },
+   {
+    "fieldname": "coupon_code",
+    "fieldtype": "Link",
+    "options": "Saathi Coupon",
+    "label": "Coupon Code",
+    "read_only": 1
+   },
+   {
+    "fieldname": "discount_amount",
+    "fieldtype": "Currency",
+    "label": "Discount Amount",
+    "read_only": 1,
+    "default": "0",
+    "description": "Computed server-side against the item subtotal, before delivery charges. Never trusted from the client."
+   },
+   {
+    "fieldname": "grand_total",
+    "fieldtype": "Currency",
+    "label": "Grand Total",
+    "read_only": 1,
+    "in_list_view": 1
+   },
+   {
+    "fieldname": "section_break_discounts",
+    "fieldtype": "Section Break",
+    "label": "Discounts"
+   },
+   {
+    "fieldname": "coupon_discount",
+    "fieldtype": "Currency",
+    "label": "Coupon Discount",
+    "default": "0",
+    "read_only": 1
+   },
+   {
+    "fieldname": "loyalty_points_redeemed",
+    "fieldtype": "Float",
+    "label": "Points Redeemed",
+    "default": "0"
+   },
+   {
+    "fieldname": "loyalty_discount",
+    "fieldtype": "Currency",
+    "label": "Loyalty Discount",
+    "default": "0",
+    "read_only": 1
+   },
+   {
+    "fieldname": "column_break_loyalty",
+    "fieldtype": "Column Break"
+   },
+   {
+    "fieldname": "loyalty_points_earned",
+    "fieldtype": "Float",
+    "label": "Points Earned",
+    "default": "0",
+    "read_only": 1
+   },
+   {
+    "fieldname": "section_break_erpnext_sync",
+    "fieldtype": "Section Break",
+    "label": "ERPNext Sync"
+   },
   {
    "fieldname": "sync_status",
    "fieldtype": "Select",

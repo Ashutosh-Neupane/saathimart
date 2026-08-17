@@ -138,14 +138,52 @@ app_license = "mit"
 # ---------------
 # Hook on document methods and events
 
+doc_events = {
+    "SM Site Config": {
+        "on_update": "saathi_middleware.api.cms._bust_site_config_cache",
+    },
+    "SM Navigation Item": {
+        "on_update": "saathi_middleware.api.cms._bust_navigation_cache",
+    },
+    "SM Banner": {
+        "on_update": "saathi_middleware.api.cms._bust_banner_cache",
+    },
+    "SM Site Page": {
+        "on_update": "saathi_middleware.api.cms._bust_page_cache",
+    },
+    "SM Blog Post": {
+        "on_update": "saathi_middleware.api.cms._bust_blog_cache",
+    },
+    "SM Hero Slide": {
+        "on_update": "saathi_middleware.api.cms._bust_home_content_cache",
+    },
+    "SM Seasonal Banner": {
+        "on_update": "saathi_middleware.api.cms._bust_home_content_cache",
+    },
+    "SM Trust Badge": {
+        "on_update": "saathi_middleware.api.cms._bust_home_content_cache",
+    },
+    "SM Product Rail Heading": {
+        "on_update": "saathi_middleware.api.cms._bust_home_content_cache",
+    },
+    "SM Homepage Settings": {
+        "on_update": "saathi_middleware.api.cms._bust_home_content_cache",
+    },
+    "SM Website Content": {
+        "on_update": "saathi_middleware.api.cms._bust_content_cache",
+    },
+}
+
 # Scheduled Tasks
 # ---------------
 
 scheduler_events = {
 	"cron": {
 		"*/5 * * * *": ["saathi_middleware.api.order.retry_failed_order_syncs"],
-		"*/10 * * * *": ["saathi_middleware.api.order.poll_franchise_order_status"],
-        "0 2 * * *": ["saathi_middleware.api.auth_full.cleanup_expired_verifications"],
+	"*/5 * * * *": ["saathi_middleware.api.order.retry_failed_order_syncs"],
+	"*/10 * * * *": ["saathi_middleware.api.order.poll_franchise_order_status"],
+	"0 2 * * *": ["saathi_middleware.api.auth_full.cleanup_expired_verifications"],
+	"0 3 * * *": ["saathi_middleware.api.loyalty.expire_old_points"],
 	},
 	"hourly": [
 		"saathi_middleware.api.cart.expire_abandoned_carts",
@@ -266,6 +304,11 @@ fixtures = [
     ]]]},
     {"dt": "SM Pending Verification"},
     {"dt": "SM Cart"},
+    {"dt": "SM Site Config"},
+    {"dt": "SM Homepage Settings"},
+    {"dt": "SM Coupon"},
+    {"dt": "SM Loyalty Program"},
+    {"dt": "SM Loyalty Point Entry"},
 ]
 
 # ── Permissions ───────────────────────────────────────────────────────────────

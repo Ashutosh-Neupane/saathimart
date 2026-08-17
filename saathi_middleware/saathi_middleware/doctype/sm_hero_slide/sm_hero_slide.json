@@ -1,0 +1,26 @@
+{
+  "name": "SM Hero Slide",
+  "module": "Saathi Middleware",
+  "doctype": "DocType",
+  "autoname": "field:slide_key",
+  "fields": [
+   {"fieldname": "slide_key", "fieldtype": "Data", "label": "Slide Key", "reqd": 1, "unique": 1, "in_list_view": 1},
+   {"fieldname": "section_content", "fieldtype": "Section Break", "label": "Content"},
+   {"fieldname": "title_lines", "fieldtype": "Small Text", "label": "Title Lines"},
+   {"fieldname": "description", "fieldtype": "Small Text", "label": "Description"},
+   {"fieldname": "image", "fieldtype": "Attach Image", "label": "Image"},
+   {"fieldname": "col_break_1", "fieldtype": "Column Break"},
+   {"fieldname": "cta_label", "fieldtype": "Data", "label": "CTA Label"},
+   {"fieldname": "cta_href", "fieldtype": "Data", "label": "CTA URL"},
+   {"fieldname": "cta_secondary_label", "fieldtype": "Data", "label": "Secondary CTA Label"},
+   {"fieldname": "cta_secondary_href", "fieldtype": "Data", "label": "Secondary CTA URL"},
+   {"fieldname": "section_meta", "fieldtype": "Section Break", "label": "Meta"},
+   {"fieldname": "sort_order", "fieldtype": "Int", "label": "Sort Order", "default": "0"},
+   {"fieldname": "published", "fieldtype": "Check", "label": "Published", "default": "1"}
+  ],
+  "title_field": "slide_key",
+  "permissions": [
+   {"role": "SM Admin", "read": 1, "write": 1, "create": 1, "delete": 1},
+   {"role": "Guest", "read": 1}
+  ]
+}

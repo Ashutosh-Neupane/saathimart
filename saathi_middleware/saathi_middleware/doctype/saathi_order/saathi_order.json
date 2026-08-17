@@ -5,50 +5,13 @@
  "creation": "2026-08-10 00:00:00.000000",
  "doctype": "DocType",
  "engine": "InnoDB",
-<<<<<<< HEAD
- "field_order": [
-  "franchise",
-  "order_status",
-  "placed_at",
-  "column_break_header",
-  "payment_mode",
-  "payment_status",
-  "cancel_reason",
-  "section_break_customer",
-  "customer_name",
-  "customer_mobile",
-  "column_break_customer",
-  "customer_email",
-  "section_break_delivery",
-  "delivery_address",
-  "delivery_city",
-  "column_break_delivery",
-  "delivery_latitude",
-  "delivery_longitude",
-  "delivery_charges",
-  "section_break_items",
-  "items",
-  "column_break_totals",
-  "subtotal",
-  "coupon_code",
-  "discount_amount",
-  "grand_total",
-  "section_break_erpnext_sync",
-  "sync_status",
-  "erpnext_customer",
-  "erpnext_address",
-  "erpnext_sales_order",
-  "column_break_erpnext_sync",
-  "erpnext_sales_invoice",
-  "erpnext_delivery_note"
- ],
-=======
   "field_order": [
    "franchise",
    "placed_at",
    "column_break_header",
    "payment_mode",
    "payment_status",
+   "status",
    "section_break_customer",
    "customer_name",
    "customer_mobile",
@@ -82,7 +45,6 @@
    "erpnext_sales_invoice",
    "erpnext_delivery_note"
   ],
->>>>>>> origin/feat/cart-totals-preview
  "fields": [
   {
    "fieldname": "franchise",
@@ -120,10 +82,13 @@
    "in_list_view": 1
   },
   {
-   "fieldname": "cancel_reason",
-   "fieldtype": "Small Text",
-   "label": "Cancel Reason",
-   "read_only": 1
+   "fieldname": "status",
+   "fieldtype": "Select",
+   "label": "Status",
+   "options": "Pending\nConfirmed\nPreparing\nOut for Delivery\nDelivered\nCancelled\nRefunded",
+   "default": "Pending",
+   "in_list_view": 1,
+   "description": "Customer-facing fulfillment status, distinct from payment_status/sync_status."
   },
   {
    "fieldname": "section_break_customer",
@@ -207,27 +172,12 @@
    "fieldname": "column_break_totals",
    "fieldtype": "Column Break"
   },
-   {
-    "fieldname": "subtotal",
-    "fieldtype": "Currency",
-    "label": "Subtotal",
-    "read_only": 1
-   },
-   {
-    "fieldname": "coupon_code",
-    "fieldtype": "Link",
-    "options": "Saathi Coupon",
-    "label": "Coupon Code",
-    "read_only": 1
-   },
-   {
-    "fieldname": "discount_amount",
-    "fieldtype": "Currency",
-    "label": "Discount Amount",
-    "read_only": 1,
-    "default": "0",
-    "description": "Computed server-side against the item subtotal, before delivery charges. Never trusted from the client."
-   },
+  {
+   "fieldname": "subtotal",
+   "fieldtype": "Currency",
+   "label": "Subtotal",
+   "read_only": 1
+  },
    {
     "fieldname": "grand_total",
     "fieldtype": "Currency",
@@ -239,6 +189,11 @@
     "fieldname": "section_break_discounts",
     "fieldtype": "Section Break",
     "label": "Discounts"
+   },
+   {
+    "fieldname": "coupon_code",
+    "fieldtype": "Data",
+    "label": "Coupon Code"
    },
    {
     "fieldname": "coupon_discount",
@@ -321,7 +276,7 @@
  ],
  "index_web_pages_for_search": 0,
  "links": [],
- "modified": "2026-08-10 00:00:00.000000",
+ "modified": "2026-08-13 00:00:00.000000",
  "modified_by": "Administrator",
  "module": "Saathi Middleware",
  "name": "Saathi Order",

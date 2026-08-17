@@ -6,6 +6,7 @@ from frappe.rate_limiter import rate_limit
 from frappe.utils import flt, now_datetime, today
 
 from saathi_middleware.api.cart import resolve_item_code
+from saathi_middleware.api.constants import VALID_ORDER_TRANSITIONS
 from saathi_middleware.utils import erpnext_client
 
 
@@ -31,11 +32,18 @@ def get_payment_modes():
 @frappe.whitelist(allow_guest=True)
 @rate_limit(key="get_order_status", limit=60, seconds=60)
 def get_order_status(order, customer_mobile):
+	"""
+	Public, mobile-gated order tracking. The mobile number acts as a shared
+	secret — unlike saathimart's fully-open track_order(order_id), a
+	sequential order ID alone (SORD-2026-00001) isn't enough to see someone
+	else's name/address/order contents.
+	"""
 	order_doc = frappe.db.get_value(
 		"Saathi Order",
 		order,
 		[
 			"name",
+			"status",
 			"payment_status",
 			"payment_mode",
 			"customer_mobile",
@@ -59,7 +67,89 @@ def get_order_status(order, customer_mobile):
 		fields=["item_code", "item_name", "qty", "rate", "amount"],
 		order_by="idx asc",
 	)
+	order_doc["status_timeline"] = _build_status_timeline(order_doc["status"])
 	return order_doc
+
+
+def _build_status_timeline(status):
+	"""Blinkit-style status timeline for order tracking."""
+	steps = [
+		{"status": "Pending",            "label": "Order Placed",     "completed": False},
+		{"status": "Confirmed",          "label": "Confirmed",        "completed": False},
+		{"status": "Preparing",          "label": "Preparing",        "completed": False},
+		{"status": "Out for Delivery",   "label": "Out for Delivery", "completed": False},
+		{"status": "Delivered",          "label": "Delivered",        "completed": False},
+	]
+	cancelled = status == "Cancelled"
+	refunded = status == "Refunded"
+
+	status_order = ["Pending", "Confirmed", "Preparing", "Out for Delivery", "Delivered"]
+	if cancelled or refunded:
+		current_idx = -1
+	else:
+		try:
+			current_idx = status_order.index(status)
+		except ValueError:
+			current_idx = -1
+
+	for i, step in enumerate(steps):
+		if cancelled:
+			step["cancelled"] = True
+		elif refunded:
+			step["refunded"] = True
+		elif i < current_idx:
+			step["completed"] = True
+		elif i == current_idx:
+			step["completed"] = True
+			step["active"] = True
+
+	if cancelled:
+		steps.append({"status": "Cancelled", "label": "Cancelled", "completed": False, "cancelled": True})
+	if refunded:
+		steps.append({"status": "Refunded", "label": "Refunded", "completed": False, "refunded": True})
+
+	return steps
+
+
+@frappe.whitelist()
+def get_order(order):
+	"""Logged-in order detail view — gated by has_order_permission (owner or SM Admin)."""
+	doc = frappe.get_doc("Saathi Order", order)
+	if not doc.has_permission("read"):
+		frappe.throw("Not permitted", frappe.PermissionError)
+
+	data = doc.as_dict()
+	data["status_timeline"] = _build_status_timeline(doc.status)
+	data["items_summary"] = [
+		{
+			"item_code": i.item_code,
+			"item_name": i.item_name,
+			"qty": flt(i.qty),
+			"rate": flt(i.rate),
+			"amount": flt(i.amount),
+		}
+		for i in (doc.items or [])
+	]
+	return data
+
+
+@frappe.whitelist()
+def update_order_status(order, status):
+	if "SM Admin" not in frappe.get_roles():
+		frappe.throw("Not permitted", frappe.PermissionError)
+
+	doc = frappe.get_doc("Saathi Order", order)
+	if status not in VALID_ORDER_TRANSITIONS.get(doc.status, []):
+		frappe.throw(f"Invalid status transition: {doc.status} -> {status}")
+
+	doc.status = status
+	doc.save(ignore_permissions=True)
+	frappe.db.commit()
+
+	from saathi_middleware.api.notifications import create_order_status_notification
+	create_order_status_notification(doc, status)
+
+	return {"ok": True, "status": doc.status}
 
 
 @frappe.whitelist(allow_guest=True)
@@ -454,7 +544,7 @@ def list_orders(customer_mobile=None, page=1, page_size=20):
 	orders = frappe.get_list(
 		"Saathi Order",
 		filters=filters,
-		fields=["name", "customer_name", "payment_status", "payment_mode",
+		fields=["name", "customer_name", "status", "payment_status", "payment_mode",
 		        "grand_total", "creation", "sync_status"],
 		limit_start=(page - 1) * page_size,
 		limit=page_size,

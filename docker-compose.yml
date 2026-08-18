@@ -4,59 +4,76 @@ services:
   db:
     image: mariadb:10.6
     healthcheck:
-      test: mysqladmin ping -h localhost --password=admin
+      test: ["CMD", "mysqladmin", "ping", "-h", "localhost", "--password=admin"]
       interval: 1s
       retries: 15
     environment:
       MYSQL_ROOT_PASSWORD: admin
     volumes:
       - db-data:/var/lib/mysql
+    networks:
+      - dndts_network
     restart: unless-stopped
 
   redis-cache:
     image: redis:6.2-alpine
     healthcheck:
-      test: redis-cli ping
+      test: ["CMD", "redis-cli", "ping"]
       interval: 1s
       retries: 15
     volumes:
       - redis-cache-data:/data
+    networks:
+      - dndts_network
     restart: unless-stopped
 
   redis-queue:
     image: redis:6.2-alpine
     healthcheck:
-      test: redis-cli ping
+      test: ["CMD", "redis-cli", "ping"]
       interval: 1s
       retries: 15
     volumes:
       - redis-queue-data:/data
+    networks:
+      - dndts_network
     restart: unless-stopped
 
   mw:
     build:
       context: .
       dockerfile: Dockerfile
+
     image: saathi-mw:latest
+
     ports:
       - "8002:8000"
+
     volumes:
       - mw-data:/home/frappe/bench
+
     environment:
       FRAPPE_SITE: saathi-mw.localhost
       SITES_PATH: /home/frappe/bench/sites
+
       DB_HOST: db
       DB_PORT: "3306"
       DB_ROOT_PASSWORD: admin
+
       REDIS_CACHE: redis://redis-cache:6379/0
       REDIS_QUEUE: redis://redis-queue:6379/0
       REDIS_DB: "0"
+
       EMAIL_HOST: smtp.gmail.com
       EMAIL_PORT: "587"
       EMAIL_USE_TLS: "1"
       EMAIL_HOST_USER: dndts.notifications@gmail.com
-      EMAIL_HOST_PASSWORD: cdyp vmpy eqtq eptc
+      EMAIL_HOST_PASSWORD: "cdyp vmpy eqtq eptc"
       EMAIL_DEFAULT_SENDER: dndts.notifications@gmail.com
+
+    networks:
+      - dndts_network
+
     depends_on:
       db:
         condition: service_healthy
@@ -64,9 +81,19 @@ services:
         condition: service_healthy
       redis-queue:
         condition: service_healthy
+
     restart: unless-stopped
+
     healthcheck:
-      test: ["CMD", "curl", "-sf", "-H", "Host: saathi-mw.localhost", "http://localhost:8000/api/method/ping"]
+      test:
+        [
+          "CMD",
+          "curl",
+          "-sf",
+          "-H",
+          "Host: saathi-mw.localhost",
+          "http://localhost:8000/api/method/ping"
+        ]
       interval: 30s
       timeout: 5s
       start_period: 120s
@@ -75,9 +102,16 @@ services:
 volumes:
   db-data:
     name: saathi_mw_db-data
+
   redis-cache-data:
     name: saathi_mw_redis-cache-data
+
   redis-queue-data:
     name: saathi_mw_redis-queue-data
+
   mw-data:
     name: saathi_mw_data
+
+networks:
+  dndts_network:
+    external: true

@@ -154,6 +154,61 @@ def get_order(order):
 
 
 @frappe.whitelist()
+def track_order(order_id):
+	"""
+	Order-confirmation / tracking view shaped to match the frontend's
+	BackendOrder type (lib/api/index.ts) — same permission model as
+	get_order (owner or SM Admin), but with fields renamed to that
+	contract (customer_phone not customer_mobile, delivery_charge not
+	delivery_charges, payment_method not payment_mode) and a single
+	synthetic vendor_fulfillments entry, since this middleware has one
+	franchise per order rather than saathimart's multi-vendor split.
+	"""
+	doc = frappe.get_doc("Saathi Order", order_id)
+	if not doc.has_permission("read"):
+		frappe.throw("Not permitted", frappe.PermissionError)
+
+	items_summary = [
+		{
+			"product": i.item_code,
+			"product_name": i.item_name,
+			"qty": flt(i.qty),
+			"rate": flt(i.rate),
+			"amount": flt(i.amount),
+		}
+		for i in (doc.items or [])
+	]
+
+	return {
+		"name": doc.name,
+		"customer_name": doc.customer_name,
+		"customer_phone": doc.customer_mobile,
+		"customer_email": doc.customer_email,
+		"delivery_address": doc.delivery_address,
+		"status": doc.status,
+		"payment_status": doc.payment_status,
+		"grand_total": flt(doc.grand_total),
+		"creation": doc.creation,
+		"vendor": doc.franchise,
+		"payment_method": doc.payment_mode,
+		"delivery_charge": flt(doc.delivery_charges),
+		"coupon_discount": flt(doc.coupon_discount),
+		"loyalty_discount": flt(doc.loyalty_discount),
+		"items_summary": items_summary,
+		"vendor_fulfillments": [
+			{
+				"vendor": doc.franchise,
+				"status": doc.status,
+				"subtotal": flt(doc.subtotal),
+				"delivery_charge": flt(doc.delivery_charges),
+				"items_count": len(items_summary),
+			}
+		],
+		"status_timeline": _build_status_timeline(doc.status),
+	}
+
+
+@frappe.whitelist()
 def update_order_status(order, status):
 	if "SM Admin" not in frappe.get_roles():
 		frappe.throw("Not permitted", frappe.PermissionError)
@@ -203,8 +258,8 @@ def create_order(**payload):
 
 	if order.coupon_code:
 		try:
-			from saathi_middleware.saathi_middleware.doctype.sm_coupon.sm_coupon import increment_coupon_usage
-			increment_coupon_usage(order.coupon_code, user=payload.get("customer_email"), order=order.name)
+			from saathi_middleware.saathi_middleware.doctype.saathi_coupon.saathi_coupon import record_usage
+			record_usage(order.coupon_code, order.name, order.customer_mobile, order.coupon_discount)
 		except Exception:
 			pass
 
@@ -260,17 +315,30 @@ def checkout(session_id, customer_name, customer_mobile, delivery_address,
 	})
 
 	if coupon_code:
-		from saathi_middleware.saathi_middleware.doctype.sm_coupon.sm_coupon import validate_coupon
-		validate_coupon(coupon_code, flt(cart_doc.subtotal or 0), user=customer_email, franchise=franchise.name)
+		from saathi_middleware.saathi_middleware.doctype.saathi_coupon.saathi_coupon import validate_coupon
+		validate_coupon(coupon_code, franchise.name, customer_mobile, flt(cart_doc.subtotal or 0))
 
+	# Re-check stock/price/active-status against the live Saathi Item at
+	# checkout time rather than trusting the cart row — stock can drop
+	# (or price change) between add_to_cart and checkout, especially with
+	# two customers racing for the same last few units. add_to_cart/
+	# update_cart_item already guard the add-time path (see cart.py's
+	# _check_stock), but that's not enough on its own since stock can
+	# still move after items are already sitting in the cart.
 	order_items = []
 	for item in cart_doc.items:
+		saathi_item = frappe.get_doc("Saathi Item", item.product)
+		if not saathi_item.is_active:
+			frappe.throw(f"{saathi_item.item_name} is no longer available")
+		if saathi_item.stock_qty is not None and flt(item.qty) > saathi_item.stock_qty:
+			frappe.throw(f"Only {flt(saathi_item.stock_qty)} of {saathi_item.item_name} left in stock")
+
 		order_items.append({
 			"item_code": resolve_item_code(item.product, item.franchise),
 			"item_name": item.product_name,
 			"franchise": item.franchise or franchise.name,
 			"qty": flt(item.qty),
-			"rate": flt(item.rate),
+			"rate": flt(saathi_item.price),
 		})
 
 	order = frappe.get_doc({
@@ -295,8 +363,8 @@ def checkout(session_id, customer_name, customer_mobile, delivery_address,
 
 	if order.coupon_code:
 		try:
-			from saathi_middleware.saathi_middleware.doctype.sm_coupon.sm_coupon import increment_coupon_usage
-			increment_coupon_usage(order.coupon_code, user=customer_email, order=order.name)
+			from saathi_middleware.saathi_middleware.doctype.saathi_coupon.saathi_coupon import record_usage
+			record_usage(order.coupon_code, order.name, order.customer_mobile, order.coupon_discount)
 		except Exception:
 			pass
 
@@ -360,11 +428,14 @@ def calculate_cart_totals(session_id, coupon_code=None, loyalty_points=0, delive
 	if coupon_code:
 		franchise = cart_doc.items[0].franchise
 		try:
-			from saathi_middleware.saathi_middleware.doctype.sm_coupon.sm_coupon import validate_coupon
-			result = validate_coupon(coupon_code, subtotal, user=user, franchise=franchise)
+			from saathi_middleware.saathi_middleware.doctype.saathi_coupon.saathi_coupon import validate_coupon
+			# customer_mobile isn't known yet at preview time (collected
+			# later in the checkout form) — per-customer usage limits are
+			# only enforced for real at insert time in Saathi Order's own
+			# apply_coupon(), this preview just checks the coupon/franchise
+			# /amount conditions that don't need it.
+			result = validate_coupon(coupon_code, franchise, None, subtotal)
 			coupon_discount = flt(result.get("discount", 0))
-			if result.get("free_delivery"):
-				delivery_charges = 0
 			applied_coupon_code = coupon_code
 		except frappe.ValidationError as e:
 			coupon_error = str(e)
@@ -425,14 +496,26 @@ def list_orders(customer_mobile=None, page=1, page_size=20):
 		"Saathi Order",
 		filters=filters,
 		fields=["name", "customer_name", "status", "payment_status", "payment_mode",
-		        "grand_total", "creation", "sync_status"],
+		        "delivery_address", "grand_total", "creation", "sync_status"],
 		limit_start=(page - 1) * page_size,
 		limit=page_size,
 		order_by="creation desc",
 	)
 
 	for o in orders:
-		o["item_count"] = frappe.db.count("Saathi Order Item", {"parent": o["name"]})
+		items = frappe.get_all(
+			"Saathi Order Item",
+			filters={"parent": o["name"]},
+			fields=["item_code as product", "item_name as product_name", "qty", "rate", "amount"],
+			order_by="idx asc",
+		)
+		o["item_count"] = len(items)
+		# items_summary/payment_method: additive aliases matching the
+		# frontend's BackendOrder contract (lib/api/index.ts) alongside the
+		# original payment_mode/item_count fields, so existing callers of
+		# this admin-style summary list keep working unchanged.
+		o["items_summary"] = items
+		o["payment_method"] = o["payment_mode"]
 
 	return orders
 

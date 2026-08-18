@@ -5,10 +5,25 @@ import frappe
 from frappe import _
 from frappe.utils import add_days, flt, now_datetime
 
+from saathi_middleware.api.auth import get_session_id, _set_session_cookie
+
 
 def compose_product_name(item_code, franchise):
     """SM Cart Item.product links to Saathi Item, whose name is the
-    composite "{franchise}-{item_code}" — never the bare item_code."""
+    composite "{franchise}-{item_code}" — never the bare item_code.
+
+    Callers vary: the storefront's ProductCard/PDP pass their catalog
+    `id`, which list_products/get_product already return as the full
+    composite slug (catalog.py's `"slug": row["name"]`), plus `vendor`
+    as the franchise — so item_code arrives here already prefixed.
+    Direct/bare item_code callers (e.g. franchise sync, manual API use)
+    still need the prefix added. Without this check, an already-prefixed
+    item_code got double-prefixed into a name no Saathi Item has, and
+    frappe.get_doc's not-found-vs-no-permission ambiguity surfaced that
+    as a misleading "does not have doctype access" error instead of a
+    clear "item not found"."""
+    if franchise and item_code.startswith(f"{franchise}-"):
+        return item_code
     return f"{franchise}-{item_code}" if franchise else item_code
 
 
@@ -20,12 +35,57 @@ def resolve_item_code(product, franchise):
     return product
 
 
+def _item_images(product_names):
+    """Batch-fetch Saathi Item.image for a set of cart line products —
+    one query instead of one per line, and skips duplicates within a cart."""
+    names = list({p for p in product_names if p})
+    if not names:
+        return {}
+    rows = frappe.get_all(
+        "Saathi Item", filters={"name": ["in", names]}, fields=["name", "image"]
+    )
+    return {row.name: row.image for row in rows}
+
+
+def _check_stock(saathi_item, requested_qty):
+    """stock_qty of None means untracked inventory (unlimited) — only a
+    numeric value is an actual cap."""
+    if saathi_item.stock_qty is not None and requested_qty > saathi_item.stock_qty:
+        frappe.throw(
+            _("Only {0} of {1} left in stock").format(
+                flt(saathi_item.stock_qty), saathi_item.item_name
+            )
+        )
+
+
 def _get_or_create_cart(session_id):
+    if not session_id:
+        session_id = get_session_id()
+
     name = frappe.db.get_value(
         "SM Cart", {"session_id": session_id, "status": "Active"}, "name"
     )
     if name:
-        return frappe.get_doc("SM Cart", name)
+        cart = frappe.get_doc("SM Cart", name)
+        if frappe.session.user == "Guest":
+            _set_session_cookie(session_id)
+        return cart
+
+    # session_id is unique, but checkout() never deletes the cart it just
+    # placed an order from — it only flips status to "CheckedOut" (kept for
+    # order history) — so a browser that still carries that same cookie
+    # (30-day cart-session cookie; the frontend now rotates it right after
+    # a successful checkout, but nothing stops an older tab/bookmark or a
+    # non-web caller from replaying a stale one) would otherwise hit a DB
+    # IntegrityError here. Free the old cart's session_id first so this
+    # insert can never collide with a cart that's done being "Active".
+    stale_name = frappe.db.get_value(
+        "SM Cart", {"session_id": session_id, "status": ["!=", "Active"]}, "name"
+    )
+    if stale_name:
+        frappe.db.set_value(
+            "SM Cart", stale_name, "session_id", f"{session_id}-superseded-{stale_name}"
+        )
 
     cart = frappe.new_doc("SM Cart")
     cart.session_id = session_id
@@ -36,6 +96,10 @@ def _get_or_create_cart(session_id):
         cart.source_site = ""
     cart.expires_at = add_days(now_datetime(), 7)
     cart.insert(ignore_permissions=True)
+
+    if frappe.session.user == "Guest":
+        _set_session_cookie(session_id)
+
     return cart
 
 
@@ -75,10 +139,14 @@ def add_to_cart(session_id, item_code, qty=1, franchise=None):
 
     for item in cart.items:
         if item.product == product:
-            item.qty += qty
+            new_qty = item.qty + qty
+            _check_stock(saathi_item, new_qty)
+            item.qty = new_qty
             item.amount = item.qty * item.rate
             cart.save(ignore_permissions=True)
             return cart.as_dict()
+
+    _check_stock(saathi_item, qty)
 
     cart.append("items", {
         "product": product,
@@ -113,6 +181,8 @@ def update_cart_item(session_id, item_code, qty, franchise=None):
     if qty <= 0:
         cart.items.remove(item)
     else:
+        saathi_item = frappe.get_doc("Saathi Item", item.product)
+        _check_stock(saathi_item, qty)
         item.qty = qty
         item.amount = qty * item.rate
 
@@ -131,6 +201,7 @@ def clear_cart(session_id):
 @frappe.whitelist(allow_guest=True)
 def get_cart_summary(session_id):
     cart = _get_or_create_cart(session_id)
+    images = _item_images([item.product for item in cart.items])
     items = []
     total_qty = 0
     subtotal = 0.0
@@ -146,6 +217,7 @@ def get_cart_summary(session_id):
             "rate": flt(item.rate or 0),
             "amount": amount,
             "franchise": item.franchise or "",
+            "image": images.get(item.product) or "",
         })
     return {
         "cart_id": cart.name,
@@ -166,6 +238,11 @@ def get_cart_count(session_id):
 
 def merge_guest_cart(user, guest_session_id):
     if not guest_session_id:
+        try:
+            guest_session_id = frappe.request.cookies.get("sm_cart_session")
+        except Exception:
+            pass
+    if not guest_session_id:
         return
 
     guest_cart_name = frappe.db.get_value(
@@ -184,11 +261,10 @@ def merge_guest_cart(user, guest_session_id):
     if user_cart_name:
         user_cart = frappe.get_doc("SM Cart", user_cart_name)
     else:
-        user_cart = frappe.new_doc("SM Cart")
-        user_cart.user = user
-        user_cart.session_id = guest_session_id
-        user_cart.expires_at = add_days(now_datetime(), 7)
-        user_cart.insert(ignore_permissions=True)
+        guest_cart.user = user
+        guest_cart.expires_at = add_days(now_datetime(), 7)
+        guest_cart.save(ignore_permissions=True)
+        return
 
     for g_item in guest_cart.items:
         merged = False
@@ -219,4 +295,5 @@ def expire_abandoned_carts():
         UPDATE `tabSM Cart`
         SET status = 'Abandoned'
         WHERE status = 'Active'
-    """)
+        AND modified < DATE_SUB(NOW(), INTERVAL %s HOUR)
+    """, [hours])

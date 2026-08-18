@@ -50,12 +50,15 @@ def _dispatch_otp_email(email, otp, purpose):
         return
 
     try:
+        # now=True: run synchronously in this request instead of queueing
+        # for the background worker to pick up later — an OTP the shopper
+        # is actively waiting for should never sit in a job queue.
         frappe.enqueue(
             "saathi_middleware.api.mailing.send_otp_email",
             email=email,
             otp=otp,
             purpose=purpose,
-            now=frappe.flags.in_test or False,
+            now=True,
         )
     except Exception:
         try:

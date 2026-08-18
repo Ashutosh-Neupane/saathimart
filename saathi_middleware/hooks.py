@@ -154,24 +154,6 @@ doc_events = {
     "SM Blog Post": {
         "on_update": "saathi_middleware.api.cms._bust_blog_cache",
     },
-    "SM Hero Slide": {
-        "on_update": "saathi_middleware.api.cms._bust_home_content_cache",
-    },
-    "SM Seasonal Banner": {
-        "on_update": "saathi_middleware.api.cms._bust_home_content_cache",
-    },
-    "SM Trust Badge": {
-        "on_update": "saathi_middleware.api.cms._bust_home_content_cache",
-    },
-    "SM Product Rail Heading": {
-        "on_update": "saathi_middleware.api.cms._bust_home_content_cache",
-    },
-    "SM Homepage Settings": {
-        "on_update": "saathi_middleware.api.cms._bust_home_content_cache",
-    },
-    "SM Website Content": {
-        "on_update": "saathi_middleware.api.cms._bust_content_cache",
-    },
 }
 
 # Scheduled Tasks
@@ -304,8 +286,6 @@ fixtures = [
     {"dt": "SM Pending Verification"},
     {"dt": "SM Cart"},
     {"dt": "SM Site Config"},
-    {"dt": "SM Homepage Settings"},
-    {"dt": "SM Coupon"},
     {"dt": "SM Loyalty Program"},
     {"dt": "SM Loyalty Point Entry"},
 ]
@@ -315,10 +295,14 @@ has_permission = {
     "Saathi Order":    "saathi_middleware.api.auth.has_order_permission",
     "SM Cart":         "saathi_middleware.api.auth.has_cart_permission",
     "SM Address":      "saathi_middleware.api.auth.has_address_permission",
+    "SM Wishlist Item": "saathi_middleware.api.auth.has_wishlist_permission",
+    "SM Product Review": "saathi_middleware.api.auth.has_review_permission",
 }
 
 permission_query_conditions = {
     "SM Address": "saathi_middleware.api.auth.get_address_permission_query_conditions",
+    "SM Wishlist Item": "saathi_middleware.api.auth.get_wishlist_permission_query_conditions",
+    "SM Product Review": "saathi_middleware.api.auth.get_review_permission_query_conditions",
 }
 
 # ── Boot info ─────────────────────────────────────────────────────────

@@ -3,6 +3,7 @@ Delivery API — franchise-based delivery charge estimation.
 
 Endpoints:
   calculate_delivery_charge — GET /api/method/saathi_middleware.api.delivery.calculate_delivery_charge
+  list_delivery_zones       — GET /api/method/saathi_middleware.api.delivery.list_delivery_zones
 """
 from __future__ import annotations
 
@@ -61,3 +62,33 @@ def calculate_delivery_charge(franchise, delivery_latitude=None, delivery_longit
         "per_km_rate": flt(franchise_doc.delivery_per_km_rate),
         "delivery_charge": round(delivery_charge, 2),
     }
+
+
+@frappe.whitelist(allow_guest=True)
+def list_delivery_zones():
+    """
+    Each active Franchise as a checkout-time "delivery zone" — this
+    middleware has no separate zone concept, franchises already are the
+    delivery-charge unit (base charge + free-km + per-km rate). Matches
+    the frontend's DeliveryZone type (lib/actions/address.ts).
+
+    free_delivery_above has no backing data (Franchise's free-delivery
+    field is a distance threshold — free_delivery_upto_km — not an order
+    -amount one), so it's always 0 rather than fabricating a number.
+    """
+    franchises = frappe.get_all(
+        "Franchise",
+        filters={"status": "Active"},
+        fields=["name", "franchise_name", "city", "delivery_base_charge"],
+    )
+    return [
+        {
+            "name": f.name,
+            "zone_name": f.franchise_name,
+            "city": f.city,
+            "delivery_charge": flt(f.delivery_base_charge),
+            "free_delivery_above": 0,
+            "label": f"{f.franchise_name} — Rs. {flt(f.delivery_base_charge):g} delivery",
+        }
+        for f in franchises
+    ]

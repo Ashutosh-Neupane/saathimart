@@ -93,9 +93,9 @@
   {
    "hidden": 0,
    "is_query_report": 0,
-   "label": "SM Coupon",
+   "label": "Saathi Coupon",
    "link_count": 0,
-   "link_to": "SM Coupon",
+   "link_to": "Saathi Coupon",
    "link_type": "DocType",
    "onboard": 0,
    "type": "Link"
@@ -181,69 +181,9 @@
   {
    "hidden": 0,
    "is_query_report": 0,
-   "label": "SM Hero Slide",
-   "link_count": 0,
-   "link_to": "SM Hero Slide",
-   "link_type": "DocType",
-   "onboard": 0,
-   "type": "Link"
-  },
-  {
-   "hidden": 0,
-   "is_query_report": 0,
-   "label": "SM Seasonal Banner",
-   "link_count": 0,
-   "link_to": "SM Seasonal Banner",
-   "link_type": "DocType",
-   "onboard": 0,
-   "type": "Link"
-  },
-  {
-   "hidden": 0,
-   "is_query_report": 0,
-   "label": "SM Trust Badge",
-   "link_count": 0,
-   "link_to": "SM Trust Badge",
-   "link_type": "DocType",
-   "onboard": 0,
-   "type": "Link"
-  },
-  {
-   "hidden": 0,
-   "is_query_report": 0,
-   "label": "SM Product Rail Heading",
-   "link_count": 0,
-   "link_to": "SM Product Rail Heading",
-   "link_type": "DocType",
-   "onboard": 0,
-   "type": "Link"
-  },
-  {
-   "hidden": 0,
-   "is_query_report": 0,
    "label": "SM Navigation Item",
    "link_count": 0,
    "link_to": "SM Navigation Item",
-   "link_type": "DocType",
-   "onboard": 0,
-   "type": "Link"
-  },
-  {
-   "hidden": 0,
-   "is_query_report": 0,
-   "label": "SM Website Content",
-   "link_count": 0,
-   "link_to": "SM Website Content",
-   "link_type": "DocType",
-   "onboard": 0,
-   "type": "Link"
-  },
-  {
-   "hidden": 0,
-   "is_query_report": 0,
-   "label": "SM Homepage Settings",
-   "link_count": 0,
-   "link_to": "SM Homepage Settings",
    "link_type": "DocType",
    "onboard": 0,
    "type": "Link"

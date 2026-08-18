@@ -1,5 +1,9 @@
 """
 Coupon API — validate coupons, apply to orders, track usage.
+
+Backed by Saathi Coupon / Saathi Coupon Franchise / Saathi Coupon Usage;
+see saathi_coupon.py's validate_coupon for why usage limits key off
+customer_mobile rather than email.
 """
 import frappe
 from frappe import _
@@ -7,7 +11,7 @@ from frappe.utils import flt
 
 
 @frappe.whitelist(allow_guest=True)
-def validate(coupon_code, order_subtotal=0, user=None, franchise=None):
+def validate(coupon_code, order_subtotal=0, franchise=None, customer_mobile=None):
     """
     Validate a coupon code and return discount info.
     Used by frontend to preview coupon before checkout.
@@ -16,8 +20,7 @@ def validate(coupon_code, order_subtotal=0, user=None, franchise=None):
     {
         "ok": true,
         "discount": 150,
-        "free_delivery": false,
-        "coupon_type": "Percentage",
+        "discount_type": "Percentage",
         "message": "Coupon applied"
     }
     """
@@ -25,13 +28,12 @@ def validate(coupon_code, order_subtotal=0, user=None, franchise=None):
         return {"ok": False, "message": _("Coupon code is required")}
 
     try:
-        from saathi_middleware.saathi_middleware.doctype.sm_coupon.sm_coupon import validate_coupon
-        result = validate_coupon(coupon_code, flt(order_subtotal), user=user, franchise=franchise)
+        from saathi_middleware.saathi_middleware.doctype.saathi_coupon.saathi_coupon import validate_coupon
+        result = validate_coupon(coupon_code, franchise, customer_mobile, flt(order_subtotal))
         return {
             "ok": True,
             "discount": result.get("discount", 0),
-            "free_delivery": result.get("free_delivery", False),
-            "coupon_type": result.get("coupon_type", ""),
+            "discount_type": result.get("discount_type", ""),
             "message": _("Coupon applied"),
         }
     except frappe.ValidationError as e:
@@ -45,28 +47,28 @@ def get_usage(coupon_code):
         frappe.throw(_("Not permitted"), frappe.PermissionError)
 
     doc = frappe.db.get_value(
-        "SM Coupon",
-        {"coupon_code": coupon_code},
-        ["name", "coupon_type", "used_count", "max_uses", "max_uses_per_user"],
+        "Saathi Coupon",
+        coupon_code,
+        ["name", "discount_type", "usage_limit_total", "usage_limit_per_customer"],
         as_dict=True,
     )
     if not doc:
         frappe.throw(_("Coupon not found"), frappe.DoesNotExistError)
 
-    per_user = frappe.get_all(
-        "SM Coupon Usage",
+    usage = frappe.get_all(
+        "Saathi Coupon Usage",
         filters={"coupon": doc.name},
-        fields=["user", "order", "creation"],
-        order_by="creation desc",
+        fields=["customer_mobile", "order", "discount_amount", "used_at"],
+        order_by="used_at desc",
     )
 
     return {
         "coupon_code": coupon_code,
-        "coupon_type": doc.coupon_type,
-        "total_used": doc.used_count or 0,
-        "max_uses": doc.max_uses or 0,
-        "max_uses_per_user": doc.max_uses_per_user or 0,
-        "per_user_usage": per_user,
+        "discount_type": doc.discount_type,
+        "total_used": len(usage),
+        "usage_limit_total": doc.usage_limit_total or 0,
+        "usage_limit_per_customer": doc.usage_limit_per_customer or 0,
+        "usage": usage,
     }
 
 
@@ -77,10 +79,9 @@ def list_coupons():
         frappe.throw(_("Not permitted"), frappe.PermissionError)
 
     return frappe.get_all(
-        "SM Coupon",
-        fields=["name", "coupon_code", "coupon_type", "is_active",
-                "discount_percentage", "discount_amount", "min_order_amount",
-                "max_discount_amount", "used_count", "max_uses",
-                "max_uses_per_user", "valid_from", "valid_to"],
+        "Saathi Coupon",
+        fields=["name", "code", "is_active", "discount_type", "value",
+                "min_order_amount", "max_discount_amount", "usage_limit_total",
+                "usage_limit_per_customer", "valid_from", "valid_to"],
         order_by="creation desc",
     )

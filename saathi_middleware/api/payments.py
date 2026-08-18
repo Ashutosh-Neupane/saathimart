@@ -16,7 +16,7 @@ import json
 from urllib.parse import urlencode
 
 import frappe
-from frappe.utils import flt
+from frappe.utils import flt, now_datetime
 import requests
 
 
@@ -93,11 +93,26 @@ def _initiate_esewa(s, order_name, amount, sandbox):
 	if not secret_key:
 		frappe.throw("eSewa Secret Key not configured in Settings.")
 
+	# eSewa rejects a transaction_uuid it has already seen ("Duplicate
+	# transaction UUID") — the order name alone isn't enough once a
+	# shopper retries after a cancelled/failed attempt (checkout/review's
+	# "Try Again" re-initiates for the *same* Saathi Order). Suffixing
+	# with a timestamp makes every attempt unique to eSewa while staying
+	# reversible: esewa_success/esewa_failure strip it via rsplit("-", 1)
+	# to recover the real order name.
+	transaction_uuid = f"{order_name}-{int(now_datetime().timestamp())}"
+
 	s_total = f"{amount:.2f}".rstrip("0").rstrip(".")
-	message = f"total_amount={s_total},transaction_uuid={order_name},product_code={merchant_code}"
+	message = f"total_amount={s_total},transaction_uuid={transaction_uuid},product_code={merchant_code}"
 	signature = base64.b64encode(
 		hmac.new(secret_key.encode("utf-8"), message.encode("utf-8"), hashlib.sha256).digest()
 	).decode("utf-8")
+
+	# Persisted so verify_esewa_status (manual check + the 10-min cron poll)
+	# queries eSewa about the *actual* attempt it accepted, not the bare
+	# order name it never submitted.
+	frappe.db.set_value("Saathi Order", order_name, "esewa_transaction_uid", transaction_uuid)
+	frappe.db.commit()
 
 	gw_base = (
 		getattr(s, "esewa_base_url", None)
@@ -112,7 +127,7 @@ def _initiate_esewa(s, order_name, amount, sandbox):
 			"amount": s_total,
 			"tax_amount": "0",
 			"total_amount": s_total,
-			"transaction_uuid": order_name,
+			"transaction_uuid": transaction_uuid,
 			"product_code": merchant_code,
 			"product_service_charge": "0",
 			"product_delivery_charge": "0",
@@ -162,6 +177,16 @@ def _verify_esewa_signature(payload):
 # the order, and 302s the browser to the storefront's own success/failure
 # page (Settings > Payment Portal Base URL) rather than returning JSON.
 
+def _order_name_from_transaction_uuid(transaction_uuid):
+	"""transaction_uuid is "{order_name}-{unix_ts}" (see _initiate_esewa) —
+	rsplit on the last "-" instead of a plain lookup, since Saathi Order
+	names already contain dashes (e.g. "SORD-2026-00001")."""
+	if not transaction_uuid:
+		return None
+	order_name = transaction_uuid.rsplit("-", 1)[0]
+	return order_name if frappe.db.exists("Saathi Order", order_name) else None
+
+
 @frappe.whitelist(allow_guest=True)
 def esewa_success(data=None, **kwargs):
 	payload = _decode_esewa_data(data, kwargs)
@@ -177,8 +202,9 @@ def esewa_success(data=None, **kwargs):
 			"/payment/failure", error=f"Payment status: {payload.get('status')}",
 		))
 
-	order_name = payload.get("transaction_uuid")
-	if not order_name or not frappe.db.exists("Saathi Order", order_name):
+	transaction_uuid = payload.get("transaction_uuid")
+	order_name = _order_name_from_transaction_uuid(transaction_uuid)
+	if not order_name:
 		return _redirect(_frontend_redirect("/payment/failure", error="Order not found"))
 
 	amount = flt(payload.get("total_amount", 0))
@@ -192,7 +218,7 @@ def esewa_success(data=None, **kwargs):
 		order_name,
 		gateway="eSewa",
 		reference=payload.get("transaction_code", ""),
-		transaction_uid=order_name,
+		transaction_uid=transaction_uuid,
 		amount=amount,
 	)
 	return _redirect(_frontend_redirect("/payment/success", order=order_name, gateway="eSewa"))
@@ -201,7 +227,7 @@ def esewa_success(data=None, **kwargs):
 @frappe.whitelist(allow_guest=True)
 def esewa_failure(data=None, **kwargs):
 	payload = _decode_esewa_data(data, kwargs)
-	order_name = (payload or {}).get("transaction_uuid") or kwargs.get("order")
+	order_name = _order_name_from_transaction_uuid((payload or {}).get("transaction_uuid")) or kwargs.get("order")
 	if order_name and frappe.db.exists("Saathi Order", order_name):
 		_mark_order_failed(order_name, gateway="eSewa", message="Payment cancelled or failed")
 	return _redirect(_frontend_redirect(
@@ -218,6 +244,14 @@ def verify_esewa_status(order):
 	if order_doc.payment_status == "Paid":
 		return {"status": "Paid"}
 
+	# eSewa's status API is keyed by the exact transaction_uuid an
+	# initiate call actually used (order_name-timestamp), not the bare
+	# order name — see _initiate_esewa. No attempt yet means nothing to
+	# check.
+	transaction_uuid = order_doc.esewa_transaction_uid
+	if not transaction_uuid:
+		return {"status": "not_initiated"}
+
 	merchant_code = getattr(s, "esewa_merchant_code", None) or "EPAYTEST"
 	sandbox = bool(getattr(s, "payment_sandbox_mode", 1))
 	gw_base = (
@@ -231,14 +265,14 @@ def verify_esewa_status(order):
 			params={
 				"product_code": merchant_code,
 				"total_amount": str(flt(order_doc.grand_total)),
-				"transaction_uuid": order,
+				"transaction_uuid": transaction_uuid,
 			},
 			timeout=20,
 		)
 		data = resp.json()
 		if resp.ok and data.get("status") == "COMPLETE":
 			_mark_order_paid(order, gateway="eSewa", reference=data.get("ref_id", ""),
-			                 transaction_uid=order, amount=flt(order_doc.grand_total))
+			                 transaction_uid=transaction_uuid, amount=flt(order_doc.grand_total))
 			return {"status": "Paid", "ref_id": data.get("ref_id")}
 		return {"status": data.get("status", "unknown")}
 	except Exception as e:
@@ -304,6 +338,14 @@ def _mark_order_paid(order_name, gateway, reference, transaction_uid, amount):
 		order_name=order_name,
 		enqueue_after_commit=True,
 	)
+
+	# esewa_success/verify_esewa_status both return a redirect or a plain
+	# dict rather than the normal whitelisted-JSON response, which is what
+	# usually triggers Frappe's implicit end-of-request commit — without
+	# this, the notification insert and the queued confirmation email
+	# above were silently dropped on rollback while the order/Payment Log
+	# writes above (each already explicitly committed) persisted.
+	frappe.db.commit()
 
 
 def _mark_order_failed(order_name, gateway, message):

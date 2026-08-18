@@ -44,16 +44,14 @@ class SaathiOrder(Document):
 	def apply_coupon(self):
 		if not self.coupon_code:
 			return
-		from saathi_middleware.saathi_middleware.doctype.sm_coupon.sm_coupon import validate_coupon
+		from saathi_middleware.saathi_middleware.doctype.saathi_coupon.saathi_coupon import validate_coupon
 		result = validate_coupon(
 			self.coupon_code,
+			self.franchise,
+			self.customer_mobile,
 			flt(self.subtotal or 0),
-			user=self.customer_email or None,
-			franchise=self.franchise,
 		)
 		self.coupon_discount = flt(result.get("discount", 0))
-		if result.get("free_delivery"):
-			self.delivery_charges = 0
 
 	def apply_loyalty_redemption(self):
 		if not self.loyalty_points_redeemed:

@@ -160,7 +160,11 @@ def list_products(
 		conditions.append("(item.item_name LIKE %(search)s OR item.description LIKE %(search)s)")
 		values["search"] = f"%{search}%"
 
-	if in_stock:
+	# in_stock arrives as a raw querystring value ("0", "false", "1"...) —
+	# `if in_stock:` would treat the non-empty string "0"/"false" as truthy
+	# and wrongly filter stock_qty > 0, hiding exactly the out-of-stock item
+	# a caller passing in_stock=0 meant to see. cint() normalizes it first.
+	if cint(in_stock):
 		conditions.append("item.stock_qty > 0")
 
 	if min_price is not None and min_price != "":

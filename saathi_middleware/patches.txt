@@ -1,12 +1,6 @@
 [pre_model_sync]
 # Patches added in this section will be executed before doctypes are migrated
 # Read docs to understand patches: https://frappeframework.com/docs/v14/user/en/database-migrations
-saathi_middleware.patches.remove_sm_coupon
-saathi_middleware.patches.remove_dead_home_content_doctypes
 
 [post_model_sync]
 # Patches added in this section will be executed after doctypes are migrated
-saathi_middleware.patches.seed_demo_catalog
-saathi_middleware.patches.seed_navigation_and_site_config
-saathi_middleware.patches.seed_payment_modes
-saathi_middleware.patches.seed_static_page_content

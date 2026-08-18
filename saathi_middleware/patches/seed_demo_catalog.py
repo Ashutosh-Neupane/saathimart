@@ -26,7 +26,16 @@ _FRANCHISE = {
 	"city": "Kathmandu",
 	"latitude": 27.7172,
 	"longitude": 85.3240,
-	"serviceable_radius_km": 12,
+	# Only one real franchise exists in this seed, and the storefront's own
+	# copy already claims nationwide coverage ("Delivering all over Nepal",
+	# lib/location/delivery-zone.ts) — a Kathmandu-only 12km radius would
+	# make every location outside the valley fall through as "not
+	# serviceable" (list_products/get_nearby_items distance filter,
+	# checkout()'s _get_serviceable_franchise) even though the frontend
+	# never told the shopper to expect that. 800km comfortably spans
+	# Nepal east-west from a Kathmandu center point. Revisit once there
+	# are real franchises outside the valley to actually zone against.
+	"serviceable_radius_km": 800,
 	"delivery_base_charge": 30,
 	"free_delivery_upto_km": 2,
 	"delivery_per_km_rate": 10,

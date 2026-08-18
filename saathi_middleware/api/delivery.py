@@ -79,7 +79,10 @@ def list_delivery_zones():
     franchises = frappe.get_all(
         "Franchise",
         filters={"status": "Active"},
-        fields=["name", "franchise_name", "city", "delivery_base_charge"],
+        fields=[
+            "name", "franchise_name", "city", "delivery_base_charge",
+            "latitude", "longitude", "serviceable_radius_km",
+        ],
     )
     return [
         {
@@ -89,6 +92,12 @@ def list_delivery_zones():
             "delivery_charge": flt(f.delivery_base_charge),
             "free_delivery_above": 0,
             "label": f"{f.franchise_name} — Rs. {flt(f.delivery_base_charge):g} delivery",
+            # Lets the frontend check "is location X still inside the
+            # franchise my cart is bound to" client-side, without a round
+            # trip per location change (see lib/location/franchise-zones.ts).
+            "latitude": flt(f.latitude) if f.latitude else None,
+            "longitude": flt(f.longitude) if f.longitude else None,
+            "serviceable_radius_km": flt(f.serviceable_radius_km) if f.serviceable_radius_km else None,
         }
         for f in franchises
     ]

@@ -62,14 +62,28 @@ def _get_or_create_cart(session_id):
     if not session_id:
         session_id = get_session_id()
 
-    name = frappe.db.get_value(
-        "SM Cart", {"session_id": session_id, "status": "Active"}, "name"
-    )
-    if name:
-        cart = frappe.get_doc("SM Cart", name)
-        if frappe.session.user == "Guest":
+    user = frappe.session.user if frappe.session.user != "Guest" else None
+
+    # A logged-in user's cart must be the SAME cart on every device/browser
+    # they use, not a fresh one per session_id — looking this up by
+    # session_id alone (the old behavior) gave every new browser its own
+    # disconnected cart, since each carries a different sm_cart_session
+    # cookie. For a signed-in user, resolve by `user` first so all of their
+    # sessions share one cart; merge_guest_cart (auth_full.py's login) is
+    # what folds a pre-login device's guest cart into this one. Guests have
+    # no stable identity across devices, so they stay session_id-keyed.
+    if user:
+        name = frappe.db.get_value("SM Cart", {"user": user, "status": "Active"}, "name")
+        if name:
+            return frappe.get_doc("SM Cart", name)
+    else:
+        name = frappe.db.get_value(
+            "SM Cart", {"session_id": session_id, "status": "Active"}, "name"
+        )
+        if name:
+            cart = frappe.get_doc("SM Cart", name)
             _set_session_cookie(session_id)
-        return cart
+            return cart
 
     # session_id is unique, but checkout() never deletes the cart it just
     # placed an order from — it only flips status to "CheckedOut" (kept for
@@ -89,7 +103,7 @@ def _get_or_create_cart(session_id):
 
     cart = frappe.new_doc("SM Cart")
     cart.session_id = session_id
-    cart.user = frappe.session.user if frappe.session.user != "Guest" else None
+    cart.user = user
     try:
         cart.source_site = frappe.request.headers.get("X-Source-Site", "")
     except Exception:
@@ -97,7 +111,7 @@ def _get_or_create_cart(session_id):
     cart.expires_at = add_days(now_datetime(), 7)
     cart.insert(ignore_permissions=True)
 
-    if frappe.session.user == "Guest":
+    if not user:
         _set_session_cookie(session_id)
 
     return cart

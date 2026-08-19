@@ -6,7 +6,7 @@
   "fields": [
    {"fieldname": "customer_email", "fieldtype": "Data", "label": "Customer Email", "reqd": 1, "in_list_view": 1},
    {"fieldname": "program", "fieldtype": "Link", "label": "Program", "options": "SM Loyalty Program", "reqd": 1},
-   {"fieldname": "points", "fieldtype": "Float", "label": "Points", "reqd": 1, "in_list_view": 1},
+   {"fieldname": "points", "fieldtype": "Int", "label": "Points", "reqd": 1, "in_list_view": 1},
    {"fieldname": "col_break_1", "fieldtype": "Column Break"},
    {"fieldname": "entry_type", "fieldtype": "Select", "label": "Type",
     "options": "Earned\nRedeemed\nExpired\nAdjusted", "default": "Earned", "in_list_view": 1},

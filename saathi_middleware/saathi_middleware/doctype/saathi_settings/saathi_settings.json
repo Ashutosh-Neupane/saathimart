@@ -1,5 +1,5 @@
 {
-  "name": "Settings",
+  "name": "Saathi Settings",
   "module": "Saathi Middleware",
   "doctype": "DocType",
   "issingle": 1,
@@ -21,5 +21,22 @@
     "description": "Use sandbox/test endpoints for payment gateways"},
    {"fieldname": "payment_portal_base_url", "fieldtype": "Data", "label": "Storefront Base URL",
     "description": "Where shoppers land after payment (leave blank to use this site's own URL)"}
-  ]
+  ],
+  "permissions": [
+  {
+   "create": 1,
+   "delete": 1,
+   "email": 1,
+   "export": 1,
+   "print": 1,
+   "read": 1,
+   "report": 1,
+   "role": "System Manager",
+   "share": 1,
+   "write": 1
+  }
+ ],
+ "sort_field": "modified",
+ "sort_order": "DESC",
+ "states": []
 }

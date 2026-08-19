@@ -303,7 +303,7 @@ def merge_guest_cart(user, guest_session_id):
 
 
 def expire_abandoned_carts():
-    settings = frappe.get_single("Settings")
+    settings = frappe.get_single("Saathi Settings")
     hours = getattr(settings, "abandoned_cart_hours", 24) or 24
     frappe.db.sql("""
         UPDATE `tabSM Cart`

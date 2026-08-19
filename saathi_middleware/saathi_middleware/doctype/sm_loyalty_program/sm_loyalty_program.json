@@ -12,7 +12,7 @@
    {"fieldname": "redemption_factor", "fieldtype": "Float", "label": "NPR Value per Point",
     "default": "1", "description": "e.g. 1 = 1 point = NPR 1 discount"},
    {"fieldname": "section_limits", "fieldtype": "Section Break", "label": "Limits"},
-   {"fieldname": "min_points_to_redeem", "fieldtype": "Int", "label": "Min Points to Redeem", "default": "100"},
+   {"fieldname": "min_points_to_redeem", "fieldtype": "Int", "label": "Min Points to Redeem", "default": "1"},
    {"fieldname": "max_redemption_per_order_pct", "fieldtype": "Float",
     "label": "Max Redemption per Order (%)", "default": "20",
     "description": "Max % of order total that can be paid with points"},

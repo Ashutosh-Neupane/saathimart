@@ -10,7 +10,7 @@ from frappe import _
 
 def _get_site_name():
     try:
-        s = frappe.get_single("Settings")
+        s = frappe.get_single("Saathi Settings")
         return getattr(s, "site_name", None) or "SaathiMart"
     except Exception:
         return "SaathiMart"

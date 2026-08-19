@@ -1,5 +1,5 @@
 from frappe.model.document import Document
 
 
-class Settings(Document):
+class SaathiSettings(Document):
 	pass

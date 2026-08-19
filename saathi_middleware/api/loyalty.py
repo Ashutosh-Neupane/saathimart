@@ -4,6 +4,8 @@ All data lives in SM Loyalty Point Entry.
 """
 from __future__ import annotations
 
+import math
+
 import frappe
 from frappe import _
 from frappe.utils import flt, add_days, today, nowdate
@@ -59,7 +61,7 @@ def get_tier(customer_email: str, program_name: str) -> dict:
 
 
 def earn_points(customer_email: str, order_name: str, order_amount: float) -> float:
-    s = frappe.get_single("Settings")
+    s = frappe.get_single("Saathi Settings")
     if not getattr(s, "enable_loyalty", 0) or not getattr(s, "loyalty_program", None):
         return 0.0
 
@@ -69,8 +71,14 @@ def earn_points(customer_email: str, order_name: str, order_amount: float) -> fl
 
     tier_info = get_tier(customer_email, program.name)
     multiplier = tier_info["current_tier"]["multiplier"]
+    # Points are a whole-number currency everywhere else in this system (the
+    # storefront rejects a fractional redemption outright, min_points_to_redeem
+    # is an Int) — rounding to 2 decimal places here was the actual bug: a
+    # NPR 4,250 order at the default 1%-collection rate earns exactly 42.5,
+    # which then can never be redeemed. Floor instead, so a customer is never
+    # credited a fraction they can't spend.
     base_points = flt(order_amount) * flt(program.collection_factor) * multiplier
-    points = round(base_points, 2)
+    points = math.floor(base_points)
 
     if points <= 0:
         return 0.0
@@ -95,12 +103,18 @@ def earn_points(customer_email: str, order_name: str, order_amount: float) -> fl
 
 def calculate_redemption_discount(customer_email: str, points_to_redeem: float,
                                    order_subtotal: float) -> dict:
-    s = frappe.get_single("Settings")
+    s = frappe.get_single("Saathi Settings")
     if not getattr(s, "enable_loyalty", 0) or not getattr(s, "loyalty_program", None):
         return {"ok": False, "discount": 0, "points_used": 0, "error": "Loyalty not enabled"}
 
     program = frappe.get_doc("SM Loyalty Program", s.loyalty_program)
-    points_to_redeem = flt(points_to_redeem)
+    # Floor here too, not just at earn time — a balance can still be
+    # fractional from before this was fixed (or from an SM Admin manually
+    # adjusting it), and a caller could still pass a fractional value
+    # directly. Flooring the balance means a 42.5-point balance redeems as
+    # 42 instead of refusing to redeem at all; the leftover 0.5 simply isn't
+    # spendable, same as real currency has no sub-cent coins.
+    points_to_redeem = math.floor(flt(points_to_redeem))
 
     if points_to_redeem < program.min_points_to_redeem:
         return {
@@ -108,23 +122,28 @@ def calculate_redemption_discount(customer_email: str, points_to_redeem: float,
             "error": f"Minimum {program.min_points_to_redeem} points required to redeem",
         }
 
-    balance = get_balance(customer_email)
+    balance = math.floor(get_balance(customer_email))
     if points_to_redeem > balance:
         points_to_redeem = balance
 
     max_discount = flt(order_subtotal) * (flt(program.max_redemption_per_order_pct) / 100)
-    discount = min(points_to_redeem * flt(program.redemption_factor), max_discount)
-    actual_points = discount / flt(program.redemption_factor) if program.redemption_factor else 0
+    discount = points_to_redeem * flt(program.redemption_factor)
+    if program.redemption_factor and discount > max_discount:
+        # Re-floor after capping to the per-order discount ceiling, so
+        # points_used stays a whole number even when the cap — not the
+        # balance — is what limits how many points actually get spent.
+        points_to_redeem = math.floor(max_discount / flt(program.redemption_factor))
+        discount = points_to_redeem * flt(program.redemption_factor)
 
     return {
         "ok": True,
         "discount": round(discount, 2),
-        "points_used": round(actual_points, 2),
+        "points_used": points_to_redeem,
     }
 
 
 def redeem_points(customer_email: str, order_name: str, points: float, discount: float):
-    s = frappe.get_single("Settings")
+    s = frappe.get_single("Saathi Settings")
     if not getattr(s, "loyalty_program", None):
         return
 
@@ -166,7 +185,7 @@ def get_loyalty_balance(customer_email=None):
     if email == "Guest":
         frappe.throw(_("Not logged in"), frappe.PermissionError)
 
-    s = frappe.get_single("Settings")
+    s = frappe.get_single("Saathi Settings")
     if not getattr(s, "enable_loyalty", 0) or not getattr(s, "loyalty_program", None):
         return {"enabled": False, "balance": 0}
 

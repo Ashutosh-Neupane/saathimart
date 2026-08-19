@@ -1,0 +1,20 @@
+{
+ "auto_email_id": "dndts.notifications@gmail.com",
+ "db_host": "db",
+ "db_name": "_b44d5bfd84f282c7",
+ "db_password": "FJMEjJd5JJrtpWaj",
+ "db_port": 3306,
+ "db_type": "mariadb",
+ "db_user": "_b44d5bfd84f282c7",
+ "encryption_key": "IVwIEjMiPd5gDd5VjrCGMWN2c-7yG_rneAOPddWoOSU=",
+ "installed_apps": [
+  "frappe",
+  "saathi_middleware"
+ ],
+ "mail_login": "dndts.notifications@gmail.com",
+ "mail_password": "cdyp vmpy eqtq eptc",
+ "mail_server": "smtp.gmail.com",
+ "pause_scheduler": false,
+ "smtp_port": 587,
+ "use_tls": 1
+}

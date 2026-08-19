@@ -23,7 +23,7 @@ import requests
 # ── Settings helpers ──────────────────────────────────────────
 
 def _settings():
-	return frappe.get_single("Settings")
+	return frappe.get_single("Saathi Settings")
 
 
 def _get_password(settings, field):

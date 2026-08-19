@@ -156,9 +156,25 @@ def list_products(
 			# than silently ignoring the filter.
 			conditions.append("1 = 0")
 
-	if search:
-		conditions.append("(item.item_name LIKE %(search)s OR item.description LIKE %(search)s)")
-		values["search"] = f"%{search}%"
+	# .strip() matters — an accidental leading/trailing space (very common on
+	# mobile) made the LIKE pattern require that literal space in the stored
+	# text too, so "  milk  " returned zero results while "milk" worked fine.
+	# Splitting on whitespace and requiring each word independently (not one
+	# literal substring) means "bread brown" finds "Brown Bread 400g" just
+	# like "brown bread" does — word order stopped mattering. Category name
+	# and item_code are now searched too, since typing a category ("beverages")
+	# or a SKU ("BEV-001") are both reasonable things a shopper might try.
+	search_term = (search or "").strip()
+	if search_term:
+		word_clauses = []
+		for i, word in enumerate(search_term.split()):
+			key = f"search_w{i}"
+			word_clauses.append(
+				f"(item.item_name LIKE %({key})s OR item.description LIKE %({key})s "
+				f"OR cat.category_name LIKE %({key})s OR item.item_code LIKE %({key})s)"
+			)
+			values[key] = f"%{word}%"
+		conditions.append(" AND ".join(word_clauses))
 
 	# in_stock arrives as a raw querystring value ("0", "false", "1"...) —
 	# `if in_stock:` would treat the non-empty string "0"/"false" as truthy
@@ -181,6 +197,23 @@ def list_products(
 
 	where_clause = " AND ".join(conditions)
 	order_by = _SORT_MAP.get(sort, "item.creation DESC")
+
+	# Plain "newest first" buried genuinely relevant matches behind whatever
+	# was added most recently — searching "milk" with several other items
+	# created after "Fresh Milk 1L" would show it last. An exact/prefix name
+	# match is what the shopper is almost certainly looking for, so rank
+	# those first; anything only matched via description/category/SKU still
+	# shows, just lower. lat/lng below still takes priority over this when
+	# both are present — distance answers a different, usually more urgent
+	# question than relevance does.
+	if search_term and not sort:
+		order_by = (
+			"(item.item_name LIKE %(search_exact)s) DESC, "
+			"(item.item_name LIKE %(search_prefix)s) DESC, "
+			"item.creation DESC"
+		)
+		values["search_exact"] = search_term
+		values["search_prefix"] = f"{search_term}%"
 
 	# When the caller has a location, this is the same "can this franchise
 	# actually deliver here" filter get_nearby_items uses — without it,

@@ -60,6 +60,42 @@ def _check_stock(saathi_item, requested_qty):
         )
 
 
+def find_active_cart(session_id):
+    """The Active cart a read-only caller (checkout, totals preview) should use.
+
+    MUST mirror _get_or_create_cart's resolution order, and that is the whole
+    point of it existing. That function resolves a signed-in user's cart by
+    `user` and ignores session_id entirely, so the cart a shopper filled can
+    easily carry a session_id that is not the one their browser is sending —
+    they added items on another device, or merge_guest_cart folded a guest cart
+    into a user cart created in an earlier session.
+
+    checkout() and preview_checkout_totals used to look up by session_id alone.
+    For those shoppers the lookup missed a cart that plainly exists and they
+    were told "Cart not found or already checked out" with a full basket on
+    screen.
+
+    Returns the cart docname, or None. Never creates — callers here are
+    read-only and a checkout that silently invents an empty cart would be worse
+    than the error.
+    """
+    user = frappe.session.user if frappe.session.user != "Guest" else None
+
+    if user:
+        name = frappe.db.get_value("SM Cart", {"user": user, "status": "Active"}, "name")
+        if name:
+            return name
+
+    # Falls through for a signed-in shopper with no user-keyed cart yet: their
+    # guest cart may still be session-keyed if login ran before any merge.
+    if session_id:
+        return frappe.db.get_value(
+            "SM Cart", {"session_id": session_id, "status": "Active"}, "name"
+        )
+
+    return None
+
+
 def _get_or_create_cart(session_id):
     if not session_id:
         session_id = get_session_id()

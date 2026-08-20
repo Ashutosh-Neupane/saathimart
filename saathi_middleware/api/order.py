@@ -7,7 +7,7 @@ from saathi_middleware.api.responses import handle_api_errors
 from frappe.rate_limiter import rate_limit
 from frappe.utils import flt, now_datetime, today
 
-from saathi_middleware.api.cart import resolve_item_code
+from saathi_middleware.api.cart import find_active_cart, resolve_item_code
 from saathi_middleware.api.constants import VALID_ORDER_TRANSITIONS
 from saathi_middleware.utils import erpnext_client
 
@@ -324,9 +324,11 @@ def checkout(session_id, customer_name, customer_mobile, delivery_address,
              payment_mode, delivery_city=None, delivery_latitude=None,
              delivery_longitude=None, delivery_charges=0, coupon_code=None,
              loyalty_points=0, customer_email=None):
-	cart = frappe.db.get_value(
-		"SM Cart", {"session_id": session_id, "status": "Active"}, "name"
-	)
+	# Resolved the same way add_to_cart resolves it — by user first for a
+	# signed-in shopper — so a cart filled on another device, or merged in at
+	# login, is still found here. Matching on session_id alone reported
+	# "Cart not found" to shoppers looking at a full basket.
+	cart = find_active_cart(session_id)
 	if not cart:
 		frappe.throw("Cart not found or already checked out")
 
@@ -436,9 +438,11 @@ def calculate_cart_totals(session_id, coupon_code=None, loyalty_points=0, delive
 	on every keystroke while the customer types a coupon code or a
 	points-to-redeem amount on the cart page.
 	"""
-	cart = frappe.db.get_value(
-		"SM Cart", {"session_id": session_id, "status": "Active"}, "name"
-	)
+	# Resolved the same way add_to_cart resolves it — by user first for a
+	# signed-in shopper — so a cart filled on another device, or merged in at
+	# login, is still found here. Matching on session_id alone reported
+	# "Cart not found" to shoppers looking at a full basket.
+	cart = find_active_cart(session_id)
 	if not cart:
 		frappe.throw("Cart not found or already checked out")
 

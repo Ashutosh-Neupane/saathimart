@@ -8,6 +8,8 @@ Endpoints:
 from __future__ import annotations
 
 import frappe
+
+from saathi_middleware.api.responses import handle_api_errors
 from frappe import _
 from frappe.utils import flt
 
@@ -23,6 +25,7 @@ def _haversine_km(lat1, lon1, lat2, lon2):
 
 
 @frappe.whitelist(allow_guest=True)
+@handle_api_errors
 def calculate_delivery_charge(franchise, delivery_latitude=None, delivery_longitude=None):
     if not franchise:
         frappe.throw("franchise is required")
@@ -65,6 +68,7 @@ def calculate_delivery_charge(franchise, delivery_latitude=None, delivery_longit
 
 
 @frappe.whitelist(allow_guest=True)
+@handle_api_errors
 def list_delivery_zones():
     """
     Each active Franchise as a checkout-time "delivery zone" — this

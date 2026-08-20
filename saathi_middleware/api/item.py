@@ -1,4 +1,6 @@
 import frappe
+
+from saathi_middleware.api.responses import handle_api_errors
 from frappe.rate_limiter import rate_limit
 
 from saathi_middleware.utils.auth import get_authenticated_franchise
@@ -38,6 +40,7 @@ def _upsert_item(franchise, payload):
 
 
 @frappe.whitelist(allow_guest=True)
+@handle_api_errors
 def sync_item(**payload):
 	franchise = get_authenticated_franchise()
 	result = _upsert_item(franchise, payload)
@@ -46,6 +49,7 @@ def sync_item(**payload):
 
 
 @frappe.whitelist(allow_guest=True)
+@handle_api_errors
 def bulk_sync_items():
 	franchise = get_authenticated_franchise()
 	items = frappe.local.form_dict.get("items") or []
@@ -62,6 +66,7 @@ def bulk_sync_items():
 
 @frappe.whitelist(allow_guest=True)
 @rate_limit(key="get_nearby_items", limit=60, seconds=60)
+@handle_api_errors
 def get_nearby_items(latitude, longitude, category=None, item_group=None, q=None, limit=50, offset=0):
 	latitude = float(latitude)
 	longitude = float(longitude)

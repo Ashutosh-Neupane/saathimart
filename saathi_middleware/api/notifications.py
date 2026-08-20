@@ -11,6 +11,8 @@ there's nothing for the raw REST /api/resource/SM Notification endpoint
 to leak even if a customer tried to hit it directly.
 """
 import frappe
+
+from saathi_middleware.api.responses import handle_api_errors, raw
 from frappe.utils import now_datetime
 
 
@@ -53,6 +55,7 @@ def create_order_status_notification(order_doc, status):
 
 
 @frappe.whitelist()
+@handle_api_errors
 def list_notifications(limit=50):
 	"""Return current user's notifications, newest first."""
 	if frappe.session.user == "Guest":
@@ -71,6 +74,7 @@ def list_notifications(limit=50):
 
 
 @frappe.whitelist()
+@handle_api_errors
 def mark_notifications_read(names=None):
 	"""Mark notifications as read. names=None -> mark all for the current user."""
 	if frappe.session.user == "Guest":
@@ -85,10 +89,11 @@ def mark_notifications_read(names=None):
 
 	frappe.db.set_value("SM Notification", filters, "read", 1)
 	frappe.db.commit()
-	return list_notifications()
+	return raw(list_notifications)()
 
 
 @frappe.whitelist()
+@handle_api_errors
 def get_notification_preferences():
 	"""Return the current user's notification preference toggles."""
 	if frappe.session.user == "Guest":
@@ -107,6 +112,7 @@ def get_notification_preferences():
 
 
 @frappe.whitelist()
+@handle_api_errors
 def update_notification_preferences(prefs):
 	"""Save the current user's notification preference toggles."""
 	if frappe.session.user == "Guest":
@@ -121,4 +127,4 @@ def update_notification_preferences(prefs):
 	user.notify_delivery_reminders = 1 if prefs.get("delivery_reminders", True) else 0
 	user.save(ignore_permissions=True)
 	frappe.db.commit()
-	return get_notification_preferences()
+	return raw(get_notification_preferences)()

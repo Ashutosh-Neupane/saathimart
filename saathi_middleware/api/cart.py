@@ -2,6 +2,8 @@
 Cart API — session-based cart, works for guests and logged-in users.
 """
 import frappe
+
+from saathi_middleware.api.responses import handle_api_errors
 from frappe import _
 from frappe.utils import add_days, flt, now_datetime
 
@@ -118,6 +120,7 @@ def _get_or_create_cart(session_id):
 
 
 @frappe.whitelist(allow_guest=True)
+@handle_api_errors
 def set_customer_location(session_id, lat, lng):
     cart = _get_or_create_cart(session_id)
     cart.customer_lat = flt(lat)
@@ -132,12 +135,14 @@ def set_customer_location(session_id, lat, lng):
 
 
 @frappe.whitelist(allow_guest=True)
+@handle_api_errors
 def get_cart(session_id):
     cart = _get_or_create_cart(session_id)
     return cart.as_dict()
 
 
 @frappe.whitelist(allow_guest=True)
+@handle_api_errors
 def add_to_cart(session_id, item_code, qty=1, franchise=None):
     qty = float(qty)
     if qty <= 0:
@@ -175,6 +180,7 @@ def add_to_cart(session_id, item_code, qty=1, franchise=None):
 
 
 @frappe.whitelist(allow_guest=True)
+@handle_api_errors
 def update_cart_item(session_id, item_code, qty, franchise=None):
     qty = float(qty)
     cart = _get_or_create_cart(session_id)
@@ -205,6 +211,7 @@ def update_cart_item(session_id, item_code, qty, franchise=None):
 
 
 @frappe.whitelist(allow_guest=True)
+@handle_api_errors
 def clear_cart(session_id):
     cart = _get_or_create_cart(session_id)
     cart.items = []
@@ -213,6 +220,7 @@ def clear_cart(session_id):
 
 
 @frappe.whitelist(allow_guest=True)
+@handle_api_errors
 def get_cart_summary(session_id):
     cart = _get_or_create_cart(session_id)
     images = _item_images([item.product for item in cart.items])
@@ -244,6 +252,7 @@ def get_cart_summary(session_id):
 
 
 @frappe.whitelist(allow_guest=True)
+@handle_api_errors
 def get_cart_count(session_id):
     cart = _get_or_create_cart(session_id)
     total_qty = sum(flt(i.qty or 0) for i in cart.items)

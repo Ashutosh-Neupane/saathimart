@@ -1,0 +1,21 @@
+{
+  "name": "SM Trust Badge",
+  "module": "Saathi Middleware",
+  "doctype": "DocType",
+  "autoname": "SM-TB-.#####",
+  "fields": [
+   {"fieldname": "title", "fieldtype": "Data", "label": "Title", "reqd": 1, "in_list_view": 1},
+   {"fieldname": "description", "fieldtype": "Data", "label": "Description", "reqd": 1, "in_list_view": 1},
+   {"fieldname": "icon", "fieldtype": "Select", "label": "Icon", "reqd": 1, "in_list_view": 1,
+    "options": "delivery\nauthentic\nhours\nfree-delivery", "default": "delivery",
+    "description": "Fixed icon set — the storefront maps each key to bundled artwork. A key it does not know makes the badge invalid, so the whole set falls back to defaults."},
+   {"fieldname": "col_break_1", "fieldtype": "Column Break"},
+   {"fieldname": "sort_order", "fieldtype": "Int", "label": "Sort Order", "default": "0", "in_list_view": 1},
+   {"fieldname": "is_active", "fieldtype": "Check", "label": "Is Active", "default": "1"}
+  ],
+  "title_field": "title",
+  "permissions": [
+   {"role": "SM Admin", "read": 1, "write": 1, "create": 1, "delete": 1},
+   {"role": "Guest", "read": 1}
+  ]
+}

@@ -2,6 +2,8 @@
 Address API — saved delivery addresses for logged-in customers.
 """
 import frappe
+
+from saathi_middleware.api.responses import handle_api_errors
 from frappe import _
 
 
@@ -18,6 +20,7 @@ def _get_owned_address(name):
 
 
 @frappe.whitelist()
+@handle_api_errors
 def list_addresses():
     _require_login()
     return frappe.get_list(
@@ -30,6 +33,7 @@ def list_addresses():
 
 
 @frappe.whitelist()
+@handle_api_errors
 def add_address(full_name, phone, city, street_address, label="Home",
                 landmark=None, lat=None, lng=None, is_default=0):
     _require_login()
@@ -49,6 +53,7 @@ def add_address(full_name, phone, city, street_address, label="Home",
 
 
 @frappe.whitelist()
+@handle_api_errors
 def update_address(name, **kwargs):
     _require_login()
     doc = _get_owned_address(name)
@@ -63,6 +68,7 @@ def update_address(name, **kwargs):
 
 
 @frappe.whitelist()
+@handle_api_errors
 def delete_address(name):
     _require_login()
     _get_owned_address(name)
@@ -71,6 +77,7 @@ def delete_address(name):
 
 
 @frappe.whitelist()
+@handle_api_errors
 def set_default_address(name):
     _require_login()
     doc = _get_owned_address(name)

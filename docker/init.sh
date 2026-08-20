@@ -72,8 +72,26 @@ fi
 
 echo "Running migrations..."
 cd "$BENCH"
-bench --site "$SITE" migrate
-bench build --app saathi_middleware || true
+# set -e already aborts on a failed migrate, which is what we want — serving a
+# half-migrated site answers requests against doctypes that may not exist yet.
+# The trap just makes the reason visible in `docker logs` instead of leaving a
+# bare non-zero exit.
+if ! bench --site "$SITE" migrate; then
+  echo "ERROR: migrate failed for $SITE — not starting. Fix the patch/doctype above and restart." >&2
+  exit 1
+fi
+
+# Assets are not fatal for an API-only middleware (the desk falls back to the
+# prebuilt frappe bundles), so a build failure must not stop the container —
+# but `|| true` alone hid it completely. Warn loudly and carry on.
+if ! bench build --app saathi_middleware; then
+  echo "WARNING: asset build failed — desk pages for this app may render unstyled." >&2
+fi
+
+# hooks.py and doctype changes are read through Frappe's cache; without this a
+# restart can keep serving the previous hook set (after_request, doc_events)
+# even though the file on disk changed.
+bench --site "$SITE" clear-cache || true
 
 echo "Configuring email..."
 cd "$BENCH/sites"

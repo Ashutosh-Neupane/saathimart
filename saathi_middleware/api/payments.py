@@ -16,6 +16,8 @@ import json
 from urllib.parse import urlencode
 
 import frappe
+
+from saathi_middleware.api.responses import handle_api_errors, raw
 from frappe.utils import flt, now_datetime
 import requests
 
@@ -67,6 +69,7 @@ def _redirect(url):
 # ── Initiate ──────────────────────────────────────────
 
 @frappe.whitelist(allow_guest=True)
+@handle_api_errors
 def initiate_payment(order):
 	s = _settings()
 	order_doc = frappe.get_doc("Saathi Order", order)
@@ -188,6 +191,7 @@ def _order_name_from_transaction_uuid(transaction_uuid):
 
 
 @frappe.whitelist(allow_guest=True)
+@handle_api_errors
 def esewa_success(data=None, **kwargs):
 	payload = _decode_esewa_data(data, kwargs)
 	if not payload:
@@ -225,6 +229,7 @@ def esewa_success(data=None, **kwargs):
 
 
 @frappe.whitelist(allow_guest=True)
+@handle_api_errors
 def esewa_failure(data=None, **kwargs):
 	payload = _decode_esewa_data(data, kwargs)
 	order_name = _order_name_from_transaction_uuid((payload or {}).get("transaction_uuid")) or kwargs.get("order")
@@ -236,6 +241,7 @@ def esewa_failure(data=None, **kwargs):
 
 
 @frappe.whitelist(allow_guest=True)
+@handle_api_errors
 def verify_esewa_status(order):
 	"""Poll eSewa's transaction status API directly - used by cron to catch
 	lost callbacks, and safe to call manually to double check a payment."""
@@ -276,7 +282,9 @@ def verify_esewa_status(order):
 			return {"status": "Paid", "ref_id": data.get("ref_id")}
 		return {"status": data.get("status", "unknown")}
 	except Exception as e:
-		return {"status": "error", "error": str(e)}
+		# str(e) was a raw Python exception going straight to the browser.
+		frappe.log_error(frappe.get_traceback(), f"eSewa status check failed for {order}")
+		return error_response(_("Could not reach eSewa. Please try again."), SERVER_ERROR)
 
 
 # ── Internal helpers ──────────────────────────────────────────
@@ -379,6 +387,8 @@ def poll_pending_esewa_orders():
 		if not is_online:
 			continue
 		try:
-			verify_esewa_status(row.name)
+			# raw(): this is a cron, not a request — an exception belongs in the
+			# except below and the Error Log, not swallowed into a return value.
+			raw(verify_esewa_status)(row.name)
 		except Exception:
 			frappe.log_error(frappe.get_traceback(), f"eSewa poll failed for {row.name}")

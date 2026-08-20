@@ -7,11 +7,15 @@
  "engine": "InnoDB",
  "field_order": [
   "mode_name",
+  "slug",
   "is_enabled",
   "is_online",
   "column_break_main",
   "display_order",
   "erpnext_mode_of_payment",
+  "section_break_display",
+  "description",
+  "logo",
   "section_break_gateway",
   "gateway_config"
  ],
@@ -24,6 +28,15 @@
    "unique": 1,
    "in_list_view": 1,
    "description": "e.g. Cash on Delivery, eSewa, Khalti, Card"
+  },
+  {
+   "fieldname": "slug",
+   "fieldtype": "Data",
+   "label": "Slug",
+   "reqd": 1,
+   "unique": 1,
+   "in_list_view": 1,
+   "description": "Stable id the storefront uses in form values and analytics, e.g. 'cash-on-delivery'. Separate from Mode Name so renaming the display name cannot invalidate a shopper's in-flight checkout selection."
   },
   {
    "fieldname": "is_enabled",
@@ -54,6 +67,23 @@
    "fieldtype": "Data",
    "label": "ERPNext Mode of Payment",
    "description": "Exact Mode of Payment name expected to exist on each franchise's ERPNext site, used when marking a Sales Invoice paid."
+  },
+  {
+   "fieldname": "section_break_display",
+   "fieldtype": "Section Break",
+   "label": "Storefront Display"
+  },
+  {
+   "fieldname": "description",
+   "fieldtype": "Data",
+   "label": "Description",
+   "description": "One line shown under the method name at checkout, e.g. 'Pay our rider while delivering your product.'"
+  },
+  {
+   "fieldname": "logo",
+   "fieldtype": "Attach Image",
+   "label": "Logo",
+   "description": "Leave empty to use the storefront's bundled artwork for this slug. Upload as a public file - a private one 403s for guests mid-checkout."
   },
   {
    "fieldname": "section_break_gateway",

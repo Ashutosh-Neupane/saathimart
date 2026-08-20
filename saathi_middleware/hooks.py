@@ -138,6 +138,13 @@ app_license = "mit"
 # ---------------
 # Hook on document methods and events
 
+# Framework-level failures (not whitelisted, guest hitting a login-only
+# method, CSRF, expired session) are raised by Frappe *before* the endpoint
+# runs, so api.responses.handle_api_errors never sees them and they came back
+# in Frappe's native {exc_type, _server_messages} shape with desk-oriented
+# HTML inside. This hook gives them the same body as every other failure.
+after_request = ["saathi_middleware.api.responses.normalize_error_response"]
+
 doc_events = {
     "SM Site Config": {
         "on_update": "saathi_middleware.api.cms._bust_site_config_cache",
@@ -147,6 +154,12 @@ doc_events = {
     },
     "SM Banner": {
         "on_update": "saathi_middleware.api.cms._bust_banner_cache",
+    },
+    "SM Trust Badge": {
+        "on_update": "saathi_middleware.api.cms._bust_trust_badge_cache",
+    },
+    "SM Product Rail": {
+        "on_update": "saathi_middleware.api.cms._bust_product_rail_cache",
     },
     "SM Site Page": {
         "on_update": "saathi_middleware.api.cms._bust_page_cache",

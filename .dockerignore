@@ -1,0 +1,32 @@
+# Keep the build context to actual app source.
+#
+# `COPY . /home/frappe/saathi_middleware/` in the Dockerfile takes everything
+# here, so without this .git alone (3 of the 4.1 MB context) ships inside the
+# image and busts that COPY layer on every commit, forcing a rebuild of every
+# layer after it even when no Python changed.
+.git
+.gitignore
+.github
+
+__pycache__/
+*.py[cod]
+*.egg-info/
+.pytest_cache/
+.ruff_cache/
+.mypy_cache/
+
+node_modules/
+.venv/
+venv/
+env/
+
+# Compose/tooling that the image never reads — the container gets its config
+# from environment variables, not these files.
+docker-compose*.yml
+.pre-commit-config.yaml
+.editorconfig
+.eslintrc
+
+*.log
+*.sqlite
+.DS_Store

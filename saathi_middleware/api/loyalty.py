@@ -7,6 +7,13 @@ from __future__ import annotations
 import math
 
 import frappe
+
+from saathi_middleware.api.responses import (
+    UNAUTHORIZED,
+    VALIDATION_ERROR,
+    error_response,
+    handle_api_errors,
+)
 from frappe import _
 from frappe.utils import flt, add_days, today, nowdate
 
@@ -105,7 +112,9 @@ def calculate_redemption_discount(customer_email: str, points_to_redeem: float,
                                    order_subtotal: float) -> dict:
     s = frappe.get_single("Saathi Settings")
     if not getattr(s, "enable_loyalty", 0) or not getattr(s, "loyalty_program", None):
-        return {"ok": False, "discount": 0, "points_used": 0, "error": "Loyalty not enabled"}
+        return error_response(
+            _("Loyalty is not enabled"), VALIDATION_ERROR, discount=0, points_used=0
+        )
 
     program = frappe.get_doc("SM Loyalty Program", s.loyalty_program)
     # Floor here too, not just at earn time — a balance can still be
@@ -117,10 +126,12 @@ def calculate_redemption_discount(customer_email: str, points_to_redeem: float,
     points_to_redeem = math.floor(flt(points_to_redeem))
 
     if points_to_redeem < program.min_points_to_redeem:
-        return {
-            "ok": False, "discount": 0, "points_used": 0,
-            "error": f"Minimum {program.min_points_to_redeem} points required to redeem",
-        }
+        return error_response(
+            _("Minimum {0} points required to redeem").format(program.min_points_to_redeem),
+            VALIDATION_ERROR,
+            discount=0,
+            points_used=0,
+        )
 
     balance = math.floor(get_balance(customer_email))
     if points_to_redeem > balance:
@@ -171,6 +182,7 @@ def expire_old_points():
 
 
 @frappe.whitelist()
+@handle_api_errors
 def get_loyalty_balance(customer_email=None):
     # Only staff may look up another customer's balance — otherwise any
     # logged-in customer could read anyone else's loyalty balance by passing
@@ -194,8 +206,9 @@ def get_loyalty_balance(customer_email=None):
 
 
 @frappe.whitelist(allow_guest=True)
+@handle_api_errors
 def preview_redemption(points_to_redeem, order_subtotal):
     email = frappe.session.user
     if email == "Guest":
-        return {"ok": False, "error": "Login required to redeem points"}
+        return error_response(_("Login required to redeem points"), UNAUTHORIZED)
     return calculate_redemption_discount(email, flt(points_to_redeem), flt(order_subtotal))

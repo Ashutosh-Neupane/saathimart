@@ -12,11 +12,14 @@ separate cross-franchise product identity for a review to hang off of
 independent of which franchise's listing it's for.
 """
 import frappe
+
+from saathi_middleware.api.responses import handle_api_errors
 from frappe import _
 from frappe.utils import flt, cint
 
 
 @frappe.whitelist(allow_guest=True)
+@handle_api_errors
 def get_product_rating(product_slug):
     """Quick rating summary for a product (product cards, PDP header)."""
     row = frappe.db.get_value(
@@ -28,6 +31,7 @@ def get_product_rating(product_slug):
 
 
 @frappe.whitelist(allow_guest=True)
+@handle_api_errors
 def list_reviews(product_slug, page=1, page_size=10):
     """List approved reviews for a product, paginated, newest first."""
     if not frappe.db.exists("Saathi Item", product_slug):
@@ -56,6 +60,7 @@ def list_reviews(product_slug, page=1, page_size=10):
 
 
 @frappe.whitelist()
+@handle_api_errors
 def add_review(product_slug, rating, comment=""):
     """
     Add or update the logged-in user's review for a product. One review

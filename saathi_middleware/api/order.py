@@ -2,6 +2,8 @@ import json
 from math import atan2, cos, radians, sin, sqrt
 
 import frappe
+
+from saathi_middleware.api.responses import handle_api_errors
 from frappe.rate_limiter import rate_limit
 from frappe.utils import flt, now_datetime, today
 
@@ -40,17 +42,37 @@ def _haversine_km(lat1, lon1, lat2, lon2):
 
 @frappe.whitelist(allow_guest=True)
 @rate_limit(key="get_payment_modes", limit=60, seconds=60)
+@handle_api_errors
 def get_payment_modes():
-	return frappe.get_all(
+	"""Enabled payment methods, with everything the checkout UI needs to render
+	them — the storefront used to hardcode this list and a slug→mode_name map,
+	so enabling Khalti or turning off COD meant a frontend release.
+
+	`slug` is what the storefront stores in its form and sends back as
+	`payment_mode`; `mode_name` is the docname the order links to. Both are
+	returned so the frontend never has to reconstruct one from the other.
+	"""
+	modes = frappe.get_all(
 		"Saathi Payment Mode",
 		filters={"is_enabled": 1},
-		fields=["name as mode_name", "is_online"],
+		fields=["name as mode_name", "slug", "description", "logo",
+		        "is_online", "display_order"],
 		order_by="display_order asc",
 	)
+	for mode in modes:
+		# Absolute, because the storefront runs on a different origin and would
+		# otherwise resolve /files/... against itself and 404.
+		mode["logo"] = frappe.utils.get_url(mode["logo"]) if mode.get("logo") else ""
+		# Older rows predate the slug field; fall back to a slugified mode_name
+		# so an un-migrated site still returns something usable rather than null.
+		if not mode.get("slug"):
+			mode["slug"] = frappe.scrub(mode["mode_name"]).replace("_", "-")
+	return modes
 
 
 @frappe.whitelist(allow_guest=True)
 @rate_limit(key="get_order_status", limit=60, seconds=60)
+@handle_api_errors
 def get_order_status(order, customer_mobile):
 	"""
 	Public, mobile-gated order tracking. The mobile number acts as a shared
@@ -132,6 +154,7 @@ def _build_status_timeline(status):
 
 
 @frappe.whitelist()
+@handle_api_errors
 def get_order(order):
 	"""Logged-in order detail view — gated by has_order_permission (owner or SM Admin)."""
 	doc = frappe.get_doc("Saathi Order", order)
@@ -154,6 +177,7 @@ def get_order(order):
 
 
 @frappe.whitelist()
+@handle_api_errors
 def track_order(order_id):
 	"""
 	Order-confirmation / tracking view shaped to match the frontend's
@@ -209,6 +233,7 @@ def track_order(order_id):
 
 
 @frappe.whitelist()
+@handle_api_errors
 def update_order_status(order, status):
 	if "SM Admin" not in frappe.get_roles():
 		frappe.throw("Not permitted", frappe.PermissionError)
@@ -229,6 +254,7 @@ def update_order_status(order, status):
 
 @frappe.whitelist(allow_guest=True)
 @rate_limit(key="create_order", limit=20, seconds=60)
+@handle_api_errors
 def create_order(**payload):
 	franchise = _get_serviceable_franchise(payload)
 	payment_mode = _get_payment_mode(payload.get("payment_mode"))
@@ -293,6 +319,7 @@ def create_order(**payload):
 
 @frappe.whitelist(allow_guest=True)
 @rate_limit(key="checkout", limit=20, seconds=60)
+@handle_api_errors
 def checkout(session_id, customer_name, customer_mobile, delivery_address,
              payment_mode, delivery_city=None, delivery_latitude=None,
              delivery_longitude=None, delivery_charges=0, coupon_code=None,
@@ -400,6 +427,7 @@ def checkout(session_id, customer_name, customer_mobile, delivery_address,
 
 @frappe.whitelist(allow_guest=True)
 @rate_limit(key="calculate_cart_totals", limit=60, seconds=60)
+@handle_api_errors
 def calculate_cart_totals(session_id, coupon_code=None, loyalty_points=0, delivery_charges=0):
 	"""
 	Preview what checkout() would actually charge for the current cart —
@@ -473,6 +501,7 @@ def calculate_cart_totals(session_id, coupon_code=None, loyalty_points=0, delive
 
 
 @frappe.whitelist()
+@handle_api_errors
 def list_orders(customer_mobile=None, page=1, page_size=20):
 	page = max(1, int(page))
 	page_size = min(100, max(1, int(page_size)))

@@ -11,6 +11,12 @@ import re
 import secrets
 
 import frappe
+
+from saathi_middleware.api.responses import (
+    UNAUTHORIZED,
+    error_response,
+    handle_api_errors,
+)
 from frappe import _
 from frappe.utils import add_to_date, cint, cstr, now, now_datetime, validate_email_address
 
@@ -247,6 +253,7 @@ def _get_user_token(user):
 
 
 @frappe.whitelist(allow_guest=True)
+@handle_api_errors
 def signup(email=None, full_name=None, contact=None, password=None, phone=None):
     # Defaulted to None deliberately: a key missing from the request body
     # would otherwise raise TypeError and surface as a 500 instead of a
@@ -295,6 +302,7 @@ def signup(email=None, full_name=None, contact=None, password=None, phone=None):
 
 
 @frappe.whitelist(allow_guest=True)
+@handle_api_errors
 def verify_signup_otp(email, otp):
     _rate_limit(f"verify_otp:{email}", limit=10, window_seconds=600)
     record_name = _validate_otp_record(email, otp, "signup")
@@ -314,6 +322,7 @@ def verify_signup_otp(email, otp):
 
 
 @frappe.whitelist(allow_guest=True)
+@handle_api_errors
 def login(usr, pwd, guest_cart_guid=None):
     _rate_limit(f"login:{usr}", limit=5, window_seconds=600)
     _rate_limit(f"login_ip:{frappe.local.request_ip or 'unknown'}", limit=15, window_seconds=600)
@@ -322,11 +331,11 @@ def login(usr, pwd, guest_cart_guid=None):
         frappe.local.login_manager.post_login()
     except frappe.AuthenticationError:
         frappe.clear_messages()
-        return {"ok": False, "error": _("Incorrect email or password"), "code": 401}
+        return error_response(_("Incorrect email or password"), UNAUTHORIZED)
     except Exception:
         frappe.log_error(frappe.get_traceback(), f"Login error for {usr}")
         frappe.clear_messages()
-        return {"ok": False, "error": _("Incorrect email or password"), "code": 401}
+        return error_response(_("Incorrect email or password"), UNAUTHORIZED)
 
     if guest_cart_guid:
         try:
@@ -348,6 +357,7 @@ def login(usr, pwd, guest_cart_guid=None):
 
 
 @frappe.whitelist(allow_guest=True)
+@handle_api_errors
 def forgot_password(email):
     _rate_limit(f"forgot_password:{email}", limit=5, window_seconds=600)
     _rate_limit(f"forgot_password_ip:{frappe.local.request_ip or 'unknown'}", limit=10, window_seconds=600)
@@ -371,6 +381,7 @@ def forgot_password(email):
 
 
 @frappe.whitelist(allow_guest=True)
+@handle_api_errors
 def verify_forgot_password_otp(email=None, otp=None, new_password=None):
     email = _require(email, "Email").lower()
     otp = _require(otp, "OTP")
@@ -395,6 +406,7 @@ def verify_forgot_password_otp(email=None, otp=None, new_password=None):
 
 
 @frappe.whitelist(allow_guest=True)
+@handle_api_errors
 def resend_otp(email, purpose="signup"):
     _rate_limit(f"resend_otp:{email}:{purpose}", limit=3, window_seconds=300)
     frappe.clear_messages()
@@ -426,6 +438,7 @@ def resend_otp(email, purpose="signup"):
 
 
 @frappe.whitelist()
+@handle_api_errors
 def change_password(old_password=None, new_password=None):
     user = frappe.session.user
     old_password = _require(old_password, "Current password")
@@ -467,6 +480,7 @@ def _validate_otp_record(email, otp, purpose):
 
 
 @frappe.whitelist()
+@handle_api_errors
 def cleanup_expired_verifications():
     expired = frappe.get_all(
         "SM Pending Verification",

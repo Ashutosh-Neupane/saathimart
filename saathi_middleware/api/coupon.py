@@ -6,11 +6,18 @@ see saathi_coupon.py's validate_coupon for why usage limits key off
 customer_mobile rather than email.
 """
 import frappe
+
+from saathi_middleware.api.responses import (
+    VALIDATION_ERROR,
+    error_response,
+    handle_api_errors,
+)
 from frappe import _
 from frappe.utils import flt
 
 
 @frappe.whitelist(allow_guest=True)
+@handle_api_errors
 def validate(coupon_code, order_subtotal=0, franchise=None, customer_mobile=None):
     """
     Validate a coupon code and return discount info.
@@ -25,7 +32,7 @@ def validate(coupon_code, order_subtotal=0, franchise=None, customer_mobile=None
     }
     """
     if not coupon_code:
-        return {"ok": False, "message": _("Coupon code is required")}
+        return error_response(_("Coupon code is required"), VALIDATION_ERROR)
 
     try:
         from saathi_middleware.saathi_middleware.doctype.saathi_coupon.saathi_coupon import validate_coupon
@@ -37,10 +44,13 @@ def validate(coupon_code, order_subtotal=0, franchise=None, customer_mobile=None
             "message": _("Coupon applied"),
         }
     except frappe.ValidationError as e:
-        return {"ok": False, "message": str(e)}
+        # str(e) here was the *thrown* message from validate_coupon, which is
+        # curated user-facing text — kept, but under the canonical key.
+        return error_response(str(e), VALIDATION_ERROR)
 
 
 @frappe.whitelist()
+@handle_api_errors
 def get_usage(coupon_code):
     """Get usage stats for a coupon (admin only)."""
     if "SM Admin" not in frappe.get_roles():
@@ -73,6 +83,7 @@ def get_usage(coupon_code):
 
 
 @frappe.whitelist()
+@handle_api_errors
 def list_coupons():
     """List all coupons (admin only)."""
     if "SM Admin" not in frappe.get_roles():

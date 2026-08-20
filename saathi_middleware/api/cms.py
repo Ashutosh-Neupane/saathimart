@@ -5,11 +5,14 @@ All guest-accessible.
 import json
 
 import frappe
+
+from saathi_middleware.api.responses import handle_api_errors, raw
 from frappe import _
 from frappe.utils import today
 
 
 @frappe.whitelist(allow_guest=True)
+@handle_api_errors
 def get_site_config():
     cached = frappe.cache().get_value("sm_site_config")
     if cached:
@@ -23,6 +26,7 @@ def get_site_config():
 
 
 @frappe.whitelist(allow_guest=True)
+@handle_api_errors
 def get_page(slug):
     cache_key = f"sm_page:{slug}"
     cached = frappe.cache().get_value(cache_key)
@@ -48,6 +52,7 @@ def get_page(slug):
 
 
 @frappe.whitelist(allow_guest=True)
+@handle_api_errors
 def get_navigation(location="Header"):
     cache_key = f"sm_navigation:{location}"
     cached = frappe.cache().get_value(cache_key)
@@ -73,6 +78,7 @@ def get_navigation(location="Header"):
 
 
 @frappe.whitelist(allow_guest=True)
+@handle_api_errors
 def get_banners(banner_type=None):
     cached = frappe.cache().get_value("sm_banners")
     if cached and not banner_type:
@@ -106,6 +112,82 @@ def get_banners(banner_type=None):
 
 
 @frappe.whitelist(allow_guest=True)
+@handle_api_errors
+def get_trust_badges():
+    """The four-ish reassurance badges under the hero.
+
+    `icon` is a key from a fixed set, never markup — the storefront owns the
+    artwork and only accepts keys it knows. Anything else invalidates the whole
+    home payload and drops the page to local defaults, so the Select on the
+    doctype is the guard that keeps that from happening.
+    """
+    cached = frappe.cache().get_value("sm_trust_badges")
+    if cached is not None:
+        return cached
+
+    badges = frappe.get_list(
+        "SM Trust Badge",
+        filters={"is_active": 1},
+        fields=["name", "icon", "title", "description", "sort_order"],
+        order_by="sort_order asc",
+    )
+    frappe.cache().set_value("sm_trust_badges", badges, expires_in_sec=300)
+    return badges
+
+
+@frappe.whitelist(allow_guest=True)
+@handle_api_errors
+def get_product_rails():
+    """Which category rails the home page shows, in order.
+
+    This is the piece that used to be hardcoded in the storefront: the four
+    slugs (featured / personal-care / dairy-bakery / cleaning-household) lived
+    in home-view.tsx, so adding a rail or pointing one at a different category
+    meant a frontend release. Now it is data.
+
+    `category_slug` is intentionally a plain Data field rather than a Link to
+    SM Site Page or a category doctype: list_categories derives slugs at read
+    time via _slugify(category_name), so there is no stored slug column to link
+    against. The trade-off is that a typo yields an empty rail rather than a
+    validation error — get_home_layout reports which slugs resolved so an admin
+    can see that from the API.
+    """
+    cached = frappe.cache().get_value("sm_product_rails")
+    if cached is not None:
+        return cached
+
+    rails = frappe.get_list(
+        "SM Product Rail",
+        filters={"is_active": 1},
+        fields=["name", "rail_id", "title", "subtitle", "category_slug",
+                "page_size", "heading_size", "sort_order"],
+        order_by="sort_order asc",
+    )
+    frappe.cache().set_value("sm_product_rails", rails, expires_in_sec=300)
+    return rails
+
+
+@frappe.whitelist(allow_guest=True)
+@handle_api_errors
+def get_home_layout():
+    """Everything editor-owned that the home page needs, in one round trip.
+
+    The storefront was making a request per content type and each one is a
+    separate cache entry with its own 5-minute window, so the sections could
+    briefly disagree after an edit. One call keeps them consistent.
+    """
+    return {
+        # raw(): let a failure raise so this endpoint reports it once at the
+        # top, instead of nesting {"ok": False} under one key of a 200.
+        "hero_banners": raw(get_banners)(banner_type="Hero"),
+        "promo_banners": raw(get_banners)(banner_type="Promo Strip"),
+        "trust_badges": raw(get_trust_badges)(),
+        "product_rails": raw(get_product_rails)(),
+    }
+
+
+@frappe.whitelist(allow_guest=True)
+@handle_api_errors
 def get_blog_posts(category=None, tag=None, page=1, page_size=10):
     filters = {"status": "Published"}
     if category:
@@ -131,6 +213,7 @@ def get_blog_posts(category=None, tag=None, page=1, page_size=10):
 
 
 @frappe.whitelist(allow_guest=True)
+@handle_api_errors
 def get_blog_post(slug):
     cache_key = f"sm_blog:{slug}"
     cached = frappe.cache().get_value(cache_key)
@@ -148,8 +231,9 @@ def get_blog_post(slug):
 
 
 @frappe.whitelist(allow_guest=True)
+@handle_api_errors
 def get_site_content():
-    return get_site_config()
+    return raw(get_site_config)()
 
 
 def _bust_site_config_cache(doc, method):
@@ -163,6 +247,14 @@ def _bust_navigation_cache(doc, method):
 
 def _bust_banner_cache(doc, method):
     frappe.cache().delete_key("sm_banners")
+
+
+def _bust_trust_badge_cache(doc, method):
+    frappe.cache().delete_key("sm_trust_badges")
+
+
+def _bust_product_rail_cache(doc, method):
+    frappe.cache().delete_key("sm_product_rails")
 
 
 def _bust_page_cache(doc, method):

@@ -9,6 +9,8 @@ until isLoggedIn) — login "syncing" is just this GET firing once the
 frontend's auth state flips, no separate merge endpoint needed.
 """
 import frappe
+
+from saathi_middleware.api.responses import handle_api_errors, raw
 from frappe import _
 from frappe.utils import now_datetime
 
@@ -19,6 +21,7 @@ def _require_login():
 
 
 @frappe.whitelist()
+@handle_api_errors
 def get_wishlist():
 	_require_login()
 	return frappe.get_list(
@@ -30,6 +33,7 @@ def get_wishlist():
 
 
 @frappe.whitelist()
+@handle_api_errors
 def toggle_wishlist(product_slug):
 	_require_login()
 	if not product_slug:
@@ -51,4 +55,4 @@ def toggle_wishlist(product_slug):
 		}).insert(ignore_permissions=True)
 
 	frappe.db.commit()
-	return get_wishlist()
+	return raw(get_wishlist)()

@@ -1,0 +1,28 @@
+{
+  "name": "SM Product Rail",
+  "module": "Saathi Middleware",
+  "doctype": "DocType",
+  "autoname": "field:rail_id",
+  "fields": [
+   {"fieldname": "rail_id", "fieldtype": "Data", "label": "Rail ID", "reqd": 1, "unique": 1, "in_list_view": 1,
+    "description": "Stable key for this rail, e.g. 'featured'. Used by the storefront for React keys and analytics — renaming it is a new rail, not a rename."},
+   {"fieldname": "title", "fieldtype": "Data", "label": "Title", "reqd": 1, "in_list_view": 1},
+   {"fieldname": "subtitle", "fieldtype": "Small Text", "label": "Subtitle", "reqd": 1},
+   {"fieldname": "col_break_1", "fieldtype": "Column Break"},
+   {"fieldname": "category_slug", "fieldtype": "Data", "label": "Category Slug", "reqd": 1, "in_list_view": 1,
+    "description": "Which category this rail pulls from, e.g. 'personal-care'. Must match a slug from list_categories — a slug nothing matches renders an empty rail, which the storefront hides entirely."},
+   {"fieldname": "page_size", "fieldtype": "Int", "label": "Products To Show", "default": "5",
+    "description": "The desktop grid is 5 columns — more than 5 wraps onto a second row rather than scrolling."},
+   {"fieldname": "section_display", "fieldtype": "Section Break", "label": "Display"},
+   {"fieldname": "sort_order", "fieldtype": "Int", "label": "Sort Order", "default": "0", "in_list_view": 1},
+   {"fieldname": "is_active", "fieldtype": "Check", "label": "Is Active", "default": "1"},
+   {"fieldname": "heading_size", "fieldtype": "Select", "label": "Heading Size",
+    "options": "md\nlg", "default": "md",
+    "description": "lg = hero-sized heading, used for the first/featured rail"}
+  ],
+  "title_field": "title",
+  "permissions": [
+   {"role": "SM Admin", "read": 1, "write": 1, "create": 1, "delete": 1},
+   {"role": "Guest", "read": 1}
+  ]
+}

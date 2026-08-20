@@ -4,6 +4,8 @@ Auth helpers — permission checks + bootinfo + token generation.
 import uuid
 
 import frappe
+
+from saathi_middleware.api.responses import handle_api_errors
 from frappe import _
 
 
@@ -172,6 +174,7 @@ def extend_bootinfo(bootinfo):
 
 
 @frappe.whitelist()
+@handle_api_errors
 def get_profile():
     if frappe.session.user == "Guest":
         frappe.throw(_("Not logged in"), frappe.PermissionError)
@@ -187,6 +190,7 @@ def get_profile():
 
 
 @frappe.whitelist()
+@handle_api_errors
 def update_profile(full_name=None, phone=None):
     if frappe.session.user == "Guest":
         frappe.throw(_("Not logged in"), frappe.PermissionError)

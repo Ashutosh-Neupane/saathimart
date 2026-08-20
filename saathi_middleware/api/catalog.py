@@ -20,6 +20,8 @@ import json
 import re
 
 import frappe
+
+from saathi_middleware.api.responses import handle_api_errors
 from frappe.utils import flt, cint
 
 
@@ -88,6 +90,7 @@ def _item_row_to_product(row):
 
 
 @frappe.whitelist(allow_guest=True)
+@handle_api_errors
 def list_categories():
 	"""All Saathi Item Categories, slugified for frontend routing."""
 	docs = frappe.get_all("Saathi Item Category", fields=["name", "category_name", "image"])
@@ -103,6 +106,7 @@ _SORT_MAP = {
 
 
 @frappe.whitelist(allow_guest=True)
+@handle_api_errors
 def list_products(
 	category=None,
 	search=None,
@@ -297,6 +301,7 @@ def list_products(
 
 
 @frappe.whitelist(allow_guest=True)
+@handle_api_errors
 def get_product(slug):
 	if not frappe.db.exists("Saathi Item", slug):
 		frappe.throw(frappe._("Product not found"), frappe.DoesNotExistError)

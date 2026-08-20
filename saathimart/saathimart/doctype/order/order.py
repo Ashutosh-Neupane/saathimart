@@ -33,6 +33,11 @@ class Order(Document):
         # regardless of payment method.
         self._redeem_loyalty_points()
 
+        # Membership savings are banked at placement, not delivery: the
+        # discount was already taken off what the customer pays, so the ledger
+        # must agree with the invoice even if the order is later cancelled.
+        self._record_membership_savings()
+
         # Earn points when order is placed (COD earns on delivery, online on payment)
         # For now earn on insert — adjust to on_payment_received if needed
         if self.payment_method == "COD":
@@ -42,6 +47,16 @@ class Order(Document):
     def on_update(self):
         if self.status == "Delivered" and self.payment_method == "COD":
             self._earn_loyalty_points()
+
+    def _record_membership_savings(self):
+        """Best-effort: a ledger failure must never block a placed order."""
+        if not self.get("membership"):
+            return
+        try:
+            from saathimart.api.membership import record_savings
+            record_savings(self)
+        except Exception:
+            frappe.log_error(frappe.get_traceback(), f"Membership savings ledger failed for {self.name}")
 
     def _earn_loyalty_points(self):
         if not self.customer_email:

@@ -204,12 +204,19 @@ def checkout(session_id, customer_name, customer_phone, delivery_address,
                 release_reservation(vendor, product, qty)
         raise
 
-    # Mark coupon used
+    # Mark coupon used — the usage row is what per-customer limits count, so
+    # the phone must go with it or max_uses_per_user stays unenforceable.
     if coupon_code:
         try:
-            increment_coupon_usage(coupon_code)
+            increment_coupon_usage(
+                coupon_code,
+                order=order.name,
+                customer_phone=order.customer_phone,
+                customer_email=order.customer_email,
+                discount_amount=order.coupon_discount,
+            )
         except Exception:
-            pass
+            frappe.log_error(frappe.get_traceback(), f"Coupon usage record failed for {order.name}")
 
     cart.db_set("status", "CheckedOut")
 

@@ -85,6 +85,7 @@ doc_events = {
 scheduler_events = {
     "daily": [
         "saathimart.api.loyalty.expire_old_points",
+        "saathimart.api.membership.expire_memberships",
         "saathimart.api.archival.archive_old_data",
     ],
     "hourly": [

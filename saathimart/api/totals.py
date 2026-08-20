@@ -8,9 +8,15 @@ Mirrors ERPNext's calculation order exactly:
   4. Grand total   (net_total + total_taxes)
   5. Coupon        (percentage or fixed, applied on net_total)
   6. Onboarding    (zone-configured first/second-order discount, applied after coupon)
-  7. Loyalty       (fixed discount, applied after coupon + onboarding)
-  8. Delivery      (added back — not discounted)
-  9. Rounding      (round to nearest paisa)
+  7. Membership    (per-line, category-aware; applied after coupon + onboarding)
+  8. Loyalty       (fixed discount, applied after everything above)
+  9. Delivery      (added back — not discounted)
+ 10. Rounding      (round to nearest paisa)
+
+Membership sits before loyalty on purpose: loyalty redemption is capped as a
+percentage of what's left to pay (max_redemption_per_order_pct), so it has to
+see the post-membership figure or a member could redeem points against money
+they were never going to be charged.
 
 No ERPNext import. Works purely on the Order document dict / frappe doc.
 """
@@ -44,6 +50,7 @@ def calculate_taxes_and_totals(doc):
     _calculate_taxes(doc)
     _calculate_coupon_discount(doc)
     _calculate_onboarding_discount(doc)
+    _calculate_membership_discount(doc)
     _calculate_loyalty_discount(doc)
     _calculate_grand_total(doc)
     _round_totals(doc)
@@ -106,7 +113,14 @@ def _calculate_coupon_discount(doc):
 
     try:
         from saathimart.saathimart.doctype.coupon.coupon import validate_coupon
-        result = validate_coupon(coupon_code, flt(doc.get("net_total") or 0))
+        # Phone is passed so max_uses_per_user is actually enforced here, not
+        # only at placement — otherwise the cart would show a discount the
+        # order then refuses to honour.
+        result = validate_coupon(
+            coupon_code,
+            flt(doc.get("net_total") or 0),
+            doc.get("customer_phone") or None,
+        )
         _set(doc, "coupon_discount", flt(result.get("discount") or 0))
         _set(doc, "free_delivery", 1 if result.get("free_delivery") else 0)
     except frappe.ValidationError:
@@ -180,7 +194,57 @@ def _calculate_onboarding_discount(doc):
     _set(doc, "onboarding_discount", round(max(discount, 0), 2))
 
 
-# ── Step 6: loyalty discount ──────────────────────────────────────────────────
+# ── Step 6: membership discount (per-line, category-aware) ───────────────────
+
+def _calculate_membership_discount(doc):
+    """
+    Resolve the customer's membership benefits across the cart lines.
+
+    Unlike coupon/onboarding this is line-level — see api/membership.py for
+    why. It is also the only discount here that can waive delivery on its own
+    (a plan perk), so it sets `free_delivery` the same way a Free Delivery
+    coupon does rather than introducing a second flag for grand-total to
+    check.
+
+    Any failure resolves to zero rather than raising: a broken plan must not
+    make the whole basket un-checkout-able.
+    """
+    customer_email = doc.get("customer_email") or ""
+    items = doc.get("items") or []
+
+    if not customer_email or not items:
+        _set(doc, "membership_discount", 0.0)
+        _set(doc, "membership", None)
+        return
+
+    try:
+        from saathimart.api.membership import resolve_membership_discount
+
+        # Membership applies to what is still owed after the earlier discounts,
+        # not to the original net total — three stacked percentages off the same
+        # base can otherwise exceed the order value.
+        net_after = (
+            flt(doc.get("net_total") or 0)
+            - flt(doc.get("coupon_discount") or 0)
+            - flt(doc.get("onboarding_discount") or 0)
+        )
+        result = resolve_membership_discount(items, customer_email, net_after)
+
+        discount = min(flt(result.get("discount") or 0), max(net_after, 0))
+        _set(doc, "membership_discount", rounded(discount, 2))
+        _set(doc, "membership", result.get("membership"))
+
+        if result.get("free_delivery"):
+            threshold = flt(result.get("free_delivery_min_order"))
+            if flt(doc.get("net_total") or 0) >= threshold:
+                _set(doc, "free_delivery", 1)
+    except Exception:
+        frappe.log_error(frappe.get_traceback(), "Membership discount calculation failed")
+        _set(doc, "membership_discount", 0.0)
+        _set(doc, "membership", None)
+
+
+# ── Step 7: loyalty discount ──────────────────────────────────────────────────
 
 def _calculate_loyalty_discount(doc):
     points = flt(doc.get("loyalty_points_redeemed") or 0)
@@ -194,6 +258,7 @@ def _calculate_loyalty_discount(doc):
         flt(doc.get("net_total") or 0)
         - flt(doc.get("coupon_discount") or 0)
         - flt(doc.get("onboarding_discount") or 0)
+        - flt(doc.get("membership_discount") or 0)
     )
 
     try:
@@ -212,6 +277,7 @@ def _calculate_grand_total(doc):
     total_taxes         = flt(doc.get("total_taxes") or 0)
     coupon_discount     = flt(doc.get("coupon_discount") or 0)
     onboarding_discount = flt(doc.get("onboarding_discount") or 0)
+    membership_discount = flt(doc.get("membership_discount") or 0)
     loyalty_discount    = flt(doc.get("loyalty_discount") or 0)
     delivery_charge     = flt(doc.get("delivery_charge") or 0)
     manual_discount     = flt(doc.get("discount_amount") or 0)
@@ -219,7 +285,10 @@ def _calculate_grand_total(doc):
     if doc.get("free_delivery"):
         delivery_charge = 0.0
 
-    total_discount = coupon_discount + onboarding_discount + loyalty_discount + manual_discount
+    total_discount = (
+        coupon_discount + onboarding_discount + membership_discount
+        + loyalty_discount + manual_discount
+    )
     grand_total = net_total + total_taxes - total_discount + delivery_charge
     _set(doc, "grand_total", rounded(max(grand_total, 0), 2))
     _set(doc, "total_discount", rounded(total_discount, 2))
@@ -229,8 +298,8 @@ def _calculate_grand_total(doc):
 
 def _round_totals(doc):
     for field in ("subtotal", "net_total", "total_taxes", "grand_total",
-                  "coupon_discount", "onboarding_discount", "loyalty_discount",
-                  "total_discount", "delivery_charge"):
+                  "coupon_discount", "onboarding_discount", "membership_discount",
+                  "loyalty_discount", "total_discount", "delivery_charge"):
         if doc.get(field) is not None:
             _set(doc, field, rounded(flt(doc.get(field)), 2))
 
@@ -313,6 +382,22 @@ def preview_order_totals(items, delivery_zone=None, coupon_code=None,
                 flt(order_dict["grand_total"]) * flt(program.collection_factor) * zone_multiplier, 2
             )
 
+    # Re-resolved (not just the total) so the cart can itemise *why* a member
+    # saved — "20% off Vegetables" reads as a reason to renew; a bare number
+    # does not.
+    membership_breakdown = []
+    if order_dict.get("membership"):
+        try:
+            from saathimart.api.membership import resolve_membership_discount
+            membership_breakdown = resolve_membership_discount(
+                resolved_items,
+                order_dict["customer_email"],
+                flt(order_dict["net_total"]) - flt(order_dict["coupon_discount"])
+                - flt(order_dict["onboarding_discount"]),
+            )["breakdown"]
+        except Exception:
+            membership_breakdown = []
+
     result = {
         "items":                        resolved_items,
         "subtotal":                     order_dict["subtotal"],
@@ -321,6 +406,8 @@ def preview_order_totals(items, delivery_zone=None, coupon_code=None,
         "coupon_discount":              order_dict["coupon_discount"],
         "onboarding_discount":          order_dict["onboarding_discount"],
         "onboarding_order_sequence":    order_dict["onboarding_order_sequence"],
+        "membership_discount":          order_dict["membership_discount"],
+        "membership_breakdown":         membership_breakdown,
         "loyalty_discount":             order_dict["loyalty_discount"],
         "total_discount":               order_dict["total_discount"],
         "delivery_charge":              order_dict["delivery_charge"],

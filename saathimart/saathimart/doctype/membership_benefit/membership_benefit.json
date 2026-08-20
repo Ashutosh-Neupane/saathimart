@@ -1,0 +1,29 @@
+{
+ "name": "Membership Benefit",
+ "module": "Saathimart",
+ "doctype": "DocType",
+ "istable": 1,
+ "fields": [
+  {"fieldname": "scope", "fieldtype": "Select", "label": "Applies To",
+   "options": "All Products\nCategory\nBrand", "default": "All Products", "reqd": 1, "in_list_view": 1},
+  {"fieldname": "category", "fieldtype": "Link", "label": "Category", "options": "Category",
+   "depends_on": "eval:doc.scope=='Category'", "in_list_view": 1,
+   "description": "Child categories inherit this benefit unless they have their own rule"},
+  {"fieldname": "brand", "fieldtype": "Data", "label": "Brand",
+   "depends_on": "eval:doc.scope=='Brand'"},
+  {"fieldname": "col_break_1", "fieldtype": "Column Break"},
+  {"fieldname": "discount_type", "fieldtype": "Select", "label": "Discount Type",
+   "options": "Percentage\nFixed Amount", "default": "Percentage", "reqd": 1, "in_list_view": 1},
+  {"fieldname": "value", "fieldtype": "Float", "label": "Value", "reqd": 1, "in_list_view": 1,
+   "description": "Percentage: 20 = 20% off. Fixed Amount: 50 = NPR 50 off each matching line."},
+  {"fieldname": "section_limits", "fieldtype": "Section Break", "label": "Limits"},
+  {"fieldname": "max_discount_amount", "fieldtype": "Currency", "label": "Max Discount (this rule, per order)",
+   "description": "0 = no cap"},
+  {"fieldname": "min_order_amount", "fieldtype": "Currency", "label": "Min Order Amount", "default": "0",
+   "description": "Rule stays dormant until the order's net total reaches this"},
+  {"fieldname": "col_break_2", "fieldtype": "Column Break"},
+  {"fieldname": "priority", "fieldtype": "Int", "label": "Priority", "default": "10", "in_list_view": 1,
+   "description": "Lowest number wins when two rules match the same line. Only one rule ever applies per line."},
+  {"fieldname": "is_active", "fieldtype": "Check", "label": "Is Active", "default": "1"}
+ ]
+}

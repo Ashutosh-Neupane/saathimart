@@ -56,7 +56,11 @@
   {"fieldname": "onboarding_discount", "fieldtype": "Currency", "label": "Onboarding Discount", "default": "0", "read_only": 1,
    "description": "Auto-applied first/second-order discount from the delivery zone's onboarding rates — see Delivery Zone.first_order_discount_pct"},
   {"fieldname": "onboarding_order_sequence", "fieldtype": "Int", "label": "Onboarding Order Sequence", "default": "0", "read_only": 1,
-   "description": "1 = this customer's first order, 2 = second, 0 = not eligible / not computed. Recorded for audit even when the discount was 0."}
+   "description": "1 = this customer's first order, 2 = second, 0 = not eligible / not computed. Recorded for audit even when the discount was 0."},
+  {"fieldname": "membership", "fieldtype": "Link", "label": "Membership", "options": "Customer Membership", "read_only": 1,
+   "description": "The membership that was active when this order was priced. Recorded so a later plan edit can't change what this order says it gave."},
+  {"fieldname": "membership_discount", "fieldtype": "Currency", "label": "Membership Discount", "default": "0", "read_only": 1,
+   "description": "Sum of per-line category benefits — see Membership Saving Entry for the rule-by-rule breakdown"}
  ],
  "search_fields": "customer_name,customer_email,customer_phone",
  "permissions": [

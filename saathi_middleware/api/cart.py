@@ -37,6 +37,74 @@ def resolve_item_code(product, franchise):
     return product
 
 
+def _haversine_km(lat1, lon1, lat2, lon2):
+    """Great-circle distance (km) between two lat/lng points."""
+    from math import atan2, cos, radians, sin, sqrt
+    r = 6371
+    dlat = radians(lat2 - lat1)
+    dlon = radians(lon2 - lon1)
+    a = sin(dlat / 2) ** 2 + cos(radians(lat1)) * cos(radians(lat2)) * sin(dlon / 2) ** 2
+    return r * 2 * atan2(sqrt(a), sqrt(1 - a))
+
+
+def _resolve_franchise_for_item(item_code, customer_lat, customer_lng):
+    """Pick the best franchise carrying item_code for the customer's location.
+
+    Explicit franchise always wins (the caller passes it); this only runs as
+    the fallback when none is given — mirrors saathimart's select_best_vendor:
+    the franchise is *derived* from where the customer is, via haversine, not
+    handed over by the caller. Returns the franchise site_code, or None.
+
+    With a location we keep only Active franchises inside their
+    serviceable_radius_km and pick the nearest; without a location we fall back
+    to the cheapest in-stock Active franchise. Out-of-stock franchises are
+    deprioritised but not hard-excluded (the later stock guard still applies).
+    """
+    rows = frappe.get_all(
+        "Saathi Item",
+        filters={"item_code": item_code, "is_active": 1},
+        fields=["name", "franchise", "price", "stock_qty"],
+    )
+    if not rows:
+        return None
+
+    candidates = []
+    for row in rows:
+        franchise = row.get("franchise")
+        if not franchise:
+            continue
+        fdoc = frappe.db.get_value(
+            "Franchise", franchise,
+            ["status", "latitude", "longitude", "serviceable_radius_km"],
+            as_dict=True,
+        )
+        if not fdoc or fdoc.get("status") != "Active":
+            continue
+
+        dist = float("inf")
+        if customer_lat is not None and customer_lng is not None \
+                and fdoc.get("latitude") and fdoc.get("longitude"):
+            dist = _haversine_km(
+                customer_lat, customer_lng,
+                flt(fdoc["latitude"]), flt(fdoc["longitude"]),
+            )
+            if fdoc.get("serviceable_radius_km") and dist > flt(fdoc["serviceable_radius_km"]):
+                continue  # outside this franchise's delivery radius
+        out = bool(row.get("stock_qty") is not None and row.get("stock_qty") <= 0)
+        candidates.append({
+            "franchise": franchise,
+            "dist": dist,
+            "price": flt(row.get("price") or 0),
+            "out": out,
+        })
+
+    if not candidates:
+        return None
+
+    candidates.sort(key=lambda c: (c["out"], c["dist"], c["price"]))
+    return candidates[0]["franchise"]
+
+
 def _item_images(product_names):
     """Batch-fetch Saathi Item.image for a set of cart line products —
     one query instead of one per line, and skips duplicates within a cart."""
@@ -190,17 +258,38 @@ def get_cart(session_id=None):
 
 @frappe.whitelist(allow_guest=True)
 @handle_api_errors
-def add_to_cart(session_id=None, item_code=None, qty=1, franchise=None):
+def add_to_cart(session_id=None, item_code=None, qty=1, franchise=None,
+                customer_lat=None, customer_lng=None):
     qty = float(qty)
     if qty <= 0:
         frappe.throw(_("Qty must be positive"))
+    if not item_code:
+        frappe.throw(_("item_code is required"))
+
+    # Resolve franchise from the customer's location when not given explicitly.
+    # Explicit franchise always wins; otherwise derive the nearest in-stock
+    # Active franchise carrying this item_code via haversine (saathimart-style).
+    if not franchise:
+        cart = _get_or_create_cart(session_id)
+        lat = flt(customer_lat) if customer_lat is not None else flt(cart.customer_lat)
+        lng = flt(customer_lng) if customer_lng is not None else flt(cart.customer_lng)
+        resolved = _resolve_franchise_for_item(item_code, lat or None, lng or None)
+        if not resolved:
+            frappe.throw(_("No franchise is currently offering {0}").format(item_code))
+        franchise = resolved
+        # Keep the cart's delivery location in sync (parity with saathimart).
+        if lat or lng:
+            cart.customer_lat = lat or cart.customer_lat
+            cart.customer_lng = lng or cart.customer_lng
+            cart.save(ignore_permissions=True)
+    else:
+        cart = _get_or_create_cart(session_id)
 
     product = compose_product_name(item_code, franchise)
     saathi_item = frappe.get_doc("Saathi Item", product)
     if not saathi_item.is_active:
         frappe.throw(_("Item is not available"))
 
-    cart = _get_or_create_cart(session_id)
     rate = flt(saathi_item.price)
 
     for item in cart.items:

@@ -96,25 +96,30 @@ def find_active_cart(session_id):
     return None
 
 
-def _get_or_create_cart(session_id):
-    if not session_id:
-        session_id = get_session_id()
-
+def _get_or_create_cart(session_id=None):
     user = frappe.session.user if frappe.session.user != "Guest" else None
 
-    # A logged-in user's cart must be the SAME cart on every device/browser
-    # they use, not a fresh one per session_id — looking this up by
-    # session_id alone (the old behavior) gave every new browser its own
-    # disconnected cart, since each carries a different sm_cart_session
-    # cookie. For a signed-in user, resolve by `user` first so all of their
-    # sessions share one cart; merge_guest_cart (auth_full.py's login) is
-    # what folds a pre-login device's guest cart into this one. Guests have
-    # no stable identity across devices, so they stay session_id-keyed.
     if user:
+        # A signed-in shopper's cart is keyed by user so every device/browser
+        # shares one basket. If they still have a pre-login guest cart on this
+        # exact session (e.g. login's merge ran but the cookie was rotated, or
+        # a non-web caller never sent guest_cart_guid), adopt it and bind it
+        # to the user instead of starting a second, disconnected cart.
         name = frappe.db.get_value("SM Cart", {"user": user, "status": "Active"}, "name")
         if name:
             return frappe.get_doc("SM Cart", name)
+        if session_id:
+            guest_name = frappe.db.get_value(
+                "SM Cart", {"session_id": session_id, "status": "Active"}, "name"
+            )
+            if guest_name:
+                guest_cart = frappe.get_doc("SM Cart", guest_name)
+                guest_cart.user = user
+                guest_cart.save(ignore_permissions=True)
+                return guest_cart
     else:
+        if not session_id:
+            session_id = get_session_id()
         name = frappe.db.get_value(
             "SM Cart", {"session_id": session_id, "status": "Active"}, "name"
         )
@@ -131,16 +136,22 @@ def _get_or_create_cart(session_id):
     # non-web caller from replaying a stale one) would otherwise hit a DB
     # IntegrityError here. Free the old cart's session_id first so this
     # insert can never collide with a cart that's done being "Active".
-    stale_name = frappe.db.get_value(
-        "SM Cart", {"session_id": session_id, "status": ["!=", "Active"]}, "name"
-    )
-    if stale_name:
-        frappe.db.set_value(
-            "SM Cart", stale_name, "session_id", f"{session_id}-superseded-{stale_name}"
+    if session_id:
+        stale_name = frappe.db.get_value(
+            "SM Cart", {"session_id": session_id, "status": ["!=", "Active"]}, "name"
         )
+        if stale_name:
+            frappe.db.set_value(
+                "SM Cart", stale_name, "session_id", f"{session_id}-superseded-{stale_name}"
+            )
 
     cart = frappe.new_doc("SM Cart")
-    cart.session_id = session_id
+    # Logged-in users get a generated session_id too, so the cart is tagged to
+    # BOTH a stable user and a unique session. That's what lets it merge with a
+    # guest cart and what keeps it off the unique-column collision path (a
+    # logged-in user resolves to session_id=None here, which is not a valid
+    # unique value). Guests keep their real cookie-derived session_id.
+    cart.session_id = session_id or frappe.generate_hash(length=20)
     cart.user = user
     try:
         cart.source_site = frappe.request.headers.get("X-Source-Site", "")
@@ -157,7 +168,7 @@ def _get_or_create_cart(session_id):
 
 @frappe.whitelist(allow_guest=True)
 @handle_api_errors
-def set_customer_location(session_id, lat, lng):
+def set_customer_location(session_id=None, lat=None, lng=None):
     cart = _get_or_create_cart(session_id)
     cart.customer_lat = flt(lat)
     cart.customer_lng = flt(lng)
@@ -172,14 +183,14 @@ def set_customer_location(session_id, lat, lng):
 
 @frappe.whitelist(allow_guest=True)
 @handle_api_errors
-def get_cart(session_id):
+def get_cart(session_id=None):
     cart = _get_or_create_cart(session_id)
     return cart.as_dict()
 
 
 @frappe.whitelist(allow_guest=True)
 @handle_api_errors
-def add_to_cart(session_id, item_code, qty=1, franchise=None):
+def add_to_cart(session_id=None, item_code=None, qty=1, franchise=None):
     qty = float(qty)
     if qty <= 0:
         frappe.throw(_("Qty must be positive"))
@@ -217,7 +228,7 @@ def add_to_cart(session_id, item_code, qty=1, franchise=None):
 
 @frappe.whitelist(allow_guest=True)
 @handle_api_errors
-def update_cart_item(session_id, item_code, qty, franchise=None):
+def update_cart_item(session_id=None, item_code=None, qty=None, franchise=None):
     qty = float(qty)
     cart = _get_or_create_cart(session_id)
 
@@ -248,7 +259,7 @@ def update_cart_item(session_id, item_code, qty, franchise=None):
 
 @frappe.whitelist(allow_guest=True)
 @handle_api_errors
-def clear_cart(session_id):
+def clear_cart(session_id=None):
     cart = _get_or_create_cart(session_id)
     cart.items = []
     cart.save(ignore_permissions=True)
@@ -257,7 +268,7 @@ def clear_cart(session_id):
 
 @frappe.whitelist(allow_guest=True)
 @handle_api_errors
-def get_cart_summary(session_id):
+def get_cart_summary(session_id=None):
     cart = _get_or_create_cart(session_id)
     images = _item_images([item.product for item in cart.items])
     items = []
@@ -289,7 +300,7 @@ def get_cart_summary(session_id):
 
 @frappe.whitelist(allow_guest=True)
 @handle_api_errors
-def get_cart_count(session_id):
+def get_cart_count(session_id=None):
     cart = _get_or_create_cart(session_id)
     total_qty = sum(flt(i.qty or 0) for i in cart.items)
     return {"count": int(total_qty)}

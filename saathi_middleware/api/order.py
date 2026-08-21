@@ -320,8 +320,8 @@ def create_order(**payload):
 @frappe.whitelist(allow_guest=True)
 @rate_limit(key="checkout", limit=20, seconds=60)
 @handle_api_errors
-def checkout(session_id, customer_name, customer_mobile, delivery_address,
-             payment_mode, delivery_city=None, delivery_latitude=None,
+def checkout(session_id=None, customer_name=None, customer_mobile=None, delivery_address=None,
+             payment_mode=None, delivery_city=None, delivery_latitude=None,
              delivery_longitude=None, delivery_charges=0, coupon_code=None,
              loyalty_points=0, customer_email=None):
 	# Resolved the same way add_to_cart resolves it — by user first for a
@@ -430,7 +430,7 @@ def checkout(session_id, customer_name, customer_mobile, delivery_address,
 @frappe.whitelist(allow_guest=True)
 @rate_limit(key="calculate_cart_totals", limit=60, seconds=60)
 @handle_api_errors
-def calculate_cart_totals(session_id, coupon_code=None, loyalty_points=0, delivery_charges=0):
+def calculate_cart_totals(session_id=None, coupon_code=None, loyalty_points=0, delivery_charges=0):
 	"""
 	Preview what checkout() would actually charge for the current cart —
 	same subtotal/coupon/loyalty pipeline, but read-only: no order is

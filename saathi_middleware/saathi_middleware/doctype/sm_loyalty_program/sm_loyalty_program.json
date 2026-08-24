@@ -1,0 +1,27 @@
+{
+  "name": "SM Loyalty Program",
+  "module": "Saathi Middleware",
+  "doctype": "DocType",
+  "autoname": "field:program_name",
+  "fields": [
+   {"fieldname": "program_name", "fieldtype": "Data", "label": "Program Name", "reqd": 1, "in_list_view": 1},
+   {"fieldname": "is_active", "fieldtype": "Check", "label": "Is Active", "default": "1", "in_list_view": 1},
+   {"fieldname": "col_break_1", "fieldtype": "Column Break"},
+   {"fieldname": "collection_factor", "fieldtype": "Float", "label": "Points Earned per NPR Spent",
+    "default": "0.01", "description": "e.g. 0.01 = 1 point per NPR 100 spent"},
+   {"fieldname": "redemption_factor", "fieldtype": "Float", "label": "NPR Value per Point",
+    "default": "1", "description": "e.g. 1 = 1 point = NPR 1 discount"},
+   {"fieldname": "section_limits", "fieldtype": "Section Break", "label": "Limits"},
+   {"fieldname": "min_points_to_redeem", "fieldtype": "Int", "label": "Min Points to Redeem", "default": "1"},
+   {"fieldname": "max_redemption_per_order_pct", "fieldtype": "Float",
+    "label": "Max Redemption per Order (%)", "default": "20",
+    "description": "Max % of order total that can be paid with points"},
+   {"fieldname": "point_expiry_days", "fieldtype": "Int", "label": "Points Expire After (days, 0 = never)", "default": "365"},
+   {"fieldname": "section_tiers", "fieldtype": "Section Break", "label": "Tiers"},
+   {"fieldname": "tiers", "fieldtype": "Table", "label": "Tiers", "options": "SM Loyalty Tier"}
+  ],
+  "title_field": "program_name",
+  "permissions": [
+   {"role": "SM Admin", "read": 1, "write": 1, "create": 1, "delete": 1}
+  ]
+}

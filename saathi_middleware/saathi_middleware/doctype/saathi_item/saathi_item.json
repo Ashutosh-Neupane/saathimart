@@ -21,6 +21,14 @@
   "section_break_desc",
   "description",
   "image",
+  "gallery_images",
+  "section_break_ecommerce",
+  "meta_title",
+  "meta_description",
+  "column_break_ecommerce",
+  "tags",
+  "avg_rating",
+  "review_count",
   "section_break_location",
   "latitude",
   "longitude",
@@ -118,7 +126,56 @@
    "fieldname": "image",
    "fieldtype": "Attach Image",
    "label": "Image",
+   "description": "Primary/thumbnail image. Set by a middleware user. Never overwritten by franchise sync."
+  },
+  {
+   "fieldname": "gallery_images",
+   "fieldtype": "Table",
+   "options": "Saathi Item Image",
+   "label": "Gallery Images",
+   "description": "Additional PDP gallery photos beyond the primary Image above. Set by a middleware user. Never overwritten by franchise sync."
+  },
+  {
+   "fieldname": "section_break_ecommerce",
+   "fieldtype": "Section Break",
+   "label": "Ecommerce"
+  },
+  {
+   "fieldname": "meta_title",
+   "fieldtype": "Data",
+   "label": "Meta Title",
    "description": "Set by a middleware user. Never overwritten by franchise sync."
+  },
+  {
+   "fieldname": "meta_description",
+   "fieldtype": "Small Text",
+   "label": "Meta Description",
+   "description": "Set by a middleware user. Never overwritten by franchise sync."
+  },
+  {
+   "fieldname": "column_break_ecommerce",
+   "fieldtype": "Column Break"
+  },
+  {
+   "fieldname": "tags",
+   "fieldtype": "Data",
+   "label": "Tags (comma separated)",
+   "description": "Set by a middleware user. Never overwritten by franchise sync."
+  },
+  {
+   "fieldname": "avg_rating",
+   "fieldtype": "Float",
+   "label": "Average Rating",
+   "precision": "1",
+   "read_only": 1,
+   "description": "Denormalized from SM Product Review — recomputed by SM Product Review's on_update/on_trash, never set directly."
+  },
+  {
+   "fieldname": "review_count",
+   "fieldtype": "Int",
+   "label": "Review Count",
+   "read_only": 1,
+   "description": "Denormalized from SM Product Review — recomputed by SM Product Review's on_update/on_trash, never set directly."
   },
   {
    "fieldname": "section_break_location",

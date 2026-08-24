@@ -1,0 +1,22 @@
+{
+  "name": "SM Loyalty Point Entry",
+  "module": "Saathi Middleware",
+  "doctype": "DocType",
+  "autoname": "SM-LPE-.YYYY.-.#####",
+  "fields": [
+   {"fieldname": "customer_email", "fieldtype": "Data", "label": "Customer Email", "reqd": 1, "in_list_view": 1},
+   {"fieldname": "program", "fieldtype": "Link", "label": "Program", "options": "SM Loyalty Program", "reqd": 1},
+   {"fieldname": "points", "fieldtype": "Int", "label": "Points", "reqd": 1, "in_list_view": 1},
+   {"fieldname": "col_break_1", "fieldtype": "Column Break"},
+   {"fieldname": "entry_type", "fieldtype": "Select", "label": "Type",
+    "options": "Earned\nRedeemed\nExpired\nAdjusted", "default": "Earned", "in_list_view": 1},
+   {"fieldname": "order", "fieldtype": "Link", "label": "Order", "options": "Saathi Order"},
+   {"fieldname": "expiry_date", "fieldtype": "Date", "label": "Expiry Date"},
+   {"fieldname": "is_expired", "fieldtype": "Check", "label": "Expired", "default": "0"},
+   {"fieldname": "remarks", "fieldtype": "Small Text", "label": "Remarks"}
+  ],
+  "permissions": [
+   {"role": "SM Admin", "read": 1, "write": 1, "create": 1, "delete": 1},
+   {"role": "SM Customer", "read": 1}
+  ]
+}

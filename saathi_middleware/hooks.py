@@ -138,14 +138,46 @@ app_license = "mit"
 # ---------------
 # Hook on document methods and events
 
+# Framework-level failures (not whitelisted, guest hitting a login-only
+# method, CSRF, expired session) are raised by Frappe *before* the endpoint
+# runs, so api.responses.handle_api_errors never sees them and they came back
+# in Frappe's native {exc_type, _server_messages} shape with desk-oriented
+# HTML inside. This hook gives them the same body as every other failure.
+after_request = ["saathi_middleware.api.responses.normalize_error_response"]
+
+doc_events = {
+    "SM Site Config": {
+        "on_update": "saathi_middleware.api.cms._bust_site_config_cache",
+    },
+    "SM Navigation Item": {
+        "on_update": "saathi_middleware.api.cms._bust_navigation_cache",
+    },
+    "SM Banner": {
+        "on_update": "saathi_middleware.api.cms._bust_banner_cache",
+    },
+    "SM Trust Badge": {
+        "on_update": "saathi_middleware.api.cms._bust_trust_badge_cache",
+    },
+    "SM Product Rail": {
+        "on_update": "saathi_middleware.api.cms._bust_product_rail_cache",
+    },
+    "SM Site Page": {
+        "on_update": "saathi_middleware.api.cms._bust_page_cache",
+    },
+    "SM Blog Post": {
+        "on_update": "saathi_middleware.api.cms._bust_blog_cache",
+    },
+}
+
 # Scheduled Tasks
 # ---------------
 
 scheduler_events = {
 	"cron": {
 		"*/5 * * * *": ["saathi_middleware.api.order.retry_failed_order_syncs"],
-		"*/10 * * * *": ["saathi_middleware.api.order.poll_franchise_order_status"],
-        "0 2 * * *": ["saathi_middleware.api.auth_full.cleanup_expired_verifications"],
+		"*/10 * * * *": ["saathi_middleware.api.payments.poll_pending_esewa_orders"],
+		"0 2 * * *": ["saathi_middleware.api.auth_full.cleanup_expired_verifications"],
+		"0 3 * * *": ["saathi_middleware.api.loyalty.expire_old_points"],
 	},
 	"hourly": [
 		"saathi_middleware.api.cart.expire_abandoned_carts",
@@ -266,12 +298,24 @@ fixtures = [
     ]]]},
     {"dt": "SM Pending Verification"},
     {"dt": "SM Cart"},
+    {"dt": "SM Site Config"},
+    {"dt": "SM Loyalty Program"},
+    {"dt": "SM Loyalty Point Entry"},
 ]
 
 # ── Permissions ───────────────────────────────────────────────────────────────
 has_permission = {
     "Saathi Order":    "saathi_middleware.api.auth.has_order_permission",
     "SM Cart":         "saathi_middleware.api.auth.has_cart_permission",
+    "SM Address":      "saathi_middleware.api.auth.has_address_permission",
+    "SM Wishlist Item": "saathi_middleware.api.auth.has_wishlist_permission",
+    "SM Product Review": "saathi_middleware.api.auth.has_review_permission",
+}
+
+permission_query_conditions = {
+    "SM Address": "saathi_middleware.api.auth.get_address_permission_query_conditions",
+    "SM Wishlist Item": "saathi_middleware.api.auth.get_wishlist_permission_query_conditions",
+    "SM Product Review": "saathi_middleware.api.auth.get_review_permission_query_conditions",
 }
 
 # ── Boot info ─────────────────────────────────────────────────────────

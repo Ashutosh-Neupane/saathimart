@@ -1,0 +1,15 @@
+{
+  "name": "SM Wishlist Item",
+  "module": "Saathi Middleware",
+  "doctype": "DocType",
+  "autoname": "hash",
+  "fields": [
+   {"fieldname": "user", "fieldtype": "Link", "label": "User", "options": "User", "reqd": 1, "in_list_view": 1},
+   {"fieldname": "item", "fieldtype": "Link", "label": "Item", "options": "Saathi Item", "reqd": 1, "in_list_view": 1},
+   {"fieldname": "added_at", "fieldtype": "Datetime", "label": "Added At"}
+  ],
+  "permissions": [
+   {"role": "SM Admin", "read": 1, "write": 1, "create": 1, "delete": 1},
+   {"role": "SM Customer", "read": 1, "write": 1, "create": 1, "delete": 1}
+  ]
+}

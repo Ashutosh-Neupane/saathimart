@@ -1,0 +1,29 @@
+name: smw-branch4
+
+services:
+  db:
+    ports: !override []
+    volumes:
+      - db-data:/var/lib/mysql
+
+  redis-cache:
+    ports: !override []
+
+  redis-queue:
+    ports: !override []
+
+  mw:
+    ports: !override
+      - "8013:8000"
+    volumes:
+      - mw-data:/home/frappe/bench
+
+volumes:
+  db-data:
+    name: smw_branch4_db-data
+  redis-cache-data:
+    name: smw_branch4_redis-cache-data
+  redis-queue-data:
+    name: smw_branch4_redis-queue-data
+  mw-data:
+    name: smw_branch4_mw-data

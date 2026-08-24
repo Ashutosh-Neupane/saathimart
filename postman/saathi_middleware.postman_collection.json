@@ -1,0 +1,1221 @@
+{
+	"info": {
+		"name": "Saathi Middleware API",
+		"description": "Full API surface for saathi_middleware \u2014 the SaathiMart hub backend (catalog, cart, checkout, payments, loyalty, coupons, CMS, franchise item sync). Every request here matches a real @frappe.whitelist function verified working during development.\n\nAuth: most customer-facing endpoints accept an optional `Authorization: token <api_key>:<api_secret>` header (Frappe token auth) set at the collection level from {{api_key}}/{{api_secret}} \u2014 run **Auth > Login** first, its test script fills those in automatically. Endpoints marked `allow_guest=True` work with no auth at all (guest cart/browsing).\n\nSet `base_url` and `host_header` in the environment to match your site (see README for the `saathi-mw.localhost` Docker-networking note if you're not on a real domain).",
+		"schema": "https://schema.getpostman.com/json/collection/v2.1.0/collection.json"
+	},
+	"event": [
+		{
+			"listen": "prerequest",
+			"script": {
+				"type": "text/javascript",
+				"exec": [
+					"// session_id must be a REAL value, not the literal string",
+					"// \"postman-session-{{$randomUUID}}\" \u2014 Postman only expands",
+					"// {{$randomUUID}} inside a request field at send time, never",
+					"// inside another variable's stored default, so that literal",
+					"// template text was being sent as-is on every request. Self-heal",
+					"// here: generate one real session id and keep reusing it for the",
+					"// rest of this run (and future runs) so Add To Cart -> Update",
+					"// Cart Item -> Checkout all operate on the same real cart.",
+					"const sid = pm.collectionVariables.get('session_id');",
+					"if (!sid || sid.includes('{{')) {",
+					"  pm.collectionVariables.set('session_id', 'postman-session-' + pm.variables.replaceIn('{{$randomUUID}}'));",
+					"}",
+					"",
+					"if (pm.environment.get('host_header') || pm.collectionVariables.get('host_header')) {",
+					"  pm.request.headers.upsert({ key: 'Host', value: pm.environment.get('host_header') || pm.collectionVariables.get('host_header') });",
+					"}",
+					"// Collection-level `auth` inheritance is unreliable under Newman for",
+					"// requests that omit their own `auth` block, so set the token header",
+					"// explicitly here instead \u2014 this is the actual source of truth.",
+					"// Requests with their own noauth (guest-only demos) still send it",
+					"// harmlessly, since allow_guest=True endpoints accept an authenticated",
+					"// caller too (same as the real storefront frontend always attaching",
+					"// its token once logged in, guest-eligible endpoint or not).",
+					"const apiKey = pm.collectionVariables.get('api_key');",
+					"const apiSecret = pm.collectionVariables.get('api_secret');",
+					"if (apiKey && apiSecret) {",
+					"  pm.request.headers.upsert({ key: 'Authorization', value: `token ${apiKey}:${apiSecret}` });",
+					"}"
+				]
+			}
+		},
+		{
+			"listen": "test",
+			"script": {
+				"type": "text/javascript",
+				"exec": [
+					"pm.test('server did not 5xx', function () {",
+					"  pm.expect(pm.response.code, pm.response.text()).to.be.below(500);",
+					"});"
+				]
+			}
+		}
+	],
+	"variable": [
+		{
+			"key": "base_url",
+			"value": "http://saathi-mw.localhost:8002"
+		},
+		{
+			"key": "host_header",
+			"value": "saathi-mw.localhost"
+		},
+		{
+			"key": "api_key",
+			"value": ""
+		},
+		{
+			"key": "api_secret",
+			"value": ""
+		},
+		{
+			"key": "session_id",
+			"value": ""
+		},
+		{
+			"key": "franchise",
+			"value": "SM-DEMO"
+		},
+		{
+			"key": "item_code",
+			"value": "BEV-001"
+		},
+		{
+			"key": "product_slug",
+			"value": "SM-DEMO-BEV-001"
+		},
+		{
+			"key": "order_id",
+			"value": ""
+		},
+		{
+			"key": "coupon_code",
+			"value": "SAVE20"
+		},
+		{
+			"key": "address_id",
+			"value": ""
+		},
+		{
+			"key": "test_email",
+			"value": "postman-test@example.com"
+		},
+		{
+			"key": "test_password",
+			"value": "Postman@Test123"
+		},
+		{
+			"key": "franchise_api_key",
+			"value": ""
+		},
+		{
+			"key": "franchise_api_secret",
+			"value": ""
+		}
+	],
+	"item": [
+		{
+			"name": "Health",
+			"item": [
+				{
+					"name": "Ping",
+					"request": {
+						"method": "GET",
+						"url": "{{base_url}}/api/method/ping",
+						"auth": {
+							"type": "noauth"
+						}
+					}
+				}
+			]
+		},
+		{
+			"name": "Auth",
+			"item": [
+				{
+					"name": "Signup",
+					"request": {
+						"method": "POST",
+						"header": [
+							{
+								"key": "Content-Type",
+								"value": "application/json"
+							}
+						],
+						"url": "{{base_url}}/api/method/saathi_middleware.api.auth_full.signup",
+						"body": {
+							"mode": "raw",
+							"raw": "{\n  \"email\": \"{{test_email}}\",\n  \"full_name\": \"Postman Tester\",\n  \"contact\": \"9800000001\",\n  \"password\": \"{{test_password}}\"\n}"
+						},
+						"auth": {
+							"type": "noauth"
+						}
+					},
+					"response": []
+				},
+				{
+					"name": "Verify Signup OTP",
+					"request": {
+						"method": "POST",
+						"header": [
+							{
+								"key": "Content-Type",
+								"value": "application/json"
+							}
+						],
+						"url": "{{base_url}}/api/method/saathi_middleware.api.auth_full.verify_signup_otp",
+						"body": {
+							"mode": "raw",
+							"raw": "{\n  \"email\": \"{{test_email}}\",\n  \"otp\": \"123456\"\n}"
+						},
+						"auth": {
+							"type": "noauth"
+						}
+					},
+					"response": []
+				},
+				{
+					"name": "Resend OTP",
+					"request": {
+						"method": "POST",
+						"header": [
+							{
+								"key": "Content-Type",
+								"value": "application/json"
+							}
+						],
+						"url": "{{base_url}}/api/method/saathi_middleware.api.auth_full.resend_otp",
+						"body": {
+							"mode": "raw",
+							"raw": "{\n  \"email\": \"{{test_email}}\",\n  \"purpose\": \"signup\"\n}"
+						},
+						"auth": {
+							"type": "noauth"
+						}
+					},
+					"response": []
+				},
+				{
+					"name": "Login",
+					"event": [
+						{
+							"listen": "test",
+							"script": {
+								"type": "text/javascript",
+								"exec": [
+									"if (pm.response.code === 200) {",
+									"  const body = pm.response.json();",
+									"  const msg = body.message || {};",
+									"  if (msg.api_key) pm.collectionVariables.set('api_key', msg.api_key);",
+									"  if (msg.api_secret) pm.collectionVariables.set('api_secret', msg.api_secret);",
+									"  pm.test('got a token', function () { pm.expect(msg.token).to.be.a('string'); });",
+									"}"
+								]
+							}
+						}
+					],
+					"request": {
+						"method": "POST",
+						"header": [
+							{
+								"key": "Content-Type",
+								"value": "application/json"
+							}
+						],
+						"url": "{{base_url}}/api/method/saathi_middleware.api.auth_full.login",
+						"body": {
+							"mode": "raw",
+							"raw": "{\n  \"usr\": \"{{test_email}}\",\n  \"pwd\": \"{{test_password}}\"\n}"
+						},
+						"auth": {
+							"type": "noauth"
+						},
+						"description": "On success, fills in {{api_key}}/{{api_secret}} collection variables used by every other request's Authorization header."
+					},
+					"response": []
+				},
+				{
+					"name": "Forgot Password",
+					"request": {
+						"method": "POST",
+						"header": [
+							{
+								"key": "Content-Type",
+								"value": "application/json"
+							}
+						],
+						"url": "{{base_url}}/api/method/saathi_middleware.api.auth_full.forgot_password",
+						"body": {
+							"mode": "raw",
+							"raw": "{\n  \"email\": \"{{test_email}}\"\n}"
+						},
+						"auth": {
+							"type": "noauth"
+						}
+					},
+					"response": []
+				},
+				{
+					"name": "Verify Forgot-Password OTP",
+					"request": {
+						"method": "POST",
+						"header": [
+							{
+								"key": "Content-Type",
+								"value": "application/json"
+							}
+						],
+						"url": "{{base_url}}/api/method/saathi_middleware.api.auth_full.verify_forgot_password_otp",
+						"body": {
+							"mode": "raw",
+							"raw": "{\n  \"email\": \"{{test_email}}\",\n  \"otp\": \"123456\",\n  \"new_password\": \"{{test_password}}\"\n}"
+						},
+						"auth": {
+							"type": "noauth"
+						}
+					},
+					"response": []
+				},
+				{
+					"name": "Change Password",
+					"request": {
+						"method": "POST",
+						"header": [
+							{
+								"key": "Content-Type",
+								"value": "application/json"
+							}
+						],
+						"url": "{{base_url}}/api/method/saathi_middleware.api.auth_full.change_password",
+						"body": {
+							"mode": "raw",
+							"raw": "{\n  \"old_password\": \"{{test_password}}\",\n  \"new_password\": \"{{test_password}}\"\n}"
+						}
+					},
+					"response": []
+				},
+				{
+					"name": "Get Profile",
+					"request": {
+						"method": "GET",
+						"url": "{{base_url}}/api/method/saathi_middleware.api.auth.get_profile"
+					},
+					"response": []
+				},
+				{
+					"name": "Update Profile",
+					"request": {
+						"method": "POST",
+						"header": [
+							{
+								"key": "Content-Type",
+								"value": "application/json"
+							}
+						],
+						"url": "{{base_url}}/api/method/saathi_middleware.api.auth.update_profile",
+						"body": {
+							"mode": "raw",
+							"raw": "{\n  \"full_name\": \"Postman Tester\",\n  \"phone\": \"9800000001\"\n}"
+						}
+					},
+					"response": []
+				}
+			]
+		},
+		{
+			"name": "Catalog",
+			"item": [
+				{
+					"name": "List Categories",
+					"request": {
+						"method": "GET",
+						"url": "{{base_url}}/api/method/saathi_middleware.api.catalog.list_categories",
+						"auth": {
+							"type": "noauth"
+						}
+					},
+					"response": []
+				},
+				{
+					"name": "List Products",
+					"request": {
+						"method": "GET",
+						"url": {
+							"raw": "{{base_url}}/api/method/saathi_middleware.api.catalog.list_products?page=1&page_size=20&in_stock=1",
+							"host": [
+								"{{base_url}}"
+							],
+							"path": [
+								"api",
+								"method",
+								"saathi_middleware.api.catalog.list_products"
+							],
+							"query": [
+								{
+									"key": "category",
+									"value": "beverages",
+									"disabled": true
+								},
+								{
+									"key": "search",
+									"value": "milk",
+									"disabled": true
+								},
+								{
+									"key": "page",
+									"value": "1"
+								},
+								{
+									"key": "page_size",
+									"value": "20"
+								},
+								{
+									"key": "sort",
+									"value": "price_asc",
+									"disabled": true
+								},
+								{
+									"key": "in_stock",
+									"value": "1"
+								},
+								{
+									"key": "min_price",
+									"value": "0",
+									"disabled": true
+								},
+								{
+									"key": "max_price",
+									"value": "1000",
+									"disabled": true
+								},
+								{
+									"key": "lat",
+									"value": "27.7172",
+									"disabled": true
+								},
+								{
+									"key": "lng",
+									"value": "85.3240",
+									"disabled": true
+								}
+							]
+						},
+						"auth": {
+							"type": "noauth"
+						}
+					},
+					"response": []
+				},
+				{
+					"name": "Get Product",
+					"request": {
+						"method": "GET",
+						"url": "{{base_url}}/api/method/saathi_middleware.api.catalog.get_product?slug={{product_slug}}",
+						"auth": {
+							"type": "noauth"
+						}
+					},
+					"response": []
+				}
+			]
+		},
+		{
+			"name": "Cart",
+			"item": [
+				{
+					"name": "Add To Cart",
+					"request": {
+						"method": "POST",
+						"header": [
+							{
+								"key": "Content-Type",
+								"value": "application/json"
+							}
+						],
+						"url": "{{base_url}}/api/method/saathi_middleware.api.cart.add_to_cart",
+						"body": {
+							"mode": "raw",
+							"raw": "{\n  \"session_id\": \"{{session_id}}\",\n  \"item_code\": \"{{item_code}}\",\n  \"franchise\": \"{{franchise}}\",\n  \"qty\": 1\n}"
+						}
+					},
+					"response": []
+				},
+				{
+					"name": "Update Cart Item",
+					"request": {
+						"method": "POST",
+						"header": [
+							{
+								"key": "Content-Type",
+								"value": "application/json"
+							}
+						],
+						"url": "{{base_url}}/api/method/saathi_middleware.api.cart.update_cart_item",
+						"body": {
+							"mode": "raw",
+							"raw": "{\n  \"session_id\": \"{{session_id}}\",\n  \"item_code\": \"{{item_code}}\",\n  \"franchise\": \"{{franchise}}\",\n  \"qty\": 2\n}"
+						}
+					},
+					"response": []
+				},
+				{
+					"name": "Get Cart Summary",
+					"request": {
+						"method": "POST",
+						"header": [
+							{
+								"key": "Content-Type",
+								"value": "application/json"
+							}
+						],
+						"url": "{{base_url}}/api/method/saathi_middleware.api.cart.get_cart_summary",
+						"body": {
+							"mode": "raw",
+							"raw": "{\n  \"session_id\": \"{{session_id}}\"\n}"
+						}
+					},
+					"response": []
+				},
+				{
+					"name": "Get Cart (full doc)",
+					"request": {
+						"method": "POST",
+						"header": [
+							{
+								"key": "Content-Type",
+								"value": "application/json"
+							}
+						],
+						"url": "{{base_url}}/api/method/saathi_middleware.api.cart.get_cart",
+						"body": {
+							"mode": "raw",
+							"raw": "{\n  \"session_id\": \"{{session_id}}\"\n}"
+						}
+					},
+					"response": []
+				},
+				{
+					"name": "Get Cart Count",
+					"request": {
+						"method": "GET",
+						"url": "{{base_url}}/api/method/saathi_middleware.api.cart.get_cart_count?session_id={{session_id}}"
+					},
+					"response": []
+				},
+				{
+					"name": "Set Customer Location",
+					"request": {
+						"method": "POST",
+						"header": [
+							{
+								"key": "Content-Type",
+								"value": "application/json"
+							}
+						],
+						"url": "{{base_url}}/api/method/saathi_middleware.api.cart.set_customer_location",
+						"body": {
+							"mode": "raw",
+							"raw": "{\n  \"session_id\": \"{{session_id}}\",\n  \"lat\": 27.7172,\n  \"lng\": 85.3240\n}"
+						}
+					},
+					"response": []
+				},
+				{
+					"name": "Clear Cart",
+					"request": {
+						"method": "POST",
+						"header": [
+							{
+								"key": "Content-Type",
+								"value": "application/json"
+							}
+						],
+						"url": "{{base_url}}/api/method/saathi_middleware.api.cart.clear_cart",
+						"body": {
+							"mode": "raw",
+							"raw": "{\n  \"session_id\": \"{{session_id}}\"\n}"
+						}
+					},
+					"response": []
+				}
+			]
+		},
+		{
+			"name": "Checkout & Orders",
+			"item": [
+				{
+					"name": "Calculate Cart Totals",
+					"request": {
+						"method": "POST",
+						"header": [
+							{
+								"key": "Content-Type",
+								"value": "application/json"
+							}
+						],
+						"url": "{{base_url}}/api/method/saathi_middleware.api.order.calculate_cart_totals",
+						"body": {
+							"mode": "raw",
+							"raw": "{\n  \"session_id\": \"{{session_id}}\",\n  \"coupon_code\": \"{{coupon_code}}\",\n  \"loyalty_points\": 0,\n  \"delivery_charges\": 0\n}"
+						},
+						"description": "Read-only preview of what checkout() would charge \u2014 same pipeline, no order created. Run Add To Cart first."
+					},
+					"response": []
+				},
+				{
+					"name": "Checkout (place order from cart)",
+					"event": [
+						{
+							"listen": "test",
+							"script": {
+								"type": "text/javascript",
+								"exec": [
+									"if (pm.response.code === 200) {",
+									"  const msg = pm.response.json().message || {};",
+									"  if (msg.order) pm.collectionVariables.set('order_id', msg.order);",
+									"}"
+								]
+							}
+						}
+					],
+					"request": {
+						"method": "POST",
+						"header": [
+							{
+								"key": "Content-Type",
+								"value": "application/json"
+							}
+						],
+						"url": "{{base_url}}/api/method/saathi_middleware.api.order.checkout",
+						"body": {
+							"mode": "raw",
+							"raw": "{\n  \"session_id\": \"{{session_id}}\",\n  \"customer_name\": \"Postman Tester\",\n  \"customer_mobile\": \"9800000001\",\n  \"customer_email\": \"{{test_email}}\",\n  \"delivery_address\": \"Thamel Marg, Ward 26\",\n  \"delivery_city\": \"Kathmandu\",\n  \"payment_mode\": \"COD\",\n  \"coupon_code\": \"{{coupon_code}}\"\n}"
+						},
+						"description": "Requires a non-empty cart under {{session_id}} (run Cart > Add To Cart first). payment_mode must be an existing Saathi Payment Mode name \u2014 COD/Bank Transfer/eSewa by default. On success, fills {{order_id}}."
+					},
+					"response": []
+				},
+				{
+					"name": "Create Order (direct, no cart)",
+					"event": [
+						{
+							"listen": "test",
+							"script": {
+								"type": "text/javascript",
+								"exec": [
+									"if (pm.response.code === 200) {",
+									"  const msg = pm.response.json().message || {};",
+									"  if (msg.order) pm.collectionVariables.set('order_id', msg.order);",
+									"}"
+								]
+							}
+						}
+					],
+					"request": {
+						"method": "POST",
+						"header": [
+							{
+								"key": "Content-Type",
+								"value": "application/json"
+							}
+						],
+						"url": "{{base_url}}/api/method/saathi_middleware.api.order.create_order",
+						"body": {
+							"mode": "raw",
+							"raw": "{\n  \"franchise\": \"{{franchise}}\",\n  \"payment_mode\": \"COD\",\n  \"customer_name\": \"Postman Tester\",\n  \"customer_mobile\": \"9800000001\",\n  \"customer_email\": \"{{test_email}}\",\n  \"delivery_address\": \"Thamel Marg, Ward 26\",\n  \"delivery_city\": \"Kathmandu\",\n  \"items\": [\n    { \"item_code\": \"{{item_code}}\", \"qty\": 1 }\n  ]\n}"
+						},
+						"description": "Alternate order-creation path that bypasses SM Cart entirely \u2014 items are passed directly. Rate-limited to 20/min. On success, fills {{order_id}}."
+					},
+					"response": []
+				},
+				{
+					"name": "Get Order",
+					"request": {
+						"method": "GET",
+						"url": "{{base_url}}/api/method/saathi_middleware.api.order.get_order?order={{order_id}}"
+					},
+					"response": []
+				},
+				{
+					"name": "Track Order",
+					"request": {
+						"method": "GET",
+						"url": "{{base_url}}/api/method/saathi_middleware.api.order.track_order?order_id={{order_id}}"
+					},
+					"response": []
+				},
+				{
+					"name": "List Orders",
+					"request": {
+						"method": "GET",
+						"url": "{{base_url}}/api/method/saathi_middleware.api.order.list_orders?page=1&page_size=20"
+					},
+					"response": []
+				},
+				{
+					"name": "Get Order Status (guest, by mobile)",
+					"request": {
+						"method": "GET",
+						"url": "{{base_url}}/api/method/saathi_middleware.api.order.get_order_status?order={{order_id}}&customer_mobile=9800000001",
+						"auth": {
+							"type": "noauth"
+						}
+					},
+					"response": []
+				},
+				{
+					"name": "Get Payment Modes",
+					"request": {
+						"method": "GET",
+						"url": "{{base_url}}/api/method/saathi_middleware.api.order.get_payment_modes",
+						"auth": {
+							"type": "noauth"
+						}
+					},
+					"response": []
+				},
+				{
+					"name": "Update Order Status (SM Admin only)",
+					"request": {
+						"method": "POST",
+						"header": [
+							{
+								"key": "Content-Type",
+								"value": "application/json"
+							}
+						],
+						"url": "{{base_url}}/api/method/saathi_middleware.api.order.update_order_status",
+						"body": {
+							"mode": "raw",
+							"raw": "{\n  \"order\": \"{{order_id}}\",\n  \"status\": \"Confirmed\"\n}"
+						},
+						"description": "Requires the logged-in user to have the SM Admin role. Valid transitions are enforced server-side (see api/constants.py VALID_ORDER_TRANSITIONS)."
+					},
+					"response": []
+				}
+			]
+		},
+		{
+			"name": "Payments (eSewa)",
+			"item": [
+				{
+					"name": "Initiate Payment",
+					"request": {
+						"method": "POST",
+						"header": [
+							{
+								"key": "Content-Type",
+								"value": "application/json"
+							}
+						],
+						"url": "{{base_url}}/api/method/saathi_middleware.api.payments.initiate_payment",
+						"body": {
+							"mode": "raw",
+							"raw": "{\n  \"order\": \"{{order_id}}\"\n}"
+						},
+						"description": "Order's payment_mode must be an is_online Saathi Payment Mode (eSewa). Returns the signed form fields + payment_url to POST the shopper's browser to \u2014 this endpoint alone does not charge anything."
+					},
+					"response": []
+				},
+				{
+					"name": "Verify eSewa Status",
+					"request": {
+						"method": "GET",
+						"url": "{{base_url}}/api/method/saathi_middleware.api.payments.verify_esewa_status?order={{order_id}}",
+						"description": "Polls eSewa's own transaction-status API directly \u2014 same check the 10-min cron (poll_pending_esewa_orders) runs for orders whose success/failure redirect never arrived."
+					},
+					"response": []
+				}
+			]
+		},
+		{
+			"name": "Coupons",
+			"item": [
+				{
+					"name": "Validate Coupon",
+					"request": {
+						"method": "POST",
+						"header": [
+							{
+								"key": "Content-Type",
+								"value": "application/json"
+							}
+						],
+						"url": "{{base_url}}/api/method/saathi_middleware.api.coupon.validate",
+						"body": {
+							"mode": "raw",
+							"raw": "{\n  \"coupon_code\": \"{{coupon_code}}\",\n  \"order_subtotal\": 500,\n  \"franchise\": \"{{franchise}}\",\n  \"customer_mobile\": \"9800000001\"\n}"
+						},
+						"auth": {
+							"type": "noauth"
+						}
+					},
+					"response": []
+				},
+				{
+					"name": "Get Coupon Usage",
+					"request": {
+						"method": "GET",
+						"url": "{{base_url}}/api/method/saathi_middleware.api.coupon.get_usage?coupon_code={{coupon_code}}"
+					},
+					"response": []
+				},
+				{
+					"name": "List Coupons (SM Admin)",
+					"request": {
+						"method": "GET",
+						"url": "{{base_url}}/api/method/saathi_middleware.api.coupon.list_coupons"
+					},
+					"response": []
+				}
+			]
+		},
+		{
+			"name": "Loyalty",
+			"item": [
+				{
+					"name": "Get Loyalty Balance",
+					"request": {
+						"method": "GET",
+						"url": "{{base_url}}/api/method/saathi_middleware.api.loyalty.get_loyalty_balance"
+					},
+					"response": []
+				},
+				{
+					"name": "Preview Redemption",
+					"request": {
+						"method": "POST",
+						"header": [
+							{
+								"key": "Content-Type",
+								"value": "application/json"
+							}
+						],
+						"url": "{{base_url}}/api/method/saathi_middleware.api.loyalty.preview_redemption",
+						"body": {
+							"mode": "raw",
+							"raw": "{\n  \"points_to_redeem\": 100,\n  \"order_subtotal\": 500\n}"
+						},
+						"description": "Requires login (Guest gets 'Login required to redeem points')."
+					},
+					"response": []
+				}
+			]
+		},
+		{
+			"name": "Wishlist",
+			"item": [
+				{
+					"name": "Get Wishlist",
+					"request": {
+						"method": "GET",
+						"url": "{{base_url}}/api/method/saathi_middleware.api.wishlist.get_wishlist"
+					},
+					"response": []
+				},
+				{
+					"name": "Toggle Wishlist",
+					"request": {
+						"method": "POST",
+						"header": [
+							{
+								"key": "Content-Type",
+								"value": "application/json"
+							}
+						],
+						"url": "{{base_url}}/api/method/saathi_middleware.api.wishlist.toggle_wishlist",
+						"body": {
+							"mode": "raw",
+							"raw": "{\n  \"product_slug\": \"{{product_slug}}\"\n}"
+						}
+					},
+					"response": []
+				}
+			]
+		},
+		{
+			"name": "Reviews",
+			"item": [
+				{
+					"name": "Get Product Rating",
+					"request": {
+						"method": "GET",
+						"url": "{{base_url}}/api/method/saathi_middleware.api.reviews.get_product_rating?product_slug={{product_slug}}",
+						"auth": {
+							"type": "noauth"
+						}
+					},
+					"response": []
+				},
+				{
+					"name": "List Reviews",
+					"request": {
+						"method": "GET",
+						"url": "{{base_url}}/api/method/saathi_middleware.api.reviews.list_reviews?product_slug={{product_slug}}&page=1&page_size=10",
+						"auth": {
+							"type": "noauth"
+						}
+					},
+					"response": []
+				},
+				{
+					"name": "Add Review",
+					"request": {
+						"method": "POST",
+						"header": [
+							{
+								"key": "Content-Type",
+								"value": "application/json"
+							}
+						],
+						"url": "{{base_url}}/api/method/saathi_middleware.api.reviews.add_review",
+						"body": {
+							"mode": "raw",
+							"raw": "{\n  \"product_slug\": \"{{product_slug}}\",\n  \"rating\": 5,\n  \"comment\": \"Great product, fast delivery!\"\n}"
+						},
+						"description": "Upserts per (user, item) \u2014 re-submitting edits the existing review and resets it to Pending. Requires login."
+					},
+					"response": []
+				}
+			]
+		},
+		{
+			"name": "Addresses",
+			"item": [
+				{
+					"name": "List Addresses",
+					"request": {
+						"method": "GET",
+						"url": "{{base_url}}/api/method/saathi_middleware.api.addresses.list_addresses"
+					},
+					"response": []
+				},
+				{
+					"name": "Add Address",
+					"event": [
+						{
+							"listen": "test",
+							"script": {
+								"type": "text/javascript",
+								"exec": [
+									"if (pm.response.code === 200) {",
+									"  const msg = pm.response.json().message || {};",
+									"  if (msg.name) pm.collectionVariables.set('address_id', msg.name);",
+									"}"
+								]
+							}
+						}
+					],
+					"request": {
+						"method": "POST",
+						"header": [
+							{
+								"key": "Content-Type",
+								"value": "application/json"
+							}
+						],
+						"url": "{{base_url}}/api/method/saathi_middleware.api.addresses.add_address",
+						"body": {
+							"mode": "raw",
+							"raw": "{\n  \"full_name\": \"Postman Tester\",\n  \"phone\": \"9800000001\",\n  \"city\": \"Kathmandu\",\n  \"street_address\": \"Thamel Marg, Ward 26\",\n  \"label\": \"Home\"\n}"
+						}
+					},
+					"response": []
+				},
+				{
+					"name": "Update Address",
+					"request": {
+						"method": "POST",
+						"header": [
+							{
+								"key": "Content-Type",
+								"value": "application/json"
+							}
+						],
+						"url": "{{base_url}}/api/method/saathi_middleware.api.addresses.update_address",
+						"body": {
+							"mode": "raw",
+							"raw": "{\n  \"name\": \"{{address_id}}\",\n  \"landmark\": \"Near Kathmandu Guest House\"\n}"
+						}
+					},
+					"response": []
+				},
+				{
+					"name": "Set Default Address",
+					"request": {
+						"method": "POST",
+						"header": [
+							{
+								"key": "Content-Type",
+								"value": "application/json"
+							}
+						],
+						"url": "{{base_url}}/api/method/saathi_middleware.api.addresses.set_default_address",
+						"body": {
+							"mode": "raw",
+							"raw": "{\n  \"name\": \"{{address_id}}\"\n}"
+						}
+					},
+					"response": []
+				},
+				{
+					"name": "Delete Address",
+					"request": {
+						"method": "POST",
+						"header": [
+							{
+								"key": "Content-Type",
+								"value": "application/json"
+							}
+						],
+						"url": "{{base_url}}/api/method/saathi_middleware.api.addresses.delete_address",
+						"body": {
+							"mode": "raw",
+							"raw": "{\n  \"name\": \"{{address_id}}\"\n}"
+						}
+					},
+					"response": []
+				}
+			]
+		},
+		{
+			"name": "Delivery",
+			"item": [
+				{
+					"name": "Calculate Delivery Charge",
+					"request": {
+						"method": "GET",
+						"url": "{{base_url}}/api/method/saathi_middleware.api.delivery.calculate_delivery_charge?franchise={{franchise}}&delivery_latitude=27.7172&delivery_longitude=85.3240",
+						"auth": {
+							"type": "noauth"
+						}
+					},
+					"response": []
+				},
+				{
+					"name": "List Delivery Zones",
+					"request": {
+						"method": "GET",
+						"url": "{{base_url}}/api/method/saathi_middleware.api.delivery.list_delivery_zones",
+						"auth": {
+							"type": "noauth"
+						}
+					},
+					"response": []
+				}
+			]
+		},
+		{
+			"name": "Notifications",
+			"item": [
+				{
+					"name": "List Notifications",
+					"request": {
+						"method": "GET",
+						"url": "{{base_url}}/api/method/saathi_middleware.api.notifications.list_notifications?limit=50"
+					},
+					"response": []
+				},
+				{
+					"name": "Mark Notifications Read (all)",
+					"request": {
+						"method": "POST",
+						"header": [
+							{
+								"key": "Content-Type",
+								"value": "application/json"
+							}
+						],
+						"url": "{{base_url}}/api/method/saathi_middleware.api.notifications.mark_notifications_read",
+						"body": {
+							"mode": "raw",
+							"raw": "{}"
+						}
+					},
+					"response": []
+				},
+				{
+					"name": "Get Notification Preferences",
+					"request": {
+						"method": "GET",
+						"url": "{{base_url}}/api/method/saathi_middleware.api.notifications.get_notification_preferences"
+					},
+					"response": []
+				},
+				{
+					"name": "Update Notification Preferences",
+					"request": {
+						"method": "POST",
+						"header": [
+							{
+								"key": "Content-Type",
+								"value": "application/json"
+							}
+						],
+						"url": "{{base_url}}/api/method/saathi_middleware.api.notifications.update_notification_preferences",
+						"body": {
+							"mode": "raw",
+							"raw": "{\n  \"prefs\": { \"order_updates\": true, \"promotions\": false }\n}"
+						}
+					},
+					"response": []
+				}
+			]
+		},
+		{
+			"name": "CMS",
+			"item": [
+				{
+					"name": "Get Site Config",
+					"request": {
+						"method": "GET",
+						"url": "{{base_url}}/api/method/saathi_middleware.api.cms.get_site_config",
+						"auth": {
+							"type": "noauth"
+						}
+					},
+					"response": []
+				},
+				{
+					"name": "Get Page",
+					"request": {
+						"method": "GET",
+						"url": "{{base_url}}/api/method/saathi_middleware.api.cms.get_page?slug=about",
+						"auth": {
+							"type": "noauth"
+						}
+					},
+					"response": []
+				},
+				{
+					"name": "Get Navigation",
+					"request": {
+						"method": "GET",
+						"url": "{{base_url}}/api/method/saathi_middleware.api.cms.get_navigation?location=Header",
+						"auth": {
+							"type": "noauth"
+						}
+					},
+					"response": []
+				},
+				{
+					"name": "Get Banners",
+					"request": {
+						"method": "GET",
+						"url": "{{base_url}}/api/method/saathi_middleware.api.cms.get_banners?banner_type=Hero",
+						"auth": {
+							"type": "noauth"
+						}
+					},
+					"response": []
+				},
+				{
+					"name": "Get Blog Posts",
+					"request": {
+						"method": "GET",
+						"url": "{{base_url}}/api/method/saathi_middleware.api.cms.get_blog_posts?page=1&page_size=10",
+						"auth": {
+							"type": "noauth"
+						}
+					},
+					"response": []
+				},
+				{
+					"name": "Get Blog Post",
+					"request": {
+						"method": "GET",
+						"url": "{{base_url}}/api/method/saathi_middleware.api.cms.get_blog_post?slug=your-post-slug",
+						"auth": {
+							"type": "noauth"
+						}
+					},
+					"response": []
+				},
+				{
+					"name": "Get Site Content (alias of Site Config)",
+					"request": {
+						"method": "GET",
+						"url": "{{base_url}}/api/method/saathi_middleware.api.cms.get_site_content",
+						"auth": {
+							"type": "noauth"
+						}
+					},
+					"response": []
+				}
+			]
+		},
+		{
+			"name": "Franchise Item Sync (franchise-authenticated)",
+			"description": "Called by a franchise's own saathi_ecommerce site, not the storefront \u2014 auth is X-Saathi-Api-Key / X-Saathi-Api-Secret headers (a Franchise doc's api_key/api_secret), not the token auth the rest of this collection uses. Set {{franchise_api_key}} / {{franchise_api_secret}} before running these.",
+			"auth": {
+				"type": "noauth"
+			},
+			"item": [
+				{
+					"name": "Sync Item",
+					"request": {
+						"method": "POST",
+						"header": [
+							{
+								"key": "Content-Type",
+								"value": "application/json"
+							},
+							{
+								"key": "X-Saathi-Api-Key",
+								"value": "{{franchise_api_key}}"
+							},
+							{
+								"key": "X-Saathi-Api-Secret",
+								"value": "{{franchise_api_secret}}"
+							}
+						],
+						"url": "{{base_url}}/api/method/saathi_middleware.api.item.sync_item",
+						"body": {
+							"mode": "raw",
+							"raw": "{\n  \"item_code\": \"{{item_code}}\",\n  \"item_name\": \"Mineral Water 1L\",\n  \"description\": \"Purified mineral water.\",\n  \"item_group\": \"Beverages\",\n  \"uom\": \"Nos\",\n  \"price\": 30,\n  \"stock_qty\": 150,\n  \"is_active\": 1,\n  \"pushed_at\": \"{{$isoTimestamp}}\"\n}"
+						},
+						"description": "docname becomes \"{authenticated franchise}-{item_code}\". A stale pushed_at (older than what's already stored) is silently skipped, not overwritten."
+					},
+					"response": []
+				},
+				{
+					"name": "Bulk Sync Items",
+					"request": {
+						"method": "POST",
+						"header": [
+							{
+								"key": "Content-Type",
+								"value": "application/json"
+							},
+							{
+								"key": "X-Saathi-Api-Key",
+								"value": "{{franchise_api_key}}"
+							},
+							{
+								"key": "X-Saathi-Api-Secret",
+								"value": "{{franchise_api_secret}}"
+							}
+						],
+						"url": "{{base_url}}/api/method/saathi_middleware.api.item.bulk_sync_items",
+						"body": {
+							"mode": "raw",
+							"raw": "{\n  \"items\": [\n    { \"item_code\": \"BEV-001\", \"item_name\": \"Mineral Water 1L\", \"price\": 30, \"stock_qty\": 150, \"is_active\": 1 },\n    { \"item_code\": \"BEV-002\", \"item_name\": \"Cola 500ml\", \"price\": 65, \"stock_qty\": 100, \"is_active\": 1 }\n  ]\n}"
+						}
+					},
+					"response": []
+				},
+				{
+					"name": "Get Nearby Items",
+					"request": {
+						"method": "GET",
+						"url": "{{base_url}}/api/method/saathi_middleware.api.item.get_nearby_items?latitude=27.7172&longitude=85.3240&limit=50",
+						"description": "allow_guest=True \u2014 no franchise auth headers needed, this one's for the storefront's own \"what's near me\" feed, not item sync."
+					},
+					"response": []
+				}
+			]
+		}
+	]
+}

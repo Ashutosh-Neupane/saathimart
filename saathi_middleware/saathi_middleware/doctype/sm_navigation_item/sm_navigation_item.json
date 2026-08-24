@@ -1,0 +1,23 @@
+{
+  "name": "SM Navigation Item",
+  "module": "Saathi Middleware",
+  "doctype": "DocType",
+  "autoname": "SM-NAV-.#####",
+  "fields": [
+   {"fieldname": "label", "fieldtype": "Data", "label": "Label", "reqd": 1, "in_list_view": 1},
+   {"fieldname": "url", "fieldtype": "Data", "label": "URL", "reqd": 1},
+   {"fieldname": "menu_location", "fieldtype": "Select", "label": "Menu Location",
+    "options": "Header\nFooter\nMobile\nSidebar", "default": "Header", "in_list_view": 1},
+   {"fieldname": "col_break_1", "fieldtype": "Column Break"},
+   {"fieldname": "parent_item", "fieldtype": "Link", "label": "Parent Item", "options": "SM Navigation Item"},
+   {"fieldname": "sort_order", "fieldtype": "Int", "label": "Sort Order", "default": "0"},
+   {"fieldname": "is_active", "fieldtype": "Check", "label": "Is Active", "default": "1"},
+   {"fieldname": "open_in_new_tab", "fieldtype": "Check", "label": "Open in New Tab"},
+   {"fieldname": "icon", "fieldtype": "Data", "label": "Icon (CSS class or emoji)"}
+  ],
+  "title_field": "label",
+  "permissions": [
+   {"role": "SM Admin", "read": 1, "write": 1, "create": 1, "delete": 1},
+   {"role": "Guest", "read": 1}
+  ]
+}

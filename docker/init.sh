@@ -72,8 +72,26 @@ fi
 
 echo "Running migrations..."
 cd "$BENCH"
-bench --site "$SITE" migrate
-bench build --app saathi_middleware || true
+# set -e already aborts on a failed migrate, which is what we want — serving a
+# half-migrated site answers requests against doctypes that may not exist yet.
+# The trap just makes the reason visible in `docker logs` instead of leaving a
+# bare non-zero exit.
+if ! bench --site "$SITE" migrate; then
+  echo "ERROR: migrate failed for $SITE — not starting. Fix the patch/doctype above and restart." >&2
+  exit 1
+fi
+
+# Assets are not fatal for an API-only middleware (the desk falls back to the
+# prebuilt frappe bundles), so a build failure must not stop the container —
+# but `|| true` alone hid it completely. Warn loudly and carry on.
+if ! bench build --app saathi_middleware; then
+  echo "WARNING: asset build failed — desk pages for this app may render unstyled." >&2
+fi
+
+# hooks.py and doctype changes are read through Frappe's cache; without this a
+# restart can keep serving the previous hook set (after_request, doc_events)
+# even though the file on disk changed.
+bench --site "$SITE" clear-cache || true
 
 echo "Configuring email..."
 cd "$BENCH/sites"
@@ -125,4 +143,19 @@ schedule: cd /home/frappe/bench/sites && /usr/local/bin/bench schedule
 EOF
 
 echo "=== Saathi Middleware ready at http://localhost:8002 ==="
-exec bench start
+# --no-dev: without it, `bench start` unconditionally sets DEV_SERVER=true
+# (bench/utils/system.py's start()), which every desk page then embeds as
+# window.dev_server = 1 (frappe/www/desk.html). That flag tells the desk JS
+# two things that are both false here — that a companion asset dev-server
+# with hot-reload is running (frappe/public/js/frappe/assets.js uses
+# Date.now() instead of the stable build version whenever it's set, so the
+# asset-cache check never matches and clears localStorage on every single
+# load) and that realtime should reach a separate Socket.IO port instead of
+# this same origin (frappe/public/js/frappe/socketio_client.js's
+# get_host()) — a port nothing here listens on, so every connection attempt
+# fails outright. Together those drove desk into a real reload loop
+# (confirmed via Playwright: 20+ full /desk document reloads within
+# seconds of logging in) instead of the one-time asset-mismatch reload the
+# check is meant for. This Procfile runs gunicorn, not Frappe's own dev
+# server, so DEV_SERVER should never have been true here.
+exec bench start --no-dev

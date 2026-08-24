@@ -132,15 +132,19 @@ def calculate_redemption_discount(customer_email: str, points_to_redeem: float,
     """
     s = frappe.get_single("Settings")
     if not s.enable_loyalty or not s.loyalty_program:
-        return {"ok": False, "discount": 0, "points_used": 0, "error": "Loyalty not enabled"}
+        # Canonical error shape (see api/responses.py); discount/points_used
+        # zeros stay so callers can keep doing arithmetic on the result.
+        return {"ok": False, "error": "Loyalty not enabled", "error_code": "VALIDATION_ERROR",
+                "discount": 0, "points_used": 0}
 
     program = frappe.get_doc("Loyalty Program", s.loyalty_program)
     points_to_redeem = flt(points_to_redeem)
 
     if points_to_redeem < program.min_points_to_redeem:
         return {
-            "ok": False, "discount": 0, "points_used": 0,
-            "error": f"Minimum {program.min_points_to_redeem} points required to redeem",
+            "ok": False, "error": f"Minimum {program.min_points_to_redeem} points required to redeem",
+            "error_code": "VALIDATION_ERROR",
+            "discount": 0, "points_used": 0,
         }
 
     balance = get_balance(customer_email)
@@ -208,5 +212,6 @@ def get_loyalty_balance(customer_email=None):
 def preview_redemption(points_to_redeem, order_subtotal):
     email = frappe.session.user
     if email == "Guest":
-        return {"ok": False, "error": "Login required to redeem points"}
+        return {"ok": False, "error": "Login required to redeem points",
+                "error_code": "UNAUTHORIZED"}
     return calculate_redemption_discount(email, flt(points_to_redeem), flt(order_subtotal))

@@ -7,11 +7,138 @@ SaathiMart (no ERPNext dependency).
 from __future__ import annotations
 
 import hashlib
+import re
 import secrets
 
 import frappe
 from frappe import _
-from frappe.utils import add_to_date, now, now_datetime
+from frappe.utils import add_to_date, cint, cstr, now, now_datetime
+
+# Password policy, ported from saathi_middleware.api.auth_full. The
+# composition rules mirror the storefront signup form message for message;
+# the zxcvbn grader below is the part the browser cannot run.
+MIN_PASSWORD_LENGTH = 8
+MAX_PASSWORD_LENGTH = 128
+# Frappe grades passwords 1-4 with zxcvbn (System Settings > Minimum Password
+# Score). 2 is "Medium" and the framework default — that is the floor here,
+# so the guard survives an admin lowering or disabling the framework's own
+# policy: signup is allow_guest, and this is the only thing between the
+# internet and a new account.
+MIN_PASSWORD_SCORE = 2
+
+
+def _require_password(password, label="Password", email=None, user_inputs=None):
+    """Enforce the password policy for any flow that sets a new password.
+
+    Deliberately no special-character requirement: zxcvbn scores real
+    strength better than a symbol quota does.
+    """
+    # Not stripped before the length check — leading/trailing spaces are
+    # legitimate password characters, they just cannot be the whole thing.
+    if not isinstance(password, str) or not password.strip():
+        frappe.throw(_("{0} is required").format(_(label)), frappe.MandatoryError)
+
+    if len(password) < MIN_PASSWORD_LENGTH:
+        frappe.throw(
+            _("{0} must be at least {1} characters").format(_(label), MIN_PASSWORD_LENGTH),
+            frappe.ValidationError,
+        )
+
+    if len(password) > MAX_PASSWORD_LENGTH:
+        frappe.throw(
+            _("{0} must be {1} characters or fewer").format(_(label), MAX_PASSWORD_LENGTH),
+            frappe.ValidationError,
+        )
+
+    if not re.search(r"[a-zA-Z]", password):
+        frappe.throw(
+            _("{0} must contain at least one letter").format(_(label)),
+            frappe.ValidationError,
+        )
+
+    if not re.search(r"[0-9]", password):
+        frappe.throw(
+            _("{0} must contain at least one number").format(_(label)),
+            frappe.ValidationError,
+        )
+
+    # Guarded at 3 chars so a short local part like "ab" doesn't ban every
+    # password that happens to contain those two letters.
+    local_part = cstr(email).split("@")[0].strip().lower()
+    if len(local_part) >= 3 and local_part in password.lower():
+        frappe.throw(
+            _("{0} must not contain your email address").format(_(label)),
+            frappe.ValidationError,
+        )
+
+    _check_password_strength(password, label, [email] + list(user_inputs or []))
+
+    return password
+
+
+def _user_inputs_for(email):
+    """Personal details zxcvbn should penalise a password for reusing.
+
+    Best-effort: on the reset path the account may not exist (we answer
+    those uniformly to avoid leaking whether it does), so a miss is fine —
+    the scorer just loses a hint.
+    """
+    row = frappe.db.get_value(
+        "User", email, ["first_name", "last_name", "mobile_no"], as_dict=True
+    )
+    return [row.first_name, row.last_name, row.mobile_no] if row else []
+
+
+def _check_password_strength(password, label, user_inputs):
+    """Demand at least a Medium score from Frappe's own zxcvbn grader.
+
+    This replaces hand-maintained "common password" lists: zxcvbn already
+    knows the leaked-password corpus, keyboard walks (qwerty123), l33t
+    substitutions (p@ssw0rd) and dates, scored against the user's own
+    details passed in as `user_inputs`.
+
+    The System Settings score is read so an admin who raises it to 3/4 is
+    honoured, but floored at MIN_PASSWORD_SCORE. This calls
+    frappe.utils.password_strength directly rather than the User doctype
+    wrapper, which returns {} when Enable Password Policy is off.
+    """
+    from frappe.utils.password_strength import test_password_strength
+
+    required = max(
+        cint(frappe.get_system_settings("minimum_password_score")),
+        MIN_PASSWORD_SCORE,
+    )
+    result = test_password_strength(password, user_inputs=_tokenize(user_inputs)) or {}
+    if cint(result.get("score")) >= required:
+        return
+
+    feedback = result.get("feedback") or {}
+    # Assembled as plain text on purpose: Frappe's own handle_password_test_fail
+    # emits HTML, which the storefront would render as literal markup.
+    parts = [cstr(feedback.get("warning"))]
+    parts.extend(cstr(suggestion) for suggestion in (feedback.get("suggestions") or []))
+    hint = " ".join(part.strip() for part in parts if part.strip())
+    message = _("{0} is too weak.").format(_(label))
+    frappe.throw(f"{message} {hint}".strip(), frappe.ValidationError)
+
+
+def _tokenize(values):
+    """Expand personal details into the word list zxcvbn actually matches on.
+
+    zxcvbn treats each user_input as one whole lowercased dictionary entry, so
+    a full name arrives as the single term "bibek karki" and does nothing to
+    flag "BibekKarki1". Splitting on non-word characters gives it "bibek" and
+    "karki" separately. The 3-char floor keeps initials and "of"/"ko" style
+    fragments from blacklisting half the dictionary.
+    """
+    tokens = []
+    for value in values:
+        text = cstr(value).strip()
+        if not text:
+            continue
+        tokens.append(text)
+        tokens.extend(part for part in re.split(r"[^\w]+", text) if len(part) >= 3)
+    return tokens
 
 
 def _otp(length=6):
@@ -88,6 +215,17 @@ def signup(email, full_name, contact, password, phone=None):
     """Register a new user with OTP verification."""
     _rate_limit(f"signup:{email}", limit=5, window_seconds=600)
     _rate_limit(f"signup_ip:{frappe.local.request_ip or 'unknown'}", limit=10, window_seconds=600)
+
+    # Validate everything the request carries before anything touches the
+    # database — signup is allow_guest, so this endpoint is reachable by curl
+    # with no form in between.
+    _require_password(
+        password,
+        "Password",
+        email=email,
+        user_inputs=[full_name, contact, phone],
+    )
+
     if frappe.db.exists("User", email):
         frappe.throw(_("A user with this email already exists"))
 
@@ -149,12 +287,18 @@ def login(usr, pwd, guest_cart_guid=None):
         frappe.local.login_manager.authenticate(user=usr, pwd=pwd)
         frappe.local.login_manager.post_login()
     except frappe.AuthenticationError:
+        # Returned, not thrown, and kept at HTTP 200: NextAuth's authorize()
+        # treats a rejected call as a crash rather than a bad password. The
+        # error_code matches what the after_request hook emits for thrown
+        # AuthenticationErrors so both paths classify identically.
+        from saathimart.api.responses import UNAUTHORIZED, error_response
         frappe.clear_messages()
-        return {"ok": False, "error": _("Incorrect email or password"), "code": 401}
-    except Exception as e:
+        return error_response(_("Incorrect email or password"), UNAUTHORIZED)
+    except Exception:
+        from saathimart.api.responses import UNAUTHORIZED, error_response
         frappe.log_error(frappe.get_traceback(), f"Login error for {usr}")
         frappe.clear_messages()
-        return {"ok": False, "error": _("Incorrect email or password"), "code": 401}
+        return error_response(_("Incorrect email or password"), UNAUTHORIZED)
 
     if guest_cart_guid:
         try:
@@ -203,6 +347,8 @@ def forgot_password(email):
 def verify_forgot_password_otp(email, otp, new_password):
     """Verify OTP and reset password."""
     _rate_limit(f"reset_password:{email}", limit=5, window_seconds=600)
+    _require_password(new_password, "New Password", email=email,
+                      user_inputs=_user_inputs_for(email))
     record_name = _validate_otp_record(email, otp, "password_reset")
 
     from frappe.utils.password import update_password
@@ -255,9 +401,28 @@ def change_password(old_password, new_password):
     """Change password for logged-in user."""
     from frappe.utils.password import check_password, update_password
     user = frappe.session.user
+    _require_password(new_password, "New Password", email=user,
+                      user_inputs=_user_inputs_for(user))
     check_password(user, old_password, delete_tracker_cache=False)
     update_password(user=user, pwd=new_password)
     return {"message": _("Password changed successfully")}
+
+
+@frappe.whitelist()
+def cleanup_expired_verifications():
+    """Purge expired OTP rows. Daily cron — Pending Verification is written on
+    every signup/reset attempt and deleted only when consumed, so without this
+    the table grows one abandoned row per uncompleted attempt forever."""
+    expired = frappe.get_all(
+        "Pending Verification",
+        filters={"expires_at": ["<", now_datetime()]},
+        pluck="name",
+        limit=500,
+    )
+    if expired:
+        frappe.db.delete("Pending Verification", {"name": ["in", expired]})
+        frappe.db.commit()
+    return {"deleted": len(expired)}
 
 
 def _validate_otp_record(email, otp, purpose):

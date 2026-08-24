@@ -8,6 +8,13 @@ app_version = "0.1.0"
 
 required_apps = ["frappe"]
 
+# ── Error envelope ────────────────────────────────────────────────────────────
+# Rewrites framework-level failures on /api/method/saathimart.* routes into
+# the canonical {"ok": False, "error", "error_code"} body — see api/responses.py.
+after_request = [
+    "saathimart.api.responses.normalize_error_response",
+]
+
 # ── Desk tile ─────────────────────────────────────────────────────────────────
 add_to_apps_screen = [
     {
@@ -87,6 +94,8 @@ scheduler_events = {
         "saathimart.api.loyalty.expire_old_points",
         "saathimart.api.membership.expire_memberships",
         "saathimart.api.archival.archive_old_data",
+        # Purge expired OTP rows (ported from saathi_middleware)
+        "saathimart.api.auth_full.cleanup_expired_verifications",
     ],
     "hourly": [
         "saathimart.api.cart.expire_abandoned_carts",

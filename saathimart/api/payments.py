@@ -21,6 +21,9 @@ from frappe import _
 from frappe.utils import flt, today
 import requests
 
+from saathimart.api.responses import SERVER_ERROR, error_response
+from saathimart.api.utils import guest_rate_limit
+
 
 # ── Settings helpers ──────────────────────────────────────────────────────────
 
@@ -71,15 +74,92 @@ def _redirect(url):
     frappe.local.response["location"] = url
 
 
+# ── Payment Mode registry ─────────────────────────────────────────────────────
+#
+# Ported from saathi_middleware's Saathi Payment Mode. The storefront used to
+# hardcode the checkout method list, so enabling a mode or turning COD off
+# meant a frontend release; now the checkout UI reads it from here and
+# checkout validates what comes back.
+
+@frappe.whitelist(allow_guest=True)
+def get_payment_modes():
+    """Enabled payment methods, with everything the checkout UI needs to
+    render them.
+
+    `slug` is what the storefront stores in its form and may send back;
+    `mode_name` is the canonical name stored on the Order. Both are returned
+    so the frontend never has to reconstruct one from the other.
+    """
+    guest_rate_limit("payments.get_payment_modes", limit=60, window_seconds=60)
+    modes = frappe.get_all(
+        "Payment Mode",
+        filters={"is_enabled": 1},
+        fields=["name as mode_name", "slug", "description", "logo",
+                "is_online", "display_order"],
+        order_by="display_order asc",
+    )
+    for mode in modes:
+        # Absolute, because the storefront runs on a different origin and
+        # would otherwise resolve /files/... against itself and 404.
+        mode["logo"] = frappe.utils.get_url(mode["logo"]) if mode.get("logo") else ""
+        # Older rows predate the slug field; fall back to a slugified
+        # mode_name so an un-migrated site still returns something usable.
+        if not mode.get("slug"):
+            mode["slug"] = frappe.scrub(mode["mode_name"]).replace("_", "-")
+    return modes
+
+
+def resolve_payment_method(value):
+    """Canonical Payment Mode row for a checkout/initiate `method` value.
+
+    Accepts the mode's name ("COD") or its slug ("cash-on-delivery"), so both
+    the current storefront payload and the registry's stable ids work. When
+    no modes exist at all (fresh install before the seed patch), returns None
+    and callers fall back to open behaviour rather than bricking checkout.
+    """
+    value = (value or "").strip()
+    if not value:
+        return None
+
+    def _row(**filters):
+        return frappe.db.get_value(
+            "Payment Mode", filters,
+            ["name", "slug", "is_enabled", "is_online", "gateway"], as_dict=True,
+        )
+
+    row = _row(name=value) or _row(slug=value)
+    if not row:
+        # Case-insensitive name match — "esewa" vs "eSewa" from older clients.
+        name = frappe.db.get_value(
+            "Payment Mode", {"mode_name": ["like", value]}, "name"
+        )
+        row = _row(name=name) if name else None
+
+    return row
+
+
+def validate_payment_method(value):
+    """Resolve + require an enabled mode. Returns the canonical mode_name to
+    store on the Order, or None when the registry is empty (legacy behaviour).
+    """
+    row = resolve_payment_method(value)
+    if row is None:
+        # Empty registry: nothing seeded yet. Accept the raw value so an
+        # install mid-migrate keeps taking orders.
+        return (value or "").strip() or None
+    if not row.is_enabled:
+        frappe.throw(_("Payment method {0} is not available").format(value))
+    return row.name
+
+
 # ── Initiate ──────────────────────────────────────────────────────────────────
 
 @frappe.whitelist(allow_guest=True)
 def initiate_payment(method, order_id, customer_info=None):
     """
-    Initiate eSewa payment for an SM Order.
+    Initiate online payment for an SM Order.
     Returns gateway payload the frontend uses to redirect.
     """
-    method = (method or "").lower()
     s = _settings()
     sandbox = bool(getattr(s, "payment_sandbox_mode", 1))
 
@@ -91,12 +171,17 @@ def initiate_payment(method, order_id, customer_info=None):
     if amount <= 0:
         frappe.throw(_("Order amount must be greater than zero."))
 
-    if method == "esewa":
-        if not getattr(s, "enable_esewa", 1):
-            frappe.throw(_("eSewa is not enabled."))
-        return _initiate_esewa(s, order_id, amount, sandbox)
+    mode = resolve_payment_method(method or order.payment_method)
+    if mode and not mode.is_online:
+        frappe.throw(_("{0} does not need an online payment.").format(mode.name))
+    if not mode and (method or "").lower().replace("-", "") not in ("esewa", ""):
+        # Unknown method with no registry entry to explain it.
+        frappe.throw(_("Unsupported payment method: {0}").format(method))
 
-    frappe.throw(_("Unsupported payment method: {0}").format(method))
+    # eSewa is the only integrated online gateway: any online mode routes here.
+    if not getattr(s, "enable_esewa", 1):
+        frappe.throw(_("eSewa is not enabled."))
+    return _initiate_esewa(s, order_id, amount, sandbox)
 
 
 def _initiate_esewa(s, order_id, amount, sandbox):
@@ -270,8 +355,14 @@ def verify_esewa_status(order_id):
                              amount=flt(order.grand_total))
             return {"status": "Paid", "ref_id": data.get("ref_id")}
         return {"status": data.get("status", "unknown")}
-    except Exception as e:
-        return {"status": "error", "error": str(e)}
+    except Exception:
+        # This endpoint is guest-reachable; raw gateway/exception text must
+        # not reach the browser. Details are in the Error Log.
+        frappe.log_error(frappe.get_traceback(), f"eSewa status check failed for {order_id}")
+        return error_response(
+            _("Could not verify payment status right now."), SERVER_ERROR,
+            status="error",
+        )
 
 
 # ── Internal helpers ──────────────────────────────────────────────────────────

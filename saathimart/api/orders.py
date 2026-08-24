@@ -99,6 +99,7 @@ def checkout(session_id, customer_name, customer_phone, delivery_address,
     Stock is reserved atomically per vendor.
     """
     guest_rate_limit("orders.checkout", limit=20, window_seconds=60)
+    from saathimart.api.payments import validate_payment_method
     from saathimart.api.totals import calculate_taxes_and_totals
     from saathimart.saathimart.doctype.coupon.coupon import increment_coupon_usage
 
@@ -120,6 +121,11 @@ def checkout(session_id, customer_name, customer_phone, delivery_address,
     email = customer_email or (
         frappe.session.user if frappe.session.user != "Guest" else None
     )
+
+    # Validate against the Payment Mode registry and store the canonical
+    # mode name, so cron jobs filtering on payment_method="eSewa" keep
+    # matching no matter whether the storefront sent a name or a slug.
+    payment_method = validate_payment_method(payment_method) or "COD"
 
     # Group items by vendor for fulfillment splitting
     vendor_groups = {}
@@ -409,14 +415,28 @@ def list_orders(status=None, vendor=None, page=1, page_size=20):
 
 
 @frappe.whitelist(allow_guest=True)
-def track_order(order_id):
+def track_order(order_id, customer_phone=None):
     """
-    Public order tracking — no login required if you know the order ID.
-    Returns order details with Blinkit-style status timeline.
+    Public order tracking — mobile-gated, ported from saathi_middleware.
+
+    The customer's phone number acts as a shared secret: a sequential order
+    id alone (ORD-2026-00001) must not be enough to see someone else's name,
+    address, and order contents. Logged-in owners/admins don't need this —
+    they use get_order.
     """
     guest_rate_limit("orders.track", limit=100, window_seconds=60)
     doc = frappe.get_doc("Order", order_id)
+
+    stored = (doc.customer_phone or "").strip()
+    supplied = (customer_phone or "").strip()
+    if not stored or not supplied or stored != supplied:
+        # Uniform answer for missing/wrong phone and missing order, so the
+        # endpoint cannot be used to probe which order ids exist.
+        frappe.throw(_("Order not found"), frappe.DoesNotExistError)
+
     data = doc.as_dict()
+    # The secret used to open the door doesn't travel with the payload.
+    data.pop("customer_phone", None)
     data["status_timeline"] = _build_status_timeline(doc)
     data["items_summary"] = [
         {

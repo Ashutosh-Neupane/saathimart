@@ -115,21 +115,22 @@ def search_products(query, page=1, page_size=20, category=None, sort=None,
 
 @frappe.whitelist(allow_guest=True)
 def get_top_searches(limit=10):
-    """Return most searched terms from Ecommerce Search Analytics or fallback to popular products."""
+    """Return most searched terms from the native Search Term ledger, or
+    fall back to popular products from recent orders."""
     limit = min(50, max(1, int(limit)))
 
-    # Try Search Analytics first
-    try:
-        analytics = frappe.get_list(
-            "Ecommerce Search Analytics",
-            fields=["search_term", "search_count"],
-            order_by="search_count desc",
-            limit_page_length=limit,
-        )
-        if analytics:
-            return [{"term": r.search_term, "count": r.search_count} for r in analytics]
-    except Exception:
-        pass
+    # Native Search Term rows — ported from saathi_middleware's SM Search
+    # Term. This app requires only frappe, so the webshop-module
+    # "Ecommerce Search Analytics" doctype this used to read cannot exist
+    # here and the old try/except silently degraded to the order fallback.
+    analytics = frappe.get_all(
+        "Search Term",
+        fields=["search_term", "search_count"],
+        order_by="search_count desc",
+        limit_page_length=limit,
+    )
+    if analytics:
+        return [{"term": r.search_term, "count": r.search_count} for r in analytics]
 
     # Fallback: derive from product name/tag frequency in orders
     terms = frappe.db.sql("""
@@ -156,7 +157,11 @@ def get_suggestions(query, limit=10):
 
 
 def _record_search(query, result_count):
-    """Persist a search query for top-search analytics when tracking is enabled."""
+    """Persist a search query for top-search analytics when tracking is enabled.
+
+    One row per normalized key, UPSERT-incremented — 'Fresh Milk' and
+    'fresh milk' land on the same row and the count climbs.
+    """
     try:
         settings = frappe.get_single("Settings")
         if not getattr(settings, "track_top_searches", 0):
@@ -170,20 +175,20 @@ def _record_search(query, result_count):
 
     try:
         existing = frappe.db.get_value(
-            "Ecommerce Search Analytics",
+            "Search Term",
             {"search_key": normalized},
             ["name", "search_count", "last_result_count"],
             as_dict=True,
         )
         if existing:
-            frappe.db.set_value("Ecommerce Search Analytics", existing.name, {
+            frappe.db.set_value("Search Term", existing.name, {
                 "search_count": (existing.search_count or 0) + 1,
                 "last_result_count": result_count,
                 "last_searched_at": now_datetime(),
             })
         else:
             frappe.get_doc({
-                "doctype": "Ecommerce Search Analytics",
+                "doctype": "Search Term",
                 "search_term": query.strip(),
                 "search_key": normalized,
                 "search_count": 1,

@@ -230,6 +230,12 @@ def _seed_vendor_stock(vendor, product, available=100, reserved=0):
 def _make_coupon(code, coupon_type="Percentage", pct=10, amount=0,
                  min_order=0, max_uses=0, valid_days=30):
     if frappe.db.exists("Coupon", code):
+        # Coupon Usage rows link to the coupon and block the delete —
+        # leftovers from a previous run would otherwise make this (and
+        # every test that reuses the code) fail with LinkExistsError.
+        for usage in frappe.get_all("Coupon Usage",
+                                    filters={"coupon": code}, pluck="name"):
+            frappe.delete_doc("Coupon Usage", usage, ignore_permissions=True)
         frappe.delete_doc("Coupon", code, ignore_permissions=True)
     doc = frappe.new_doc("Coupon")
     doc.coupon_code          = code

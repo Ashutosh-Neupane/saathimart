@@ -355,14 +355,21 @@ def on_vendor_listing_changed(doc, method):
         # cache for one extra recompute.
         filters["name"] = ["!=", doc.name]
 
-    agg = frappe.db.get_value(
-        "Vendor Listing", filters,
-        [{"MIN": "price", "as": "price"}, {"MAX": "compare_price", "as": "compare_price"}],
-        as_dict=True,
+    # Plain row fetch + Python-side min/max — dict-aggregate syntax
+    # ({"MIN": "price", "as": "price"}) crashes the v15 query engine
+    # ('NoneType' object has no attribute 'fieldtype'), which took down
+    # every Vendor Listing save/trash and most of the test suite.
+    listings = frappe.get_all(
+        "Vendor Listing",
+        filters=filters,
+        fields=["price", "compare_price"],
+        limit_page_length=0,
     )
+    prices = [l.price for l in listings if l.price is not None]
+    compare_prices = [l.compare_price for l in listings if l.compare_price is not None]
     frappe.db.set_value("Product", product, {
-        "display_price": agg.price if agg and agg.price else 0,
-        "display_compare_price": agg.compare_price if agg and agg.compare_price else 0,
+        "display_price": min(prices) if prices else 0,
+        "display_compare_price": max(compare_prices) if compare_prices else 0,
     }, update_modified=False)
 
 

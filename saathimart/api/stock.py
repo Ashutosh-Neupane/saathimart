@@ -146,11 +146,11 @@ def _apply_stock_delta(row, qty_change, now):
 
     if qty_change < 0 and new_available < 0:
         frappe.log_error(
-            f"Vendor Stock event REJECTED: vendor={row.vendor} product={row.product} "
+            title="Vendor Stock Event — Rejected Negative",
+            message=f"Vendor Stock event REJECTED: vendor={row.vendor} product={row.product} "
             f"qty_change={qty_change} would make available_qty={new_available}. "
             f"Current available={current_available} reserved={current_reserved}. "
             f"Vendor must reconcile before this event can be applied.",
-            "Vendor Stock Event — Rejected Negative",
         )
         raise frappe.ValidationError(
             f"Vendor Stock event would make available_qty negative: {new_available}"
@@ -166,9 +166,9 @@ def _apply_stock_delta(row, qty_change, now):
 
     if new_available < 0:
         frappe.log_error(
-            f"Vendor Stock went negative: vendor={row.vendor} product={row.product} "
+            title="Vendor Stock — Negative Balance",
+            message=f"Vendor Stock went negative: vendor={row.vendor} product={row.product} "
             f"available_qty={new_available}. Likely oversell/race — admin must reconcile.",
-            "Vendor Stock — Negative Balance",
         )
 
 
@@ -421,9 +421,9 @@ def apply_vendor_stock_event(event, payload):
     product, resolve_error = _resolve_product(hub_product, barcode)
     if not product:
         frappe.log_error(
-            f"Unmapped stock push — event={event} barcode={barcode} "
+            title="Vendor Stock Event — Unmapped Product",
+            message=f"Unmapped stock push — event={event} barcode={barcode} "
             f"hub_product={hub_product} vendor={vendor}. {resolve_error}",
-            "Vendor Stock Event — Unmapped Product",
         )
         return
 
@@ -432,9 +432,9 @@ def apply_vendor_stock_event(event, payload):
     if not ok:
         if error:
             frappe.log_error(
-                f"Vendor Stock event rejected: vendor={vendor} product={product} "
+                title="Vendor Stock Event — Rejected",
+                message=f"Vendor Stock event rejected: vendor={vendor} product={product} "
                 f"event={event} payload={payload}. Reason: {error}",
-                "Vendor Stock Event — Rejected",
             )
         return  # idempotent skip or rejected — both are non-errors
 
@@ -476,9 +476,9 @@ def check_negative_vendor_stock():
     )
     if rows:
         frappe.log_error(
-            f"{len(rows)} Vendor Stock row(s) with negative available_qty: "
+            title="Vendor Stock — Negative Balance Check",
+            message=f"{len(rows)} Vendor Stock row(s) with negative available_qty: "
             + ", ".join(r.name for r in rows),
-            "Vendor Stock — Negative Balance Check",
         )
 
 

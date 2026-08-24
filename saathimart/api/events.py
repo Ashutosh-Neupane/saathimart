@@ -254,7 +254,7 @@ def _apply_order_status(payload, new_status):
     """
     order_id = payload.get("order_id")
     if not order_id or not frappe.db.exists("Order", order_id):
-        frappe.log_error(f"order status: unknown order {order_id}", "Order Status Update")
+        frappe.log_error(title="Order Status Update", message=f"order status: unknown order {order_id}")
         return
 
     from saathimart.api.orders import _find_fulfillment, _recompute_order_status_from_fulfillments
@@ -291,7 +291,7 @@ def _apply_order_delivered(payload):
     """
     order_id = payload["order_id"]
     if not frappe.db.exists("Order", order_id):
-        frappe.log_error(f"order.delivered: unknown order {order_id}", "Order Delivered")
+        frappe.log_error(title="Order Delivered", message=f"order.delivered: unknown order {order_id}")
         return
 
     from saathimart.api.orders import _find_fulfillment, _recompute_order_status_from_fulfillments
@@ -387,7 +387,7 @@ def _apply_stock_receipt(payload):
 
     product_id = payload.get("product_id")
     if not product_id or not frappe.db.exists("Product", product_id):
-        frappe.log_error(f"stock.receipt: unknown product {product_id}", "Stock Receipt")
+        frappe.log_error(title="Stock Receipt", message=f"stock.receipt: unknown product {product_id}")
         return
 
     qty = frappe.utils.flt(payload.get("qty") or payload.get("stock_qty") or 0)
@@ -436,17 +436,17 @@ def _apply_price_update(payload):
 
     if not product_id or not vendor or new_price <= 0:
         frappe.log_error(
-            f"price.update: missing product_id/vendor/price — {payload}",
-            "Price Update",
+            title="Price Update",
+            message=f"price.update: missing product_id/vendor/price — {payload}",
         )
         return
 
     if not frappe.db.exists("Product", product_id):
-        frappe.log_error(f"price.update: unknown product {product_id}", "Price Update")
+        frappe.log_error(title="Price Update", message=f"price.update: unknown product {product_id}")
         return
 
     if not frappe.db.exists("Vendor", vendor):
-        frappe.log_error(f"price.update: unknown vendor {vendor}", "Price Update")
+        frappe.log_error(title="Price Update", message=f"price.update: unknown vendor {vendor}")
         return
 
     delivery_zone = payload.get("delivery_zone") or None
@@ -475,10 +475,10 @@ def _apply_price_update(payload):
             return  # already applied — vendor retry, not an error
         if event_seq is not None and current.last_event_seq and event_seq <= current.last_event_seq:
             frappe.log_error(
-                f"price.update: out-of-order event seq={event_seq} <= "
+                title="Price Update — Stale Event",
+                message=f"price.update: out-of-order event seq={event_seq} <= "
                 f"last_seq={current.last_event_seq} for vendor={vendor} "
                 f"product={product_id} — ignored",
-                "Price Update — Stale Event",
             )
             return
 
@@ -542,7 +542,7 @@ def _apply_barcode_register(payload):
     if not vendor or not barcode:
         return
     if not frappe.db.exists("Vendor", vendor):
-        frappe.log_error(f"barcode.register: unknown vendor {vendor}", "Barcode Register")
+        frappe.log_error(title="Barcode Register", message=f"barcode.register: unknown vendor {vendor}")
         return
 
     name = f"{vendor}-{barcode}"

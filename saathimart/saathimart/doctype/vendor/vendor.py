@@ -33,12 +33,15 @@ class Vendor(Document):
         }, update_modified=False)
 
     def get_stock_summary(self):
-        return frappe.db.get_value(
+        # Plain row fetch + Python-side sums — dict-aggregate syntax
+        # ({"SUM": ..., "as": ...}) crashes the v15 query engine.
+        rows = frappe.get_all(
             "Vendor Stock",
-            {"vendor": self.name},
-            [
-                {"SUM": "available_qty", "as": "total_available"},
-                {"SUM": "physical_qty", "as": "total_physical"},
-            ],
-            as_dict=True,
-        ) or {"total_available": 0, "total_physical": 0}
+            filters={"vendor": self.name},
+            fields=["available_qty", "physical_qty"],
+            limit_page_length=0,
+        )
+        return {
+            "total_available": sum(flt(r.available_qty) for r in rows),
+            "total_physical": sum(flt(r.physical_qty) for r in rows),
+        }

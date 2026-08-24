@@ -345,9 +345,12 @@ touch the sync layer:
    separate businesses on separate infrastructure; cross the boundary with
    signed HTTPS webhooks only, the same trust model any multi-tenant SaaS
    uses for third-party webhooks.
-8. **Raw SQL aggregate strings in query-builder `fields`** (e.g.
-   `"MIN(price) as price"`) — this Frappe version rejects them; use dict
-   syntax (`{"MIN": "price", "as": "price"}`) instead.
+8. **Aggregate functions in query-builder `fields` passed as dicts** (e.g.
+    `{"MIN": "price", "as": "price"}` or `{"SUM": "grand_total"}`) — this
+    Frappe version parses dict fields as child-table specs and crashes with
+    `'NoneType' object has no attribute 'fieldtype'`. Use string-function
+    syntax (`"min(price) as price"`) instead, or fetch plain columns and
+    aggregate in Python.
 
 ## License
 

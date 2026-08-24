@@ -143,9 +143,9 @@ def log_auth_failure(endpoint, reason, payload=None):
                 json.dumps(payload, default=str).encode()
             ).hexdigest()[:16]
         frappe.log_error(
-            f"Auth failure: endpoint={endpoint} reason={reason} ip={ip} "
+            title="Webhook Auth Failure",
+            message=f"Auth failure: endpoint={endpoint} reason={reason} ip={ip} "
             f"user_agent={user_agent} payload_hash={payload_hash}",
-            "Webhook Auth Failure",
         )
     except Exception:
         pass

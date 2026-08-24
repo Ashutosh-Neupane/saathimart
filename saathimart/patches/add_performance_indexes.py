@@ -31,6 +31,6 @@ def execute():
             # never actually being created. sql_ddl() is the framework's
             # own escape hatch for DDL.
             frappe.db.sql_ddl(sql)
-            frappe.log_error(f"Created index {idx_name} on {doctype}({', '.join(fields)})", "Patch")
+            frappe.log_error(title="Patch", message=f"Created index {idx_name} on {doctype}({', '.join(fields)})")
         except Exception as e:
-            frappe.log_error(f"Index {idx_name} failed: {e}", "Patch")
+            frappe.log_error(title="Patch", message=f"Index {idx_name} failed: {e}")

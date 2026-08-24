@@ -14,5 +14,5 @@ def execute():
             # DDL for exactly that reason (ImplicitCommitError); sql_ddl()
             # is the framework's own escape hatch for it.
             frappe.db.sql_ddl(f"ALTER TABLE `tabVendor Listing` ADD COLUMN `{col}` VARCHAR(255)")
-            frappe.log_error(f"Added column {col} to tabVendor Listing", "Patch")
+            frappe.log_error(title="Patch", message=f"Added column {col} to tabVendor Listing")
     frappe.db.commit()

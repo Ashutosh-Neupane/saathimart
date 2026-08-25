@@ -199,7 +199,19 @@ def expire_old_points():
 
 @frappe.whitelist()
 def get_loyalty_balance(customer_email=None):
-    email = customer_email or frappe.session.user
+    # Only staff may look up another customer's balance — otherwise any
+    # logged-in customer could read anyone else's loyalty balance by passing
+    # their email, since this is a plain function call with no per-doc
+    # permission check (there's no "doc" here for has_permission to gate).
+    if customer_email and customer_email != frappe.session.user:
+        if not {"SM Admin", "SM Vendor"} & set(frappe.get_roles()):
+            frappe.throw(_("Not permitted to view this customer's loyalty balance"), frappe.PermissionError)
+        email = customer_email
+    else:
+        email = frappe.session.user
+    if email == "Guest":
+        frappe.throw(_("Not logged in"), frappe.PermissionError)
+
     s = frappe.get_single("Settings")
     if not s.enable_loyalty or not s.loyalty_program:
         return {"enabled": False, "balance": 0}

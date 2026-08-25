@@ -18,10 +18,10 @@ from urllib.parse import urlencode
 
 import frappe
 from frappe import _
-from frappe.utils import flt, today
+from frappe.utils import flt, now_datetime, today
 import requests
 
-from saathimart.api.responses import SERVER_ERROR, error_response
+from saathimart.api.responses import SERVER_ERROR, error_response, handle_api_errors
 from saathimart.api.utils import guest_rate_limit
 
 
@@ -82,6 +82,7 @@ def _redirect(url):
 # checkout validates what comes back.
 
 @frappe.whitelist(allow_guest=True)
+@handle_api_errors
 def get_payment_modes():
     """Enabled payment methods, with everything the checkout UI needs to
     render them.
@@ -155,6 +156,7 @@ def validate_payment_method(value):
 # ── Initiate ──────────────────────────────────────────────────────────────────
 
 @frappe.whitelist(allow_guest=True)
+@handle_api_errors
 def initiate_payment(method, order_id, customer_info=None):
     """
     Initiate online payment for an SM Order.
@@ -190,11 +192,21 @@ def _initiate_esewa(s, order_id, amount, sandbox):
     if not secret_key:
         frappe.throw(_("eSewa Secret Key not configured in SM Settings."))
 
-    # Use order_id as transaction_uuid — store it on the order for callback lookup
-    frappe.db.set_value("Order", order_id, "esewa_transaction_uid", order_id)
+    # eSewa rejects a transaction_uuid it has already seen ("Duplicate
+    # transaction UUID") — the order name alone isn't enough once a shopper
+    # retries after a cancelled/failed attempt for the SAME order. Suffixing
+    # with a timestamp makes every attempt unique to eSewa while staying
+    # reversible: esewa_success/esewa_failure strip it via rsplit("-", 1)
+    # to recover the real order name (ported from saathi_middleware).
+    transaction_uuid = f"{order_id}-{int(now_datetime().timestamp())}"
+
+    # Persisted so verify_esewa_status (manual check + the 10-min cron poll)
+    # queries eSewa about the *actual* attempt it accepted, not the bare
+    # order name it never submitted.
+    frappe.db.set_value("Order", order_id, "esewa_transaction_uid", transaction_uuid)
 
     s_total = f"{amount:.2f}".rstrip("0").rstrip(".")
-    message = f"total_amount={s_total},transaction_uuid={order_id},product_code={merchant_code}"
+    message = f"total_amount={s_total},transaction_uuid={transaction_uuid},product_code={merchant_code}"
     signature = base64.b64encode(
         hmac.new(
             secret_key.encode("utf-8"),
@@ -216,7 +228,7 @@ def _initiate_esewa(s, order_id, amount, sandbox):
             "amount": s_total,
             "tax_amount": "0",
             "total_amount": s_total,
-            "transaction_uuid": order_id,
+            "transaction_uuid": transaction_uuid,
             "product_code": merchant_code,
             "product_service_charge": "0",
             "product_delivery_charge": "0",
@@ -324,6 +336,7 @@ def esewa_failure(data=None, **kwargs):
 
 
 @frappe.whitelist(allow_guest=True)
+@handle_api_errors
 def verify_esewa_status(order_id):
     """Poll eSewa transaction status API — used by cron to catch lost callbacks."""
     s = _settings()

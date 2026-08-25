@@ -12,6 +12,7 @@ from frappe import _
 from frappe.utils import flt
 
 from saathimart.api.constants import VALID_ORDER_TRANSITIONS
+from saathimart.api.responses import handle_api_errors
 from saathimart.api.utils import guest_rate_limit
 
 
@@ -87,6 +88,7 @@ def _cascade_status_to_fulfillments(doc, status):
 
 
 @frappe.whitelist(allow_guest=True)
+@handle_api_errors
 def checkout(session_id, customer_name, customer_phone, delivery_address,
              payment_method="COD", delivery_zone=None, coupon_code=None,
              loyalty_points=0, notes=None, customer_email=None,
@@ -103,9 +105,13 @@ def checkout(session_id, customer_name, customer_phone, delivery_address,
     from saathimart.api.totals import calculate_taxes_and_totals
     from saathimart.saathimart.doctype.coupon.coupon import increment_coupon_usage
 
-    cart_name = frappe.db.get_value(
-        "Cart", {"session_id": session_id, "status": "Active"}, "name"
-    )
+    # Resolved the same way add_to_cart resolves it — by user first for a
+    # signed-in shopper — so a cart filled on another device, or merged in at
+    # login, is still found here. Matching on session_id alone reported
+    # "Cart not found" to shoppers looking at a full basket.
+    from saathimart.api.cart import find_active_cart
+
+    cart_name = find_active_cart(session_id)
     if not cart_name:
         frappe.throw(_("Cart not found or already checked out"))
 
@@ -258,6 +264,7 @@ def checkout(session_id, customer_name, customer_phone, delivery_address,
 
 
 @frappe.whitelist()
+@handle_api_errors
 def get_order(order_id):
     doc = frappe.get_doc("Order", order_id)
     if "SM Admin" not in frappe.get_roles() and doc.customer_email != frappe.session.user:
@@ -326,6 +333,7 @@ def _build_status_timeline(doc):
 
 
 @frappe.whitelist()
+@handle_api_errors
 def update_order_status(order_id, status):
     allowed = {"SM Admin", "SM Vendor"}
     if not (allowed & set(frappe.get_roles())):
@@ -359,6 +367,7 @@ def update_order_status(order_id, status):
 
 
 @frappe.whitelist()
+@handle_api_errors
 def list_orders(status=None, vendor=None, page=1, page_size=20):
     filters = {}
     if status:
@@ -415,6 +424,7 @@ def list_orders(status=None, vendor=None, page=1, page_size=20):
 
 
 @frappe.whitelist(allow_guest=True)
+@handle_api_errors
 def track_order(order_id, customer_phone=None):
     """
     Public order tracking — mobile-gated, ported from saathi_middleware.
@@ -454,6 +464,7 @@ def track_order(order_id, customer_phone=None):
 
 
 @frappe.whitelist()
+@handle_api_errors
 def refund_order(order_id, amount=None, reason=""):
     doc = frappe.get_doc("Order", order_id)
     if "SM Admin" not in frappe.get_roles():
@@ -486,6 +497,7 @@ def refund_order(order_id, amount=None, reason=""):
 
 
 @frappe.whitelist()
+@handle_api_errors
 def apply_partial_payment(order_id, amount, gateway, reference="", transaction_uid=""):
     doc = frappe.get_doc("Order", order_id)
     if "SM Admin" not in frappe.get_roles():

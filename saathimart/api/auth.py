@@ -1,8 +1,66 @@
 """
 Auth helpers — permission checks + bootinfo + token generation.
 """
+import uuid
+
 import frappe
 from frappe import _
+
+
+_COOKIE_NAME = "sm_cart_session"
+
+
+def get_session_id():
+	"""Return the guest cart-session ID (ported from saathi_middleware).
+
+	Resolution order:
+	1. sm_cart_session cookie from the request
+	2. session_id in POST body / query string
+	3. Generate a new UUID, set it as a cookie, and return it
+
+	Returns None for logged-in users — their carts key off `user`, not a
+	session, so every device shares one basket.
+	"""
+	if frappe.session.user and frappe.session.user != "Guest":
+		return None
+
+	try:
+		existing = frappe.request.cookies.get(_COOKIE_NAME)
+		if existing:
+			return existing.strip()
+	except Exception:
+		pass
+
+	try:
+		form_val = (
+			frappe.form_dict.get("session_id")
+			or frappe.request.args.get("session_id")
+		)
+		if form_val:
+			sid = str(form_val).strip()
+			_set_session_cookie(sid)
+			return sid
+	except Exception:
+		pass
+
+	new_id = str(uuid.uuid4())
+	_set_session_cookie(new_id)
+	return new_id
+
+
+def _set_session_cookie(session_id):
+	"""Write the sm_cart_session cookie onto the current HTTP response."""
+	try:
+		frappe.local.cookie_manager.set_cookie(
+			_COOKIE_NAME,
+			session_id,
+			max_age=60 * 60 * 24 * 30,
+			httponly=False,
+			samesite="None",
+			secure=False,
+		)
+	except Exception:
+		pass
 
 
 def has_app_permission():

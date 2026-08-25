@@ -217,32 +217,43 @@ def _get_best_vendor_listing(product_name, vendor=None, delivery_zone=None,
             return result
 
     if vendor_location_map:
-        eligible = []
-        fallback = []
+        # Sort vendors: prefer in-stock within radius, then out-of-stock within radius,
+        # then in-stock outside radius, then out-of-stock outside radius.
+        # This mirrors saathi_middleware's approach of deprioritising but not
+        # hard-excluding out-of-stock vendors.
+        in_stock_within = []   # Within radius, in stock
+        out_of_stock_within = []  # Within radius, out of stock (deprioritised)
+        in_stock_outside = []  # Outside radius, in stock
+        out_of_stock_outside = []  # Outside radius, out of stock (last resort)
+
         for l in listings:
             loc = vendor_location_map.get(l.vendor)
             if not loc:
                 continue
             if loc.get("has_location") is False:
                 continue
-            if loc["distance_km"] <= loc["service_radius_km"]:
-                if l.track_inventory and flt(stock_map.get(l.vendor, {}).get("available_qty") or 0) <= 0:
-                    continue
-                eligible.append(_enrich(l))
+
+            enriched = _enrich(l)
+            is_in_stock = not l.track_inventory or flt(stock_map.get(l.vendor, {}).get("available_qty") or 0) > 0
+            within_radius = loc["distance_km"] <= loc["service_radius_km"]
+
+            if within_radius and is_in_stock:
+                in_stock_within.append(enriched)
+            elif within_radius and not is_in_stock:
+                out_of_stock_within.append(enriched)
+            elif not within_radius and is_in_stock:
+                in_stock_outside.append(enriched)
             else:
-                fallback.append(_enrich(l))
-        if eligible:
-            eligible.sort(key=lambda x: x.distance_km)
-            result = eligible[0]
-            if _listings_map is None:
-                frappe.cache().set_value(cache_key, result, expires_in_sec=300)
-            return result
-        if fallback and customer_lat is not None and customer_lng is not None:
-            fallback.sort(key=lambda x: x.distance_km)
-            result = fallback[0]
-            if _listings_map is None:
-                frappe.cache().set_value(cache_key, result, expires_in_sec=300)
-            return result
+                out_of_stock_outside.append(enriched)
+
+        # Return best candidate from each tier, sorted by distance
+        for tier in (in_stock_within, in_stock_outside, out_of_stock_within, out_of_stock_outside):
+            if tier:
+                tier.sort(key=lambda x: x.distance_km)
+                result = tier[0]
+                if _listings_map is None:
+                    frappe.cache().set_value(cache_key, result, expires_in_sec=300)
+                return result
 
     mode = frappe.db.get_single_value("Settings", "vendor_selection_mode") or "Highest Priority"
     if mode == "Lowest Price":
@@ -432,7 +443,7 @@ def _serialize_product(doc, _listings_map=None, _stock_map=None, _vendor_locatio
 @frappe.whitelist(allow_guest=True)
 def list_products(category=None, vendor=None, search=None, page=1, page_size=20,
                   sort=None, in_stock=None, min_price=None, max_price=None, tags=None,
-                  delivery_zone=None, lat=None, lng=None, radius_km=5):
+                  brand=None, delivery_zone=None, lat=None, lng=None, radius_km=5):
     """
     Blinkit-style product listing with rich filters and sorting.
 
@@ -473,6 +484,24 @@ def list_products(category=None, vendor=None, search=None, page=1, page_size=20,
                 cat_names.append(cat_name)
         if cat_names:
             filters["category"] = ["in", cat_names]
+
+    # Brand filter — accept a single slug/name or a comma-separated list
+    # (same resolution style as the Category filter above). Unmatched brand
+    # tokens are ignored rather than returning nothing, so "nestle,typo"
+    # still filters by nestle instead of blanking the grid.
+    if brand:
+        brand_names = []
+        for token in str(brand).split(","):
+            token = token.strip()
+            if not token:
+                continue
+            b_name = frappe.db.get_value("Brand", {"slug": token}, "name")
+            if not b_name:
+                b_name = frappe.db.get_value("Brand", {"brand_name": token}, "name")
+            if b_name and b_name not in brand_names:
+                brand_names.append(b_name)
+        if brand_names:
+            filters["brand"] = ["in", brand_names]
 
     # Search filter
     or_filters = None
@@ -556,11 +585,13 @@ def list_products(category=None, vendor=None, search=None, page=1, page_size=20,
             if not any(tag.lower() in product_tags for tag in tag_list):
                 continue
 
-        # Blinkit-style radius filter: only show products with a vendor within max_radius
+        # Distance and availability check
         distance = flt(getattr(best, "distance_km", 0) or 0)
         has_location = getattr(best, "has_location", False)
-        if max_radius is not None and has_location and distance > max_radius:
-            continue
+        # Products outside radius are shown but flagged — the frontend can
+        # display them with a "delivery unavailable in your area" notice
+        # instead of silently hiding them (saathi_middleware approach).
+        outside_radius = bool(max_radius is not None and has_location and distance > max_radius)
 
         p["price"] = price
         p["compare_price"] = compare
@@ -576,6 +607,7 @@ def list_products(category=None, vendor=None, search=None, page=1, page_size=20,
         p["barcode"] = best.barcode or ""
         p["vendor_product_id"] = best.vendor_product_id or ""
         p["delivery_zone"] = best.delivery_zone or ""
+        p["outside_radius"] = outside_radius
         filtered.append(p)
 
     # Sort by distance if location provided
@@ -596,7 +628,7 @@ def list_products(category=None, vendor=None, search=None, page=1, page_size=20,
         f"sm_list_products:{category or ''}:{vendor or ''}:{search or ''}:"
         f"{page}:{page_size}:{sort or ''}:{lat or ''}:{lng or ''}:"
         f"{delivery_zone or ''}:{min_price or ''}:{max_price or ''}:"
-        f"{in_stock or ''}:{tags or ''}:{radius_km or ''}"
+        f"{in_stock or ''}:{tags or ''}:{radius_km or ''}:{brand or ''}"
     )
     frappe.cache().set_value(cache_key, {
         "items": serialized,
@@ -639,6 +671,10 @@ def get_product(slug, vendor=None, delivery_zone=None, lat=None, lng=None, radiu
     # for a has_variants template — it has no listings/location of its own
     # to check; availability is a per-variant question, reflected in each
     # variant's own price/stock once the customer picks one below.
+    # Instead of throwing an error when no vendor is within radius, we add
+    # a flag so the frontend can display a "delivery unavailable" notice
+    # (saathi_middleware approach — show product, let frontend handle it).
+    outside_radius = False
     if clat is not None and clng is not None and max_radius is not None and not doc.has_variants:
         best_check = _get_best_vendor_listing(
             name, vendor=vendor, delivery_zone=delivery_zone,
@@ -646,14 +682,17 @@ def get_product(slug, vendor=None, delivery_zone=None, lat=None, lng=None, radiu
             _listings_map=listings_map, _stock_map=stock_map,
             _vendor_location_map=vendor_location_map,
         )
-        if not best_check or flt(getattr(best_check, "distance_km", 0) or 0) > max_radius:
-            frappe.throw(_("Product not available in your area"), frappe.DoesNotExistError)
+        if best_check and flt(getattr(best_check, "distance_km", 0) or 0) > max_radius:
+            outside_radius = True
+        elif not best_check:
+            outside_radius = True
 
     data = _serialize_product(doc, _listings_map=listings_map, _stock_map=stock_map,
                               _vendor_location_map=vendor_location_map,
                               vendor=vendor, delivery_zone=delivery_zone,
                               customer_lat=clat, customer_lng=clng)
     data["vendor_context"] = vendor or data.get("vendor")
+    data["outside_radius"] = outside_radius
 
     # Add all vendor listings
     listings = frappe.get_list(
@@ -750,6 +789,43 @@ def list_categories():
         fields=["name", "category_name", "slug", "image", "parent_category", "sort_order"],
         order_by="sort_order asc, category_name asc",
     )
+
+
+@frappe.whitelist(allow_guest=True)
+def get_brands():
+    """
+    All active brands with active-product counts, for the storefront's
+    brand filter sidebar (ported from saathi_middleware list_brands).
+    Brands with zero products are hidden.
+    """
+    guest_rate_limit("products.brands", limit=300, window_seconds=60)
+    cache_key = "sm_brands_list"
+    cached = frappe.cache().get_value(cache_key)
+    if cached is not None:
+        return cached
+
+    brands = frappe.get_list(
+        "Brand",
+        filters={"is_active": 1},
+        fields=["name", "brand_name", "slug", "logo", "sort_order"],
+        order_by="sort_order asc, brand_name asc",
+    )
+
+    # Count in one grouped query rather than one count per brand (N+1).
+    counts = frappe.get_all(
+        "Product",
+        filters={"status": "Active", "brand": ["is", "set"]},
+        fields=["brand", "count(name) as count"],
+        group_by="brand",
+    )
+    count_by_brand = {c.brand: c.count for c in counts}
+
+    for b in brands:
+        b["count"] = count_by_brand.get(b["name"], 0)
+    brands = [b for b in brands if b["count"] > 0]
+
+    frappe.cache().set_value(cache_key, brands, expires_in_sec=300)
+    return brands
 
 
 @frappe.whitelist(allow_guest=True)

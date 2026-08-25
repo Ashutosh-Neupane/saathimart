@@ -67,6 +67,7 @@ def get_filters(category=None, search=None, delivery_zone=None):
 
     return {
         "categories": _count_by_field(product_data, "category", "Category", "category_name", "slug"),
+        "brands": _count_by_field(product_data, "brand", "Brand", "brand_name", "slug"),
         "vendors": _count_vendors(product_data),
         "tags": _count_tags(product_data),
         "price_ranges": _count_by_price_range(product_data),

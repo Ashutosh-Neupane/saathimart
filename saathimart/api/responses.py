@@ -136,6 +136,91 @@ def _extract_server_message(payload):
 	return _strip_markup(" ".join(t for t in texts if t))
 
 
+def _message_from_exception(exc):
+	"""Recover the user-facing text `frappe.throw` queued, not the repr.
+
+	frappe.throw does two things: it raises, and it appends the (already
+	translated) message to frappe.local.message_log for the response's error
+	banner. The log entry is the text a shopper should see — str(exc) is often
+	empty or a bare class name.
+
+	The log is cleared afterwards so Frappe does not *also* serialise it into
+	`_server_messages`; without that, one failure arrives twice in two
+	different shapes, which is the exact inconsistency this module exists to
+	remove.
+	"""
+	message = ""
+	try:
+		log = frappe.get_message_log() or []
+		if log:
+			entry = log[-1]
+			message = entry.get("message", "") if isinstance(entry, dict) else str(entry)
+	except Exception:
+		message = ""
+
+	frappe.clear_messages()
+	return message or str(exc) or _("Something went wrong. Please try again.")
+
+
+def raw(fn):
+	"""The undecorated function, for one endpoint composing another.
+
+	`handle_api_errors` turns exceptions into a returned payload — correct at
+	the HTTP boundary, wrong in the middle of one. get_home_content() calling
+	the decorated get_banners() would embed `{"ok": False, ...}` under
+	`hero_banners` and still answer 200, hiding the failure inside a
+	successful-looking response. Calling through `raw()` lets the exception
+	reach the outer endpoint's own handler, which reports it once, at the top.
+	"""
+	return getattr(fn, "__wrapped__", fn)
+
+
+def handle_api_errors(fn):
+	"""Normalise every failure, thrown or returned, into one payload.
+
+	Frappe's own exceptions are caught rather than re-raised. Letting them
+	through produced a *second* error format — a non-200 carrying
+	`_server_messages` — alongside the dicts endpoints return themselves, so a
+	client had to understand both. Now `frappe.throw("Cart is empty")` and
+	`return error_response("Cart is empty")` reach the caller identically.
+
+	The HTTP status still reflects the failure (417/401/403/404/500), so
+	proxies, logs and monitoring keep working; the body is simply readable
+	without knowing Frappe's envelope.
+
+	Unexpected exceptions are logged with a traceback and replaced with one
+	generic line — payments.py's verify_esewa_status used to return `str(e)`
+	straight to the browser.
+	"""
+	import functools
+
+	@functools.wraps(fn)
+	def wrapper(*args, **kwargs):
+		try:
+			return fn(*args, **kwargs)
+		except frappe.AuthenticationError as exc:
+			return error_response(_message_from_exception(exc), UNAUTHORIZED, set_status=True)
+		except frappe.PermissionError as exc:
+			return error_response(_message_from_exception(exc), FORBIDDEN, set_status=True)
+		except frappe.DoesNotExistError as exc:
+			return error_response(_message_from_exception(exc), NOT_FOUND, set_status=True)
+		except frappe.ValidationError as exc:
+			# Frappe raises ValidationError for frappe.throw()'s default, and
+			# DuplicateEntryError/MandatoryError subclass it — all curated,
+			# user-facing text, so the message is kept as written.
+			return error_response(_message_from_exception(exc), VALIDATION_ERROR, set_status=True)
+		except Exception:
+			frappe.log_error(frappe.get_traceback(), f"Unhandled error in {fn.__name__}")
+			frappe.clear_messages()
+			return error_response(
+				_("Something went wrong. Please try again."),
+				SERVER_ERROR,
+				set_status=True,
+			)
+
+	return wrapper
+
+
 def normalize_error_response(response=None, request=None, **kwargs):
 	"""after_request hook — give framework errors the same shape as ours."""
 	if response is None or request is None:

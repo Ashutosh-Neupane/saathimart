@@ -151,6 +151,9 @@ def get_product_rails():
     against. The trade-off is that a typo yields an empty rail rather than a
     validation error — get_home_layout reports which slugs resolved so an admin
     can see that from the API.
+
+    Resolves category display names to slugs so the frontend can build working
+    category URLs even when an editor typed the human-readable name instead.
     """
     cached = frappe.cache().get_value("sm_product_rails")
     if cached is not None:
@@ -163,6 +166,27 @@ def get_product_rails():
                 "page_size", "heading_size", "sort_order"],
         order_by="sort_order asc",
     )
+
+    # Build lookups so we can normalise category_slug values that were entered
+    # as display names, already-correct slugs, or anything in between.
+    all_categories = frappe.get_all(
+        "Saathi Item Category",
+        fields=["category_name", "slug"],
+    )
+    name_to_slug = {c["category_name"]: c["slug"] for c in all_categories}
+    slug_to_slug = {c["slug"]: c["slug"] for c in all_categories}
+
+    for rail in rails:
+        raw_slug = rail.get("category_slug")
+        if not raw_slug:
+            continue
+        if raw_slug in name_to_slug:
+            rail["category_slug"] = name_to_slug[raw_slug]
+        elif raw_slug in slug_to_slug:
+            rail["category_slug"] = raw_slug
+        else:
+            rail["category_slug"] = frappe.scrub(raw_slug)
+
     frappe.cache().set_value("sm_product_rails", rails, expires_in_sec=300)
     return rails
 

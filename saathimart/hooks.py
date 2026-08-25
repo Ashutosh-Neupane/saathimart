@@ -68,6 +68,18 @@ doc_events = {
     "Blog Post": {
         "on_update": "saathimart.api.cms._bust_blog_cache",
     },
+    "FAQ Category": {
+        "on_update": "saathimart.api.cms._bust_faq_category_cache",
+    },
+    "FAQ Item": {
+        "on_update": "saathimart.api.cms._bust_faq_item_cache",
+    },
+    "Offer": {
+        "on_update": "saathimart.api.cms._bust_offer_cache_on_update",
+    },
+    "Popular Location": {
+        "on_update": "saathimart.api.cms._bust_location_cache_on_update",
+    },
     "Hero Slide": {
         "on_update": "saathimart.api.cms._bust_home_content_cache",
     },

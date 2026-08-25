@@ -8,8 +8,11 @@ import frappe
 from frappe import _
 from frappe.utils import today
 
+from saathimart.api.responses import handle_api_errors
+
 
 @frappe.whitelist(allow_guest=True)
+@handle_api_errors
 def get_site_config():
     cached = frappe.cache().get_value("sm_site_config")
     if cached:
@@ -25,6 +28,7 @@ def get_site_config():
 
 
 @frappe.whitelist(allow_guest=True)
+@handle_api_errors
 def get_page(slug):
     cache_key = f"sm_page:{slug}"
     cached = frappe.cache().get_value(cache_key)
@@ -51,6 +55,7 @@ def get_page(slug):
 
 
 @frappe.whitelist(allow_guest=True)
+@handle_api_errors
 def get_navigation(location="Header"):
     cache_key = f"sm_navigation:{location}"
     cached = frappe.cache().get_value(cache_key)
@@ -77,6 +82,7 @@ def get_navigation(location="Header"):
 
 
 @frappe.whitelist(allow_guest=True)
+@handle_api_errors
 def get_banners(banner_type=None):
     cached = frappe.cache().get_value("sm_banners")
     if cached and not banner_type:
@@ -114,6 +120,7 @@ def get_banners(banner_type=None):
 
 
 @frappe.whitelist(allow_guest=True)
+@handle_api_errors
 def get_blog_posts(category=None, tag=None, page=1, page_size=10):
     filters = {"status": "Published"}
     if category:
@@ -139,6 +146,7 @@ def get_blog_posts(category=None, tag=None, page=1, page_size=10):
 
 
 @frappe.whitelist(allow_guest=True)
+@handle_api_errors
 def get_blog_post(slug):
     cache_key = f"sm_blog:{slug}"
     cached = frappe.cache().get_value(cache_key)
@@ -156,12 +164,14 @@ def get_blog_post(slug):
 
 
 @frappe.whitelist(allow_guest=True)
+@handle_api_errors
 def get_site_content():
     """Alias for get_site_config — frontend §35 expects this name."""
     return get_site_config()
 
 
 @frappe.whitelist(allow_guest=True)
+@handle_api_errors
 def get_content(key):
     """
     Generic content fetcher. Supported keys:
@@ -209,6 +219,7 @@ def _get_website_content(content_key):
 
 
 @frappe.whitelist(allow_guest=True)
+@handle_api_errors
 def get_home_content():
     """
     Public wrapper for _get_home_content — assemble HomeContent JSON from
@@ -363,3 +374,215 @@ def _bust_content_cache(doc, method):
     key = getattr(doc, "content_key", None)
     if key:
         frappe.cache().delete_key(f"sm_content:{key}")
+
+
+# ── FAQ ──────────────────────────────────────────────────────────────────────
+
+
+@frappe.whitelist(allow_guest=True)
+@handle_api_errors
+def get_faq_categories():
+    """All active FAQ categories with their items, in sort order."""
+    cache_key = "sm_faq_categories"
+    cached = frappe.cache().get_value(cache_key)
+    if cached is not None:
+        return cached
+
+    categories = frappe.get_list(
+        "FAQ Category",
+        filters={"is_active": 1},
+        fields=["name", "category_name", "slug", "description", "sort_order"],
+        order_by="sort_order asc",
+    )
+
+    for cat in categories:
+        cat["items"] = frappe.get_list(
+            "FAQ Item",
+            filters={"category": cat["name"], "is_active": 1},
+            fields=["name", "question", "answer", "sort_order"],
+            order_by="sort_order asc",
+        )
+
+    frappe.cache().set_value(cache_key, categories, expires_in_sec=300)
+    return categories
+
+
+@frappe.whitelist(allow_guest=True)
+@handle_api_errors
+def get_faq(category=None):
+    """Flat list of FAQ items, optionally filtered by category slug."""
+    cache_key = f"sm_faq:{category or 'all'}"
+    cached = frappe.cache().get_value(cache_key)
+    if cached is not None:
+        return cached
+
+    filters = {"is_active": 1}
+    if category:
+        cat_name = frappe.db.get_value(
+            "FAQ Category", {"slug": category, "is_active": 1}, "name"
+        )
+        if not cat_name:
+            return []
+        filters["category"] = cat_name
+
+    items = frappe.get_list(
+        "FAQ Item",
+        filters=filters,
+        fields=["name", "question", "answer", "category", "sort_order"],
+        order_by="sort_order asc",
+    )
+
+    frappe.cache().set_value(cache_key, items, expires_in_sec=300)
+    return items
+
+
+def _bust_faq_category_cache(doc, method):
+    frappe.cache().delete_key("sm_faq_categories")
+    frappe.cache().delete_key("sm_faq:all")
+
+
+def _bust_faq_item_cache(doc, method):
+    frappe.cache().delete_key("sm_faq_categories")
+    frappe.cache().delete_key("sm_faq:all")
+
+
+# ── Offers / Promotions ──────────────────────────────────────────────────────
+
+
+@frappe.whitelist(allow_guest=True)
+@handle_api_errors
+def get_offers(status=None):
+    """All published offers, optionally filtered by status."""
+    cache_key = f"sm_offers:{status or 'all'}"
+    cached = frappe.cache().get_value(cache_key)
+    if cached is not None:
+        return cached
+
+    filters = {"is_active": 1}
+    if status:
+        filters["status"] = status
+    else:
+        filters["status"] = "Published"
+
+    offers = frappe.get_list(
+        "Offer",
+        filters=filters,
+        fields=["name", "title", "slug", "subtitle", "image", "mobile_image",
+                "valid_from", "valid_to", "sort_order", "meta_title", "meta_description"],
+        order_by="sort_order asc",
+    )
+
+    frappe.cache().set_value(cache_key, offers, expires_in_sec=300)
+    return offers
+
+
+@frappe.whitelist(allow_guest=True)
+@handle_api_errors
+def get_offer(slug):
+    """Single offer by slug."""
+    cache_key = f"sm_offer:{slug}"
+    cached = frappe.cache().get_value(cache_key)
+    if cached:
+        return cached
+
+    name = frappe.db.get_value(
+        "Offer", {"slug": slug, "status": "Published", "is_active": 1}, "name"
+    )
+    if not name:
+        frappe.throw(_("Offer not found"), frappe.DoesNotExistError)
+
+    doc = frappe.get_doc("Offer", name)
+    data = doc.as_dict()
+    # Parse highlights into a list
+    if data.get("highlights"):
+        data["highlights"] = [h.strip() for h in data["highlights"].split("\n") if h.strip()]
+    else:
+        data["highlights"] = []
+
+    frappe.cache().set_value(cache_key, data, expires_in_sec=300)
+    return data
+
+
+def _bust_offer_cache_on_update(doc, method):
+    frappe.cache().delete_key("sm_offers:all")
+    if hasattr(doc, "slug") and doc.slug:
+        frappe.cache().delete_key(f"sm_offer:{doc.slug}")
+
+
+# ── Popular Locations ────────────────────────────────────────────────────────
+
+
+@frappe.whitelist(allow_guest=True)
+@handle_api_errors
+def get_popular_locations(city=None):
+    """All active popular locations, optionally filtered by city."""
+    cache_key = f"sm_locations:{city or 'all'}"
+    cached = frappe.cache().get_value(cache_key)
+    if cached is not None:
+        return cached
+
+    filters = {"is_active": 1}
+    if city:
+        filters["city"] = city
+
+    locations = frappe.get_list(
+        "Popular Location",
+        filters=filters,
+        fields=["name", "location_name", "slug", "city", "district",
+                "latitude", "longitude", "sort_order"],
+        order_by="sort_order asc",
+    )
+
+    frappe.cache().set_value(cache_key, locations, expires_in_sec=300)
+    return locations
+
+
+@frappe.whitelist(allow_guest=True)
+@handle_api_errors
+def get_popular_cities():
+    """Distinct cities from popular locations."""
+    cache_key = "sm_popular_cities"
+    cached = frappe.cache().get_value(cache_key)
+    if cached is not None:
+        return cached
+
+    cities = frappe.get_all(
+        "Popular Location",
+        filters={"is_active": 1},
+        fields=["city"],
+        distinct=True,
+        order_by="city asc",
+    )
+    result = [c["city"] for c in cities if c.get("city")]
+
+    frappe.cache().set_value(cache_key, result, expires_in_sec=300)
+    return result
+
+
+def _bust_location_cache_on_update(doc, method):
+    frappe.cache().delete_key("sm_locations:all")
+    frappe.cache().delete_key("sm_popular_cities")
+    if hasattr(doc, "city") and doc.city:
+        frappe.cache().delete_key(f"sm_locations:{doc.city}")
+
+
+# ── Contact Submissions ──────────────────────────────────────────────────────
+
+
+@frappe.whitelist(allow_guest=True)
+@handle_api_errors
+def submit_contact(full_name, email, message, phone=None, subject=None):
+    """Submit a contact form message. Public endpoint."""
+
+    doc = frappe.get_doc({
+        "doctype": "Contact Submission",
+        "full_name": full_name,
+        "email": email,
+        "phone": phone,
+        "subject": subject,
+        "message": message,
+        "status": "New",
+    })
+    doc.insert(ignore_permissions=True)
+    frappe.db.commit()
+    return {"ok": True, "message": "Message sent successfully."}

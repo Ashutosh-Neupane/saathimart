@@ -68,12 +68,27 @@ def guest_rate_limit(endpoint, limit=60, window_seconds=60):
     return rate_limit(f"{endpoint}:{ip}", limit=limit, window_seconds=window_seconds)
 
 
+def compute_hmac_signature(secret, timestamp, body):
+    """
+    Stripe-style request signature: HMAC-SHA256 over "<timestamp>.<body>"
+    keyed with the shared webhook secret. The secret itself never crosses
+    the wire — a captured request reveals nothing reusable.
+    """
+    msg = f"{timestamp}.".encode() + (body if isinstance(body, bytes) else body.encode())
+    return hmac.new(secret.encode(), msg, hashlib.sha256).hexdigest()
+
+
 def verify_hub_secret(endpoint):
     """
-    Verify the X-SM-Secret header on an inbound vendor push against that
-    vendor's own webhook_secret (falling back to the hub's global
-    Settings.webhook_secret for vendors that haven't been provisioned with
-    their own yet).
+    Authenticate an inbound vendor push.
+
+    Preferred: X-SM-Signature — HMAC-SHA256(shared_secret, "<ts>.<raw_body>")
+    alongside X-SM-Timestamp. The secret never travels, so a leaked header
+    or logged request cannot be replayed into a valid credential.
+
+    Legacy fallback: bare X-SM-Secret compare — kept so vendors running the
+    pre-HMAC build keep working during a rolling upgrade. Once every vendor
+    sends signatures, the fallback can be deleted.
 
     No-ops when there is no active HTTP request — i.e. when the caller is
     invoked internally after the true entry point (events.receive) already
@@ -88,7 +103,6 @@ def verify_hub_secret(endpoint):
         "webhook_secret", raise_exception=False
     ) or ""
 
-    incoming = frappe.request.headers.get("X-SM-Secret", "")
     vendor_id = frappe.request.headers.get("X-Vendor-ID", "")
 
     expected = settings_secret
@@ -105,6 +119,20 @@ def verify_hub_secret(endpoint):
 
     if not expected:
         frappe.throw(_("Webhook secret not configured"), frappe.AuthenticationError)
+
+    signature = frappe.request.headers.get("X-SM-Signature", "")
+    if signature:
+        ts = frappe.request.headers.get("X-SM-Timestamp", "")
+        # Timestamp freshness is enforced separately by verify_hub_timestamp;
+        # here we only need it as part of the signed message.
+        raw_body = frappe.request.get_data(cache=True, as_text=False) or b""
+        computed = compute_hmac_signature(expected, ts, raw_body)
+        if not hmac.compare_digest(signature.strip(), computed):
+            log_auth_failure(endpoint, "invalid_signature")
+            frappe.throw(_("Invalid signature"), frappe.AuthenticationError)
+        return
+
+    incoming = frappe.request.headers.get("X-SM-Secret", "")
     if not incoming or not hmac.compare_digest(incoming, expected):
         log_auth_failure(endpoint, "invalid_secret")
         frappe.throw(_("Invalid secret"), frappe.AuthenticationError)

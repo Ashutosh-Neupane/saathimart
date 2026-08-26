@@ -108,6 +108,8 @@ scheduler_events = {
         "saathimart.api.archival.archive_old_data",
         # Purge expired OTP rows (ported from saathi_middleware)
         "saathimart.api.auth_full.cleanup_expired_verifications",
+        # Digest of dead/stuck webhook events — emailed to System Managers
+        "saathimart.events.monitoring.daily_sync_health_report",
     ],
     "hourly": [
         "saathimart.api.cart.expire_abandoned_carts",

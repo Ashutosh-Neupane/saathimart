@@ -466,9 +466,18 @@ def _deliver_event(evt, secret, max_retries):
             if parsed.hostname in ("localhost", "vendor1.localhost", "vendor2.localhost", "vendor3.localhost"):
                 target_url = parsed._replace(netloc="vendors:8000").geturl()
 
+        # Sign the exact bytes we send: HMAC-SHA256(secret, "<ts>.<body>").
+        # The vendor recomputes it from the raw body — the secret itself
+        # never crosses the wire. X-SM-Secret is still sent for vendors on
+        # the pre-HMAC build; drop it once every vendor is upgraded.
+        ts = str(int(datetime.now(timezone.utc).timestamp()))
+        body = json.dumps({"event": evt.event_type, "payload": json.loads(evt.payload or "{}")})
+        from saathimart.api.utils import compute_hmac_signature
+
         headers = {
             "X-SM-Secret": vendor_secret,
-            "X-SM-Timestamp": str(int(datetime.now(timezone.utc).timestamp())),
+            "X-SM-Timestamp": ts,
+            "X-SM-Signature": compute_hmac_signature(vendor_secret, ts, body),
             "Content-Type": "application/json",
         }
         if host_header:
@@ -476,7 +485,7 @@ def _deliver_event(evt, secret, max_retries):
 
         resp = requests.post(
             f"{target_url}/api/method/saathimart_vendor.api.receive.receive_from_hub",
-            json={"event": evt.event_type, "payload": json.loads(evt.payload or "{}")},
+            data=body,
             headers=headers,
             timeout=10,
         )

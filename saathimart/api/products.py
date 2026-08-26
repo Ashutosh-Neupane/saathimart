@@ -3,11 +3,13 @@ Product API — public catalogue endpoints with Blinkit-style filtering and sort
 
 All methods are whitelisted (allow_guest=True).
 """
+import json
 import math
 
 import frappe
 from frappe import _
 from frappe.utils import flt, nowdate, add_days, today
+from saathimart.api.responses import handle_api_errors
 from saathimart.api.utils import guest_rate_limit, verify_hub_secret
 
 
@@ -366,6 +368,59 @@ def _get_variant_summaries(template_name, vendor=None, delivery_zone=None,
     ]
 
 
+def _get_variant_options_map(template_names):
+    """
+    {template_name: {"variant_count": n, "options": [{attribute, values}]}}
+    for every template in `template_names` — what the storefront renders as
+    the size/color chips on a browse card or above the picker on a product
+    page ("Size: S / M / L · Color: Red / Blue"), without loading each
+    variant's full listing data.
+
+    Two flat queries total regardless of template count — never per-template
+    lookups inside a page loop.
+    """
+    if not template_names:
+        return {}
+
+    variant_rows = frappe.get_all(
+        "Product",
+        filters={"variant_of": ["in", template_names], "status": "Active"},
+        fields=["name", "variant_of"],
+        order_by="creation asc",
+    )
+    count_map = {}
+    for v in variant_rows:
+        count_map[v.variant_of] = count_map.get(v.variant_of, 0) + 1
+
+    options_by_template = {}
+    if variant_rows:
+        attr_rows = frappe.get_all(
+            "Product Variant Attribute",
+            filters={"parent": ["in", [v.name for v in variant_rows]]},
+            fields=["parent", "attribute", "value"],
+            order_by="idx asc",
+        )
+        variant_to_template = {v.name: v.variant_of for v in variant_rows}
+        for r in attr_rows:
+            tmpl = variant_to_template.get(r.parent)
+            if not tmpl or not r.attribute:
+                continue
+            values = options_by_template.setdefault(tmpl, {}).setdefault(r.attribute, [])
+            if r.value not in values:
+                values.append(r.value)
+
+    result = {}
+    for t in template_names:
+        result[t] = {
+            "variant_count": count_map.get(t, 0),
+            "options": [
+                {"attribute": attr, "values": vals}
+                for attr, vals in options_by_template.get(t, {}).items()
+            ],
+        }
+    return result
+
+
 def _serialize_product(doc, _listings_map=None, _stock_map=None, _vendor_location_map=None,
                        vendor=None, delivery_zone=None, customer_lat=None, customer_lng=None):
     """Serialize Product doc with its best vendor listing data."""
@@ -624,6 +679,16 @@ def list_products(category=None, vendor=None, search=None, page=1, page_size=20,
     serialized = [_serialize_product(p, vendor=vendor, delivery_zone=delivery_zone,
                                      customer_lat=clat, customer_lng=clng) for p in filtered]
 
+    # Variant metadata for grid cards — templates show their option chips
+    # ("Size: S / M / L") and variant count without loading full variant
+    # listing data. One batched lookup for the whole page.
+    options_map = _get_variant_options_map([p["name"] for p in filtered if p.get("has_variants")])
+    for card in serialized:
+        meta = options_map.get(card.get("name"))
+        if meta:
+            card["variant_count"] = meta["variant_count"]
+            card["options"] = meta["options"]
+
     cache_key = (
         f"sm_list_products:{category or ''}:{vendor or ''}:{search or ''}:"
         f"{page}:{page_size}:{sort or ''}:{lat or ''}:{lng or ''}:"
@@ -737,6 +802,9 @@ def get_product(slug, vendor=None, delivery_zone=None, lat=None, lng=None, radiu
             customer_lat=clat, customer_lng=clng,
         )
         data["variant_of_product"] = None
+        # Option groups for the picker UI — ordered, de-duplicated values
+        # across this template's active variants.
+        data.update(_get_variant_options_map([name])[name])
     elif doc.variant_of:
         data["variants"] = _get_variant_summaries(
             doc.variant_of, vendor=vendor, delivery_zone=delivery_zone,
@@ -789,6 +857,86 @@ def list_categories():
         fields=["name", "category_name", "slug", "image", "parent_category", "sort_order"],
         order_by="sort_order asc, category_name asc",
     )
+
+
+@frappe.whitelist(allow_guest=True)
+@handle_api_errors
+def get_variant(slug, attributes=None, vendor=None, delivery_zone=None,
+                lat=None, lng=None, radius_km=5):
+    """
+    Resolve ONE sellable variant of a template product by its attribute
+    combination — the endpoint behind picking "Red / Large" on the
+    storefront's variant picker.
+
+    `slug` accepts the template's slug OR any sibling variant's slug (so a
+    customer landing on a variant URL can switch options without tracking
+    the template id). `attributes` is a JSON object like
+    '{"Color": "Red", "Size": "Large"}'; attribute names match
+    case-insensitively, values exactly. Omitted attributes are free — the
+    first active variant matching everything supplied wins, so a picker can
+    resolve progressively as the customer chooses.
+
+    Returns the same full payload as get_product for the matched variant:
+    its own price/stock/vendor listings plus its siblings for the switcher.
+    """
+    guest_rate_limit("products.variant", limit=300, window_seconds=60)
+
+    name = frappe.db.get_value("Product", {"slug": slug, "status": "Active"}, "name")
+    if not name:
+        frappe.throw(_("Product not found"), frappe.DoesNotExistError)
+
+    doc = frappe.get_doc("Product", name)
+    template_name = doc.name if doc.has_variants else doc.variant_of
+    if not template_name:
+        frappe.throw(_("Product {0} has no variants").format(slug))
+
+    if isinstance(attributes, str):
+        try:
+            attributes = json.loads(attributes)
+        except (TypeError, ValueError):
+            frappe.throw(_("attributes must be a valid JSON object"))
+    wanted_raw = dict(attributes or {})
+    wanted = {
+        str(k).strip().lower(): str(v).strip()
+        for k, v in wanted_raw.items() if str(v).strip()
+    }
+
+    variants = frappe.get_all(
+        "Product",
+        filters={"variant_of": template_name, "status": "Active"},
+        fields=["name", "slug"],
+        order_by="creation asc",
+    )
+    if not variants:
+        frappe.throw(_("No variants available for this product"), frappe.DoesNotExistError)
+
+    attr_rows = frappe.get_all(
+        "Product Variant Attribute",
+        filters={"parent": ["in", [v.name for v in variants]]},
+        fields=["parent", "attribute", "value"],
+    )
+    attrs_by_variant = {}
+    for r in attr_rows:
+        attrs_by_variant.setdefault(r.parent, {})[(r.attribute or "").strip().lower()] = (r.value or "").strip()
+
+    if wanted:
+        candidates = [
+            v.slug for v in variants
+            if all(attrs_by_variant.get(v.name, {}).get(k) == val for k, val in wanted.items())
+        ]
+    else:
+        # No constraints given — deterministic default: oldest active variant.
+        candidates = [v.slug for v in variants]
+
+    if not candidates:
+        frappe.throw(
+            _("No variant matches the selected options"), frappe.DoesNotExistError
+        )
+
+    # Full product-detail payload — the storefront gets the matched
+    # variant's price/stock/listings AND its siblings in one round trip.
+    return get_product(candidates[0], vendor=vendor, delivery_zone=delivery_zone,
+                       lat=lat, lng=lng, radius_km=radius_km)
 
 
 @frappe.whitelist(allow_guest=True)

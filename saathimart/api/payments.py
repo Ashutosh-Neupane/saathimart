@@ -425,6 +425,16 @@ def _mark_order_paid(order_id, gateway, reference, transaction_uid, amount):
     except Exception:
         frappe.log_error(frappe.get_traceback(), "Payment confirmation email failed")
 
+    # Tell every vendor on this order the money arrived — their site records
+    # a real ERPNext Payment Entry against their Sales Order and unblocks
+    # acceptance of prepaid orders. Failure here must never fail the payment
+    # itself; the event queue retries delivery.
+    try:
+        from saathimart.events.publisher import publish_payment_received
+        publish_payment_received(order_id, amount=amount, gateway=gateway, reference=reference)
+    except Exception:
+        frappe.log_error(frappe.get_traceback(), f"payment.received publish failed for {order_id}")
+
 
 def _mark_order_failed(order_id, gateway, message):
     frappe.db.set_value("Order", order_id, {"payment_status": "Unpaid"})

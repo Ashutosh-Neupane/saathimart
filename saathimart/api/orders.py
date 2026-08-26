@@ -536,6 +536,16 @@ def apply_partial_payment(order_id, amount, gateway, reference="", transaction_u
     log.insert(ignore_permissions=True)
     frappe.db.commit()
 
+    # Fully-paid via manual/admin application — vendors must hear about it
+    # the same way they do for a gateway callback (Payment Entry + unblock
+    # prepaid acceptance on their side).
+    if doc.payment_status == "Paid":
+        try:
+            from saathimart.events.publisher import publish_payment_received
+            publish_payment_received(order_id, amount=amount, gateway=gateway, reference=reference)
+        except Exception:
+            frappe.log_error(frappe.get_traceback(), f"payment.received publish failed for {order_id}")
+
     return {"ok": True, "payment_status": doc.payment_status, "amount_paid": total_now}
 
 

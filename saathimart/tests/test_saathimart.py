@@ -2641,3 +2641,178 @@ class TestVendorPayout(unittest.TestCase):
         row = next(r for r in data if r["vendor"] == self.vendor.name)
         self.assertEqual(row["already_paid_out"], 900)
         self.assertEqual(row["payout_due"], 0)
+
+
+# ── Test: variant resolver + picker metadata (options/swatches) ─────────────
+
+class TestVariantResolver(unittest.TestCase):
+
+    def setUp(self):
+        frappe.set_user("Administrator")
+        self.template = _make_variant_template("Resolver Tee")
+        self.red_l = _make_product(
+            "Resolver Tee Red L", price=500, stock=10, prices=[],
+            variant_of=self.template.name,
+            variant_attributes=[{"attribute": "Color", "value": "Red"},
+                                {"attribute": "Size", "value": "L"}],
+        )
+        self.blue_m = _make_product(
+            "Resolver Tee Blue M", price=450, stock=0, prices=[],
+            variant_of=self.template.name,
+            variant_attributes=[{"attribute": "Color", "value": "Blue"},
+                                {"attribute": "Size", "value": "M"}],
+        )
+
+    def test_exact_match_resolves(self):
+        from saathimart.api.products import get_variant
+        result = get_variant(self.template.slug,
+                             json.dumps({"Color": "Red", "Size": "L"}))
+        self.assertEqual(result["name"], self.red_l.name)
+        self.assertEqual(result["price"], 500)
+
+    def test_attribute_names_case_insensitive(self):
+        from saathimart.api.products import get_variant
+        result = get_variant(self.template.slug,
+                             json.dumps({"color": "Red"}))
+        self.assertEqual(result["name"], self.red_l.name)
+
+    def test_partial_selection_is_progressive(self):
+        """One attribute alone → deterministic first match carrying it."""
+        from saathimart.api.products import get_variant
+        result = get_variant(self.template.slug, json.dumps({"Color": "Blue"}))
+        self.assertEqual(result["name"], self.blue_m.name)
+
+    def test_sibling_slug_accepted(self):
+        """Landing on a variant URL and switching options must work without
+        knowing the template's slug."""
+        from saathimart.api.products import get_variant
+        result = get_variant(self.red_l.slug, json.dumps({"Color": "Blue"}))
+        self.assertEqual(result["name"], self.blue_m.name)
+
+    def test_no_match_raises_does_not_exist(self):
+        from saathimart.api.products import get_variant
+        with self.assertRaises(frappe.DoesNotExistError):
+            get_variant(self.template.slug, json.dumps({"Color": "Green"}))
+
+    def test_non_variant_slug_rejected(self):
+        from saathimart.api.products import get_variant
+        plain = _make_product("Resolver Plain Product", price=100, prices=[])
+        with self.assertRaises(frappe.ValidationError):
+            get_variant(plain.slug, json.dumps({"Color": "Red"}))
+
+    def test_invalid_attributes_json_rejected(self):
+        from saathimart.api.products import get_variant
+        with self.assertRaises(frappe.ValidationError):
+            get_variant(self.template.slug, "{not json")
+
+    def test_template_card_exposes_options_and_count(self):
+        from saathimart.api.products import list_products
+        result = list_products(search="Resolver Tee")
+        card = next(i for i in result["items"] if i["name"] == self.template.name)
+        self.assertEqual(card["variant_count"], 2)
+        options = {o["attribute"]: o["values"] for o in card.get("options", [])}
+        self.assertIn("Color", options)
+        color_values = {v["value"] for v in options["Color"]}
+        self.assertEqual(color_values, {"Red", "Blue"})
+
+    def test_swatch_pulls_first_thumbnail_per_value(self):
+        # Give Red/L a thumbnail — it becomes the Color:Red swatch.
+        frappe.db.set_value("Product", self.red_l.name, "thumbnail", "/files/red.jpg")
+        try:
+            from saathimart.api.products import _get_variant_options_map
+            meta = _get_variant_options_map([self.template.name])
+            options = {o["attribute"]: o["values"] for o in meta[self.template.name]["options"]}
+            by_value = {v["value"]: v["swatch"] for v in options["Color"]}
+            self.assertEqual(by_value["Red"], "/files/red.jpg")
+            # No variant carries a thumbnail for its Blue-ness → no swatch.
+            self.assertIsNone(by_value["Blue"])
+        finally:
+            frappe.db.set_value("Product", self.red_l.name, "thumbnail", "")
+
+
+# ── Test: admin template/variant management API ──────────────────────────────
+
+class TestAdminVariantManagement(unittest.TestCase):
+
+    def setUp(self):
+        frappe.set_user("Administrator")
+
+    def tearDown(self):
+        frappe.set_user("Administrator")
+
+    def test_requires_sm_admin_role(self):
+        from saathimart.api.admin_products import create_template
+        frappe.set_user("Guest")
+        try:
+            with self.assertRaises(frappe.PermissionError):
+                create_template("Admin Guard Tee",
+                                json.dumps([{"attribute": "Size", "values": ["S"]}]))
+        finally:
+            frappe.set_user("Administrator")
+
+    def test_create_template_and_variants_happy_path(self):
+        from saathimart.api.admin_products import create_template, create_variants
+        tpl = create_template(
+            "Admin Mgmt Mug",
+            json.dumps([{"attribute": "Color", "values": ["Black", "White"]}]),
+        )
+        self.assertTrue(tpl["has_variants"])
+
+        result = create_variants(
+            tpl["slug"],
+            json.dumps([{"Color": "Black"}, {"Color": "White"}]),
+            price=250,
+        )
+        self.assertEqual(len(result["created"]), 2)
+        self.assertEqual(len(result["skipped"]), 0)
+
+        created_names = [c["name"] for c in result["created"]]
+        for name in created_names:
+            doc = frappe.get_doc("Product", name)
+            self.assertEqual(doc.variant_of, tpl["name"])
+            attrs = {a.attribute: a.value for a in doc.variant_attributes}
+            self.assertIn(attrs.get("Color"), ("Black", "White"))
+
+    def test_create_variants_is_idempotent(self):
+        from saathimart.api.admin_products import create_template, create_variants
+        tpl = create_template(
+            "Idempotent Bottle",
+            json.dumps([{"attribute": "Size", "values": ["500ml"]}]),
+        )
+        first = create_variants(tpl["slug"], json.dumps([{"Size": "500ml"}]), price=100)
+        self.assertEqual(len(first["created"]), 1)
+        second = create_variants(tpl["slug"], json.dumps([{"Size": "500ml"}]), price=100)
+        self.assertEqual(len(second["created"]), 0)
+        self.assertEqual(len(second["skipped"]), 1)
+
+    def test_create_template_rejects_empty_option_groups(self):
+        from saathimart.api.admin_products import create_template
+        with self.assertRaises(frappe.ValidationError):
+            create_template("Empty Options Product", json.dumps([{"attribute": "Size", "values": []}]))
+
+    def test_update_variant_media_sets_swatch(self):
+        from saathimart.api.admin_products import (
+            create_template, create_variants, update_variant_media,
+        )
+        tpl = create_template(
+            "Media Cap",
+            json.dumps([{"attribute": "Color", "values": ["Navy"]}]),
+        )
+        result = create_variants(tpl["slug"], json.dumps([{"Color": "Navy"}]), price=300)
+        vslug = result["created"][0]["slug"]
+
+        updated = update_variant_media(vslug, thumbnail="/files/navy-cap.jpg")
+        self.assertEqual(updated["thumbnail"], "/files/navy-cap.jpg")
+
+    def test_delete_variant_soft_removes(self):
+        from saathimart.api.admin_products import (
+            create_template, create_variants, delete_variant,
+        )
+        tpl = create_template(
+            "Delete Sock",
+            json.dumps([{"attribute": "Size", "values": ["One Size"]}]),
+        )
+        result = create_variants(tpl["slug"], json.dumps([{"Size": "One Size"}]))
+        vslug = result["created"][0]["slug"]
+        out = delete_variant(vslug)
+        self.assertEqual(out["status"], "Inactive")

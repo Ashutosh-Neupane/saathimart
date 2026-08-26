@@ -376,6 +376,11 @@ def _get_variant_options_map(template_names):
     page ("Size: S / M / L · Color: Red / Blue"), without loading each
     variant's full listing data.
 
+    Each option value also carries a `swatch` — the first variant with that
+    value whose own thumbnail is set — so color pickers render real image
+    swatches instead of plain text chips. Values with no variant imagery
+    get swatch=None; the frontend falls back to text chips.
+
     Two flat queries total regardless of template count — never per-template
     lookups inside a page loop.
     """
@@ -385,7 +390,7 @@ def _get_variant_options_map(template_names):
     variant_rows = frappe.get_all(
         "Product",
         filters={"variant_of": ["in", template_names], "status": "Active"},
-        fields=["name", "variant_of"],
+        fields=["name", "variant_of", "thumbnail"],
         order_by="creation asc",
     )
     count_map = {}
@@ -393,6 +398,7 @@ def _get_variant_options_map(template_names):
         count_map[v.variant_of] = count_map.get(v.variant_of, 0) + 1
 
     options_by_template = {}
+    attr_rows_by_variant = {}
     if variant_rows:
         attr_rows = frappe.get_all(
             "Product Variant Attribute",
@@ -401,7 +407,9 @@ def _get_variant_options_map(template_names):
             order_by="idx asc",
         )
         variant_to_template = {v.name: v.variant_of for v in variant_rows}
+        attr_rows_by_variant = {}
         for r in attr_rows:
+            attr_rows_by_variant.setdefault(r.parent, []).append(r)
             tmpl = variant_to_template.get(r.parent)
             if not tmpl or not r.attribute:
                 continue
@@ -409,15 +417,35 @@ def _get_variant_options_map(template_names):
             if r.value not in values:
                 values.append(r.value)
 
+    # Swatch resolution: first variant (creation order) carrying each value
+    # AND a non-empty thumbnail wins. Variant rows are creation-ordered, so
+    # iterating once in order gives deterministic winners.
+    swatch_by_key = {}  # (template, attribute_lower, value) -> thumbnail
+    seen_keys = set()
+    for v in variant_rows:
+        if not (getattr(v, "thumbnail", None) or "").strip():
+            continue
+        for r in attr_rows_by_variant.get(v.name, []):
+            key = (v.variant_of, (r.attribute or "").strip().lower(), (r.value or "").strip())
+            if key not in seen_keys:
+                seen_keys.add(key)
+                swatch_by_key[key] = v.thumbnail
+
     result = {}
     for t in template_names:
-        result[t] = {
-            "variant_count": count_map.get(t, 0),
-            "options": [
-                {"attribute": attr, "values": vals}
-                for attr, vals in options_by_template.get(t, {}).items()
-            ],
-        }
+        options = []
+        for attr, vals in options_by_template.get(t, {}).items():
+            options.append({
+                "attribute": attr,
+                "values": [
+                    {
+                        "value": val,
+                        "swatch": swatch_by_key.get((t, attr.strip().lower(), val)),
+                    }
+                    for val in vals
+                ],
+            })
+        result[t] = {"variant_count": count_map.get(t, 0), "options": options}
     return result
 
 

@@ -21,7 +21,7 @@ from datetime import datetime, timezone
 
 import frappe
 import requests
-from frappe.utils import now_datetime, add_to_date
+from frappe.utils import now_datetime, add_to_date, flt
 
 from saathimart.api.utils import safe_enqueue
 
@@ -169,6 +169,46 @@ def on_order_created(doc, method):
             ],
         }, target_site=vendor_url, target_vendor=f.vendor,
            event_id=f"order.created.{doc.name}.{f.vendor}")
+
+
+def publish_payment_received(order_id, amount=None, gateway="", reference=""):
+    """
+    A payment succeeded for this Order (eSewa callback, the status-poll cron,
+    or an admin applying a payment). Push payment.received to every vendor
+    with a fulfillment row so their site records the money — creating a real
+    ERPNext Payment Entry against that vendor's Sales Order and unblocking
+    acceptance of prepaid orders (consumed by saathimart_vendor.api.receive.
+    _handle_payment_received).
+    """
+    try:
+        doc = frappe.get_doc("Order", order_id)
+    except Exception:
+        frappe.log_error(frappe.get_traceback(), f"payment.received: order {order_id} not found")
+        return
+
+    fulfillments = list(doc.vendor_fulfillments or [])
+    if not fulfillments and doc.vendor:
+        # Legacy path — order predates Vendor Fulfillment rows.
+        fulfillments = [frappe._dict(vendor=doc.vendor, subtotal=doc.grand_total)]
+
+    for f in fulfillments:
+        if not f.vendor:
+            continue
+        vendor_url = frappe.db.get_value("Vendor", f.vendor, "frappe_site_url")
+        if not vendor_url:
+            continue
+        _enqueue("payment.received", {
+            "order_id": doc.name,
+            "vendor_id": f.vendor,
+            # Per-vendor slice of what was collected — a mixed multi-vendor
+            # cart must not show each vendor the whole order's money.
+            "amount": flt(f.subtotal) if f.subtotal is not None else flt(amount),
+            "grand_total": flt(doc.grand_total),
+            "gateway": gateway or doc.payment_method,
+            "reference": reference or doc.payment_reference,
+            "customer_name": doc.customer_name,
+        }, target_site=vendor_url, target_vendor=f.vendor,
+           event_id=f"payment.received.{doc.name}.{f.vendor}")
 
 
 def on_product_created(doc, method):

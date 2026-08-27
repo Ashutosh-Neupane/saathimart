@@ -82,13 +82,12 @@ def verify_hub_secret(endpoint):
     """
     Authenticate an inbound vendor push.
 
-    Preferred: X-SM-Signature — HMAC-SHA256(shared_secret, "<ts>.<raw_body>")
+    Required: X-SM-Signature — HMAC-SHA256(shared_secret, "<ts>.<raw_body>")
     alongside X-SM-Timestamp. The secret never travels, so a leaked header
     or logged request cannot be replayed into a valid credential.
 
-    Legacy fallback: bare X-SM-Secret compare — kept so vendors running the
-    pre-HMAC build keep working during a rolling upgrade. Once every vendor
-    sends signatures, the fallback can be deleted.
+    Requests without a valid HMAC signature are rejected. The legacy bare
+    X-SM-Secret header fallback has been removed.
 
     No-ops when there is no active HTTP request — i.e. when the caller is
     invoked internally after the true entry point (events.receive) already
@@ -146,14 +145,10 @@ def verify_hub_secret(endpoint):
         log_auth_failure(endpoint, "invalid_signature")
         frappe.throw(_("Invalid signature"), frappe.AuthenticationError)
 
-    incoming = frappe.request.headers.get("X-SM-Secret", "")
-    matched = bool(incoming) and (
-        hmac.compare_digest(incoming, expected)
-        or (bool(expected_old) and hmac.compare_digest(incoming, expected_old))
-    )
-    if not matched:
-        log_auth_failure(endpoint, "invalid_secret")
-        frappe.throw(_("Invalid secret"), frappe.AuthenticationError)
+    # No signature header → reject. The legacy bare X-SM-Secret fallback
+    # was removed: all callers now send HMAC signatures.
+    log_auth_failure(endpoint, "missing_signature")
+    frappe.throw(_("Missing webhook signature"), frappe.AuthenticationError)
 
 
 def verify_hub_timestamp(max_age_seconds=300):

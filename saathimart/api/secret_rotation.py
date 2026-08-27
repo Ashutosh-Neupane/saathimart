@@ -66,11 +66,9 @@ def _post_to_vendor(vendor_name, method, payload):
         f"{target_url}/api/method/{method}",
         data=body,
         headers={
-            # Host header routes to the right site behind a shared web tier;
-            # X-SM-Secret kept for pre-HMAC vendors during rolling upgrade.
+            # Host header routes to the right site behind a shared web tier.
             "Host": host_header,
             "X-Vendor-ID": "hub",
-            "X-SM-Secret": secret,
             "X-SM-Timestamp": ts,
             "X-SM-Signature": compute_hmac_signature(secret, ts, body),
             "Content-Type": "application/json",

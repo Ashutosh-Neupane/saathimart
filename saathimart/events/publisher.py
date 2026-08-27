@@ -468,14 +468,12 @@ def _deliver_event(evt, secret, max_retries):
 
         # Sign the exact bytes we send: HMAC-SHA256(secret, "<ts>.<body>").
         # The vendor recomputes it from the raw body — the secret itself
-        # never crosses the wire. X-SM-Secret is still sent for vendors on
-        # the pre-HMAC build; drop it once every vendor is upgraded.
+        # never crosses the wire. Legacy bare X-SM-Secret header removed.
         ts = str(int(datetime.now(timezone.utc).timestamp()))
         body = json.dumps({"event": evt.event_type, "payload": json.loads(evt.payload or "{}")})
         from saathimart.api.utils import compute_hmac_signature
 
         headers = {
-            "X-SM-Secret": vendor_secret,
             "X-SM-Timestamp": ts,
             "X-SM-Signature": compute_hmac_signature(vendor_secret, ts, body),
             "Content-Type": "application/json",

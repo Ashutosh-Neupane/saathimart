@@ -2903,10 +2903,9 @@ class TestVerifyHubSecret(unittest.TestCase):
         h["X-SM-Signature"] = self._sig(self.VENDOR)
         self._verify(h)
 
-    def test_legacy_secret_header_accepted(self):
-        h = self._headers()
-        h["X-SM-Secret"] = self.GLOBAL
-        self._verify(h)
+    def test_missing_signature_rejected(self):
+        # No X-SM-Signature header → must reject (legacy bare-secret removed)
+        self._verify(self._headers(), expect_error=True)
 
     # ── attack scenarios ──
 

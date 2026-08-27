@@ -114,6 +114,7 @@ scheduler_events = {
     "hourly": [
         "saathimart.api.cart.expire_abandoned_carts",
         "saathimart.events.publisher.flush_failed_webhooks",
+        "saathimart.api.reconciliation.reconcile_stock_hourly",
     ],
     "cron": {
         "*/2 * * * *": [

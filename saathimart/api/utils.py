@@ -98,6 +98,14 @@ def verify_hub_secret(endpoint):
     if not frappe.request:
         return
 
+    # Rate-limit auth failures per IP to block brute-force attacks
+    from saathimart.api.rate_limiter import check_rate_limit, record_failure, clear_failures
+    client_ip = frappe.request.headers.get("X-Forwarded-For", "").split(",")[0].strip() or \
+                frappe.request.headers.get("X-Real-IP", "") or \
+                getattr(frappe.request, "ip", "unknown") or "unknown"
+    if not check_rate_limit(client_ip):
+        frappe.throw(_("Too many failed attempts. Try again later."), frappe.AuthenticationError)
+
     settings_secret = frappe.get_single("Settings").get_password(
         "webhook_secret", raise_exception=False
     ) or ""
@@ -137,16 +145,20 @@ def verify_hub_secret(endpoint):
         raw_body = frappe.request.get_data(cache=True, as_text=False) or b""
         computed = compute_hmac_signature(expected, ts, raw_body)
         if hmac.compare_digest(signature.strip(), computed):
+            clear_failures(client_ip)
             return
         if expected_old:
             computed_old = compute_hmac_signature(expected_old, ts, raw_body)
             if hmac.compare_digest(signature.strip(), computed_old):
+                clear_failures(client_ip)
                 return
+        record_failure(client_ip)
         log_auth_failure(endpoint, "invalid_signature")
         frappe.throw(_("Invalid signature"), frappe.AuthenticationError)
 
     # No signature header → reject. The legacy bare X-SM-Secret fallback
     # was removed: all callers now send HMAC signatures.
+    record_failure(client_ip)
     log_auth_failure(endpoint, "missing_signature")
     frappe.throw(_("Missing webhook signature"), frappe.AuthenticationError)
 

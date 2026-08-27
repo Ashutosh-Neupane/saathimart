@@ -1,72 +1,56 @@
-"""
-Vendor Payout — records money actually transferred to a vendor.
-
-Creating one marks every eligible Vendor Fulfillment row (paid order, not
-cancelled, not already claimed by another payout) as settled by linking it
-back to this record via Vendor Fulfillment.vendor_payout. That link is what
-lets the commission report and get_outstanding_payout() tell already-paid
-money apart from money still owed — deleting this record releases those
-fulfillments so they become payable again.
-"""
 import frappe
-from frappe.model.document import Document
-from frappe.utils import flt, today
+from frappe import _
+from frappe.utils import flt, getdate
 
 
 class VendorPayout(Document):
     def validate(self):
-        if not self.payout_date:
-            self.payout_date = today()
-        if self.from_date and self.to_date and self.from_date > self.to_date:
-            frappe.throw("Period From cannot be after Period To")
+        if self.period_start and self.period_end:
+            if getdate(self.period_start) > getdate(self.period_end):
+                frappe.throw(_("Period start must be before period end"))
 
-        if not self.is_new():
-            return  # editing notes/reference on an already-recorded payout — totals are locked
+    def before_save(self):
+        if not self.vendor_name and self.vendor:
+            self.vendor_name = frappe.db.get_value("Vendor", self.vendor, "vendor_name") or ""
 
-        fulfillments = self._eligible_fulfillments()
-        if not fulfillments:
-            frappe.throw(
-                "No paid, unsettled Vendor Fulfillments found for this vendor in the given period"
-            )
+        # Auto-calculate commission
+        if self.vendor:
+            commission_pct = frappe.db.get_value("Vendor", self.vendor, "commission_pct") or 0
+            self.commission_pct = commission_pct
+            self.commission_amount = flt(self.total_sales) * flt(commission_pct) / 100
+            self.payout_amount = flt(self.total_sales) - flt(self.commission_amount)
 
-        commission_pct = flt(frappe.db.get_value("Vendor", self.vendor, "commission_pct"))
-        gross = sum(flt(f.subtotal) for f in fulfillments)
+    @frappe.whitelist()
+    def calculate_payout(self):
+        """Populate orders and totals from delivered Vendor Fulfillments."""
+        if not self.vendor or not self.period_start or not self.period_end:
+            frappe.throw(_("Vendor, period start, and period end are required"))
 
-        self.gross_sales = gross
-        self.commission_amount = gross * commission_pct / 100
-        self.payout_amount = gross - self.commission_amount
-        self.fulfillments_count = len(fulfillments)
-        self._matched_fulfillment_names = [f.name for f in fulfillments]
-
-    def _eligible_fulfillments(self):
-        conditions = [
-            "vf.vendor = %(vendor)s",
-            "vf.status != 'Cancelled'",
-            "(vf.vendor_payout IS NULL OR vf.vendor_payout = '')",
-            "o.payment_status = 'Paid'",
-            "o.status != 'Cancelled'",
-        ]
-        values = {"vendor": self.vendor}
-        if self.from_date:
-            conditions.append("DATE(o.creation) >= %(from_date)s")
-            values["from_date"] = self.from_date
-        if self.to_date:
-            conditions.append("DATE(o.creation) <= %(to_date)s")
-            values["to_date"] = self.to_date
-
-        where = "WHERE " + " AND ".join(conditions)
-        return frappe.db.sql(f"""
-            SELECT vf.name, vf.subtotal
+        # Find delivered fulfillments in the period
+        fulfillments = frappe.db.sql("""
+            SELECT vf.name, vf.subtotal, o.name as order_id, o.customer_name,
+                   vf.modified as delivered_at
             FROM `tabVendor Fulfillment` vf
-            INNER JOIN `tabOrder` o ON o.name = vf.parent
-            {where}
-        """, values, as_dict=True)
+            INNER JOIN `tabOrder` o ON vf.parent = o.name
+            WHERE vf.vendor = %s
+              AND vf.status = 'Delivered'
+              AND vf.modified BETWEEN %s AND %s
+        """, (self.vendor, self.period_start, self.period_end), as_dict=True)
 
-    def after_insert(self):
-        for name in getattr(self, "_matched_fulfillment_names", None) or []:
-            frappe.db.set_value("Vendor Fulfillment", name, "vendor_payout", self.name)
+        self.orders = []
+        self.total_sales = 0
+        for f in fulfillments:
+            self.append("orders", {
+                "order_id": f.order_id,
+                "customer_name": f.customer_name,
+                "subtotal": f.subtotal,
+                "delivered_at": f.delivered_at,
+            })
+            self.total_sales = flt(self.total_sales) + flt(f.subtotal)
 
-    def on_trash(self):
-        frappe.db.set_value(
-            "Vendor Fulfillment", {"vendor_payout": self.name}, "vendor_payout", ""
-        )
+        self.save(ignore_permissions=True)
+        return {
+            "orders_count": len(fulfillments),
+            "total_sales": self.total_sales,
+            "payout_amount": self.payout_amount,
+        }

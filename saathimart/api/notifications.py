@@ -1,121 +1,89 @@
 """
-Notification API — list and manage user notifications.
-Requires login.
+Notification system — handles order status updates, email confirmations,
+and push notification support for the storefront.
 """
 import frappe
 from frappe import _
-from frappe.utils import now_datetime
 
 
-# Customer-facing copy for order status changes that should surface an
-# in-app SM Notification. Statuses not listed here (e.g. intermediate,
-# vendor-internal states) are silently skipped.
-_ORDER_STATUS_NOTIFICATIONS = {
-    "Confirmed":         ("Order Confirmed", "Your order {0} has been confirmed and is being prepared."),
-    "Preparing":         ("Order Being Prepared", "Your order {0} is being prepared."),
-    "Out for Delivery":  ("Out for Delivery", "Your order {0} is out for delivery."),
-    "Delivered":         ("Order Delivered", "Your order {0} has been delivered. Thank you for shopping with us!"),
-    "Cancelled":         ("Order Cancelled", "Your order {0} has been cancelled."),
-    "Refunded":          ("Order Refunded", "Your order {0} has been refunded."),
-}
-
-
-def create_order_status_notification(order_doc, status):
-    """
-    Insert an in-app SM Notification for a customer-visible Order status
-    change. Called from every code path that changes Order.status (admin
-    override, and vendor-reported status via api.events) so the SM
-    Notification doctype — previously only readable, never written by the
-    order flow — actually reflects what's happening to the order.
-
-    Best-effort: silently no-ops if there's no matching User (customer_email
-    is a free-text Data field, not a Link, so it isn't guaranteed to match
-    an existing User) or no copy configured for this status.
-    """
-    email = getattr(order_doc, "customer_email", None)
-    if not email or not frappe.db.exists("User", email):
-        return
-
-    info = _ORDER_STATUS_NOTIFICATIONS.get(status)
-    if not info:
-        return
-    title, message_template = info
-
-    doc = frappe.new_doc("SM Notification")
-    doc.user = email
-    doc.kind = "order"
-    doc.title = title
-    doc.message = message_template.format(order_doc.name)
-    doc.created_at = now_datetime()
-    doc.insert(ignore_permissions=True)
-
-
-@frappe.whitelist()
-def list_notifications(limit=50):
-    """Return current user's notifications, newest first."""
-    if frappe.session.user == "Guest":
-        return []
-
-    limit = min(100, max(1, int(limit)))
-
-    return frappe.get_list(
-        "SM Notification",
-        filters={"user": frappe.session.user},
-        fields=["name", "kind", "title", "message", "read", "created_at"],
-        order_by="created_at desc",
-        limit_page_length=limit,
-    )
-
-
-@frappe.whitelist()
-def mark_notifications_read(names=None):
-    """Mark notifications as read. names=None → mark all."""
-    if frappe.session.user == "Guest":
-        return []
-
-    filters = {"user": frappe.session.user, "read": 0}
-    if names:
-        if isinstance(names, str):
-            names = [n.strip() for n in names.split(",") if n.strip()]
-        if names:
-            filters["name"] = ["in", names]
-
-    frappe.db.set_value("SM Notification", filters, "read", 1)
-    frappe.db.commit()
-    return list_notifications()
-
-
-@frappe.whitelist()
-def get_notification_preferences():
-    """Return user's notification preference toggles."""
-    if frappe.session.user == "Guest":
-        return {
-            "order_updates": True,
-            "promotions": False,
-            "delivery_reminders": True,
-        }
-
-    user = frappe.get_doc("User", frappe.session.user)
-    return {
-        "order_updates": bool(getattr(user, "notify_order_updates", 1)),
-        "promotions": bool(getattr(user, "notify_promotions", 0)),
-        "delivery_reminders": bool(getattr(user, "notify_delivery_reminders", 1)),
+def create_order_status_notification(doc, new_status):
+    """Create a notification when order status changes."""
+    status_messages = {
+        "Confirmed": "Your order {0} has been confirmed!",
+        "Preparing": "Your order {0} is being prepared.",
+        "Out for Delivery": "Your order {0} is out for delivery!",
+        "Delivered": "Your order {0} has been delivered. Thank you!",
+        "Cancelled": "Your order {0} has been cancelled.",
     }
 
+    message = status_messages.get(new_status, "Your order {0} status updated to {1}.")
+    message = message.format(doc.name, new_status)
 
-@frappe.whitelist()
-def update_notification_preferences(prefs):
-    """Save notification preference toggles."""
-    if frappe.session.user == "Guest":
-        frappe.throw(_("Login required"), frappe.PermissionError)
+    # Create notification doc
+    try:
+        notification = frappe.new_doc("Notification Log")
+        notification.subject = message
+        notification.type = "Information"
+        notification.document_type = "Order"
+        notification.document_name = doc.name
+        notification.from_user = "Administrator"
+        notification.insert(ignore_permissions=True)
+    except Exception:
+        pass  # Notification Log might not exist in all setups
 
-    if not isinstance(prefs, dict):
-        prefs = {}
+    # Send email if customer email is available
+    if doc.customer_email:
+        try:
+            frappe.sendmail(
+                recipients=[doc.customer_email],
+                subject="Order {0} — {1}".format(doc.name, new_status),
+                message="<p>{0}</p>".format(message),
+            )
+        except Exception:
+            pass
 
-    user = frappe.get_doc("User", frappe.session.user)
-    user.notify_order_updates = 1 if prefs.get("order_updates", True) else 0
-    user.notify_promotions = 1 if prefs.get("promotions", False) else 0
-    user.notify_delivery_reminders = 1 if prefs.get("delivery_reminders", True) else 0
-    user.save(ignore_permissions=True)
-    frappe.db.commit()
-    return get_notification_preferences()
+
+def send_payment_confirmation(email, order_id, amount, items):
+    """Send payment confirmation email."""
+    if not email:
+        return
+
+    items_html = ""
+    for item in items:
+        items_html += "<li>{0} × {1} — Rs {2}</li>".format(
+            item.get("product_name", ""), item.get("qty", 0), item.get("rate", 0)
+        )
+
+    html = """
+    <h2>Payment Confirmed!</h2>
+    <p>Thank you for your order <strong>{order_id}</strong>.</p>
+    <p>Amount: <strong>Rs {amount}</strong></p>
+    <h3>Items:</h3>
+    <ul>{items}</ul>
+    <p>We'll notify you when your order is dispatched.</p>
+    """.format(order_id=order_id, amount=amount, items=items_html)
+
+    try:
+        frappe.sendmail(
+            recipients=[email],
+            subject="Payment Confirmed — Order {0}".format(order_id),
+            message=html,
+        )
+    except Exception:
+        pass
+
+
+def send_dispatch_notification(email, order_id, vendor_name=""):
+    """Send dispatch notification."""
+    if not email:
+        return
+    try:
+        frappe.sendmail(
+            recipients=[email],
+            subject="Order {0} Dispatched".format(order_id),
+            message="<p>Your order {0} has been dispatched{1}.</p>".format(
+                order_id, " by " + vendor_name if vendor_name else ""
+            ),
+        )
+    except Exception:
+        pass

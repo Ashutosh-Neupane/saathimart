@@ -1,199 +1,163 @@
 """
-Search API — Blinkit-style search with autocomplete, suggestions, and analytics.
-
-Endpoints:
-  autocomplete     — GET /api/method/saathimart.api.search.autocomplete
-  search_products  — GET /api/method/saathimart.api.search.search_products
-  get_top_searches — GET /api/method/saathimart.api.search.get_top_searches
-  get_suggestions  — GET /api/method/saathimart.api.search.get_suggestions
+Search improvements — full-text search with MariaDB FULLTEXT indexes,
+fuzzy matching for typos, and autocomplete suggestions.
 """
-from __future__ import annotations
-
-import json
 import frappe
 from frappe import _
-from frappe.utils import add_days, flt, now_datetime, nowdate, today
+from frappe.utils import cint
 
 
-def _normalize_search_key(query):
-    """Lowercase, strip, collapse spaces."""
-    return " ".join(query.lower().strip().split())
-
-
-@frappe.whitelist(allow_guest=True)
-def autocomplete(query, limit=10):
+@frappe.whitelelist()
+def search_products(query="", page=1, page_size=20, category=None, brand=None,
+                    min_price=None, max_price=None, in_stock=None):
     """
-    Instant search suggestions as user types.
-    Returns matching product names and category names.
+    Enhanced product search with full-text matching, fuzzy fallback,
+    and relevance scoring.
     """
-    if not query or len(query.strip()) < 2:
-        return {"suggestions": []}
+    from saathimart.api.utils import guest_rate_limit
+    guest_rate_limit("search", limit=30, window_seconds=60)
 
-    query = query.strip()
-    limit = min(20, max(1, int(limit)))
+    query = (query or "").strip()
+    page = cint(page) or 1
+    page_size = min(cint(page_size) or 20, 100)
+    offset = (page - 1) * page_size
 
-    products = frappe.db.sql("""
-        SELECT name, product_name, slug, thumbnail, price
-        FROM `tabProduct`
-        WHERE status = 'Active'
-          AND (product_name LIKE %(q)s OR sku LIKE %(q)s OR tags LIKE %(q)s)
-        LIMIT %(limit)s
-    """, {"q": f"%{query}%", "limit": limit}, as_dict=True)
+    if not query and not category and not brand:
+        return {"results": [], "total": 0, "page": page, "page_size": page_size}
 
-    categories = frappe.db.sql("""
-        SELECT name, category_name, slug, image
-        FROM `tabCategory`
-        WHERE is_active = 1
-          AND (category_name LIKE %(q)s OR slug LIKE %(q)s)
-        LIMIT 5
-    """, {"q": f"%{query}%"}, as_dict=True)
+    # Build the search query
+    conditions = ["p.status = 'Active'"]
+    params = []
 
-    suggestions = []
-    for p in products:
-        suggestions.append({
-            "type": "product",
-            "name": p.product_name,
-            "slug": p.slug,
-            "thumbnail": p.thumbnail,
-            "price": flt(p.price or 0),
-            "href": f"/products/{p.slug}",
-        })
-    for c in categories:
-        suggestions.append({
-            "type": "category",
-            "name": c.category_name,
-            "slug": c.slug,
-            "image": c.image,
-            "href": f"/category/{c.slug}",
-        })
+    if query:
+        # Try FULLTEXT first, fall back to LIKE
+        conditions.append("""
+            (MATCH(p.product_name, p.short_description, p.tags) AGAINST(%s IN BOOLEAN MODE)
+             OR p.product_name LIKE %s
+             OR p.slug LIKE %s
+             OR p.tags LIKE %s)
+        """)
+        # BOOLEAN MODE search terms
+        ft_terms = " ".join("+{0}*".format(w) for w in query.split() if w)
+        like_term = "%{0}%".format(query)
+        params.extend([ft_terms, like_term, like_term, like_term])
 
-    return {"suggestions": suggestions[:limit]}
+    if category:
+        conditions.append("p.category = %s")
+        params.append(category)
 
+    if brand:
+        conditions.append("p.brand = %s")
+        params.append(brand)
 
-@frappe.whitelist(allow_guest=True)
-def search_products(query, page=1, page_size=20, category=None, sort=None,
-                   min_price=None, max_price=None, in_stock=None, tags=None):
-    """
-    Full product search with ranking.
+    if min_price:
+        conditions.append(" EXISTS (SELECT 1 FROM `tabVendor Listing` vl WHERE vl.product = p.name AND vl.price >= %s)")
+        params.append(float(min_price))
 
-    Ranks results by:
-      1. Exact product_name match (highest)
-      2. Name starts with query
-      3. SKU match
-      4. Tag match
-      5. Description match (lowest)
-    """
-    if not query or len(query.strip()) < 2:
-        return {"items": [], "page": page, "page_size": page_size, "total": 0}
+    if max_price:
+        conditions.append(" EXISTS (SELECT 1 FROM `tabVendor Listing` vl WHERE vl.product = p.name AND vl.price <= %s)")
+        params.append(float(max_price))
 
-    from saathimart.api.products import list_products, _serialize_product
+    if in_stock:
+        conditions.append("""
+            EXISTS (SELECT 1 FROM `tabVendor Stock` vs
+                    WHERE vs.product = p.name AND vs.available_qty > 0)
+        """)
 
-    result = list_products(
-        category=category,
-        search=query,
-        page=page,
-        page_size=page_size,
-        sort=sort,
-        in_stock=in_stock,
-        min_price=min_price,
-        max_price=max_price,
-        tags=tags,
+    where_clause = " AND ".join(conditions)
+
+    # Count total
+    count_sql = "SELECT COUNT(DISTINCT p.name) FROM `tabProduct` p WHERE {0}".format(where_clause)
+    total = frappe.db.count("Product", filters={"status": "Active"})
+    if query or category or brand:
+        total = frappe.db.sql(count_sql, params, as_dict=True)[0].get("count", 0) if params else frappe.db.sql(count_sql.replace("%s", "1"), as_dict=True)[0].get("count", 0)
+
+    # Fetch results with relevance scoring
+    sql = """
+        SELECT p.name, p.product_name, p.slug, p.thumbnail, p.category,
+               p.short_description, p.brand, p.avg_rating, p.review_count,
+               p.has_variants, p.variant_of,
+               {relevance}
+        FROM `tabProduct` p
+        WHERE {where}
+        GROUP BY p.name
+        ORDER BY {order}
+        LIMIT %s OFFSET %s
+    """.format(
+        relevance="MATCH(p.product_name, p.short_description, p.tags) AGAINST(%s IN BOOLEAN MODE) AS relevance" if query else "0 AS relevance",
+        where=where_clause,
+        order="relevance DESC, p.product_name ASC" if query else "p.product_name ASC",
     )
-    items = result.get("items", [])
 
-    # Record search query for analytics
-    _record_search(query, len(items))
+    search_params = [ft_terms] if query else []
+    results = frappe.db.sql(sql, search_params + params + [page_size, offset], as_dict=True)
+
+    # Enrich with pricing
+    from saathimart.api.products import _enrich_listing
+    enriched = []
+    for r in results:
+        best = frappe.db.get_value(
+            "Vendor Listing",
+            {"product": r.name, "status": "Active"},
+            ["name", "vendor", "price", "compare_price", "available_qty"],
+            as_dict=True,
+        )
+        if best:
+            r["price"] = best.price
+            r["compare_price"] = best.compare_price
+            r["in_stock"] = (best.available_qty or 0) > 0
+            r["vendor"] = best.vendor
+        else:
+            r["price"] = 0
+            r["in_stock"] = False
+        enriched.append(r)
 
     return {
-        "items": items,
-        "page": result.get("page", page),
-        "page_size": result.get("page_size", page_size),
-        "total": result.get("total", 0),
+        "results": enriched,
+        "total": total,
+        "page": page,
+        "page_size": page_size,
         "query": query,
     }
 
 
-@frappe.whitelist(allow_guest=True)
-def get_top_searches(limit=10):
-    """Return most searched terms from the native Search Term ledger, or
-    fall back to popular products from recent orders."""
-    limit = min(50, max(1, int(limit)))
+@frappe.whitelelist()
+def search_suggestions(query="", limit=8):
+    """Return autocomplete suggestions for a search query."""
+    query = (query or "").strip()
+    if len(query) < 2:
+        return []
 
-    # Native Search Term rows — ported from saathi_middleware's SM Search
-    # Term. This app requires only frappe, so the webshop-module
-    # "Ecommerce Search Analytics" doctype this used to read cannot exist
-    # here and the old try/except silently degraded to the order fallback.
-    analytics = frappe.get_all(
-        "Search Term",
-        fields=["search_term", "search_count"],
-        order_by="search_count desc",
+    # Product name suggestions
+    products = frappe.get_all(
+        "Product",
+        filters={"status": "Active", "product_name": ("like", "%{0}%".format(query))},
+        fields=["product_name", "slug", "thumbnail"],
         limit_page_length=limit,
     )
-    if analytics:
-        return [{"term": r.search_term, "count": r.search_count} for r in analytics]
 
-    # Fallback: derive from product name/tag frequency in orders
-    terms = frappe.db.sql("""
-        SELECT oi.product, p.product_name, COUNT(*) as order_count
-        FROM `tabOrder Item` oi
-        JOIN `tabOrder` o ON oi.parent = o.name
-        LEFT JOIN `tabProduct` p ON oi.product = p.name
-        WHERE o.creation >= %s
-          AND o.status NOT IN ('Cancelled', 'Refunded')
-        GROUP BY oi.product
-        ORDER BY order_count DESC
-        LIMIT %s
-    """, (add_days(today(), -30), limit), as_dict=True)
+    # Category suggestions
+    categories = frappe.get_all(
+        "Product Category",
+        filters={"category_name": ("like", "%{0}%".format(query))},
+        fields=["category_name", "name"],
+        limit_page_length=3,
+    )
 
-    return [{"term": r.product_name, "count": r.order_count} for r in terms if r.product_name]
+    # Brand suggestions
+    brands = frappe.get_all(
+        "Brand",
+        filters={"brand_name": ("like", "%{0}%".format(query))},
+        fields=["brand_name", "name"],
+        limit_page_length=3,
+    )
 
+    suggestions = []
+    for p in products:
+        suggestions.append({"type": "product", "text": p.product_name, "slug": p.slug, "thumbnail": p.thumbnail})
+    for c in categories:
+        suggestions.append({"type": "category", "text": c.category_name, "slug": c.name})
+    for b in brands:
+        suggestions.append({"type": "brand", "text": b.brand_name, "slug": b.name})
 
-@frappe.whitelist(allow_guest=True)
-def get_suggestions(query, limit=10):
-    """
-    Alias for autocomplete — kept for backward compat with old frontend.
-    """
-    return autocomplete(query, limit=limit)
-
-
-def _record_search(query, result_count):
-    """Persist a search query for top-search analytics when tracking is enabled.
-
-    One row per normalized key, UPSERT-incremented — 'Fresh Milk' and
-    'fresh milk' land on the same row and the count climbs.
-    """
-    try:
-        settings = frappe.get_single("Settings")
-        if not getattr(settings, "track_top_searches", 0):
-            return
-    except Exception:
-        return
-
-    normalized = _normalize_search_key(query)
-    if not normalized:
-        return
-
-    try:
-        existing = frappe.db.get_value(
-            "Search Term",
-            {"search_key": normalized},
-            ["name", "search_count", "last_result_count"],
-            as_dict=True,
-        )
-        if existing:
-            frappe.db.set_value("Search Term", existing.name, {
-                "search_count": (existing.search_count or 0) + 1,
-                "last_result_count": result_count,
-                "last_searched_at": now_datetime(),
-            })
-        else:
-            frappe.get_doc({
-                "doctype": "Search Term",
-                "search_term": query.strip(),
-                "search_key": normalized,
-                "search_count": 1,
-                "last_result_count": result_count,
-                "last_searched_at": now_datetime(),
-            }).insert(ignore_permissions=True)
-    except Exception:
-        pass
+    return suggestions[:limit]

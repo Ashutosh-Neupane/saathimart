@@ -452,6 +452,17 @@ def _deliver_event_async(event_name, secret, max_retries):
 def _deliver_event(evt, secret, max_retries):
     try:
         target_vendor = getattr(evt, "target_vendor", None) or ""
+
+        # Circuit breaker: skip delivery if vendor is known-down
+        if target_vendor:
+            from saathimart.api.circuit_breaker import should_attempt_delivery
+            if not should_attempt_delivery(target_vendor):
+                frappe.log_error(
+                    title="Circuit Breaker — Delivery Skipped",
+                    message=f"Vendor {target_vendor} circuit is OPEN. Event {evt.name} deferred."
+                )
+                return
+
         vendor_secret = secret
         if target_vendor:
             vs = frappe.db.get_value("Vendor", target_vendor, "webhook_secret")
@@ -504,6 +515,9 @@ def _deliver_event(evt, secret, max_retries):
             "next_retry_at": next_retry,
             "response": response_text,
         })
+        if target_vendor:
+            from saathimart.api.circuit_breaker import record_delivery_failure
+            record_delivery_failure(target_vendor)
     elif status == "Failed":
         frappe.db.set_value("Webhook Event", evt.name, {
             "status": "Dead",
@@ -511,12 +525,18 @@ def _deliver_event(evt, secret, max_retries):
             "response": response_text,
             "dead_letter_reason": f"Failed after {retry_count} retries. Last error: {response_text[:500]}",
         })
+        if target_vendor:
+            from saathimart.api.circuit_breaker import record_delivery_failure
+            record_delivery_failure(target_vendor)
     else:
         frappe.db.set_value("Webhook Event", evt.name, {
             "status": status,
             "retry_count": retry_count,
             "response": response_text,
         })
+        if target_vendor:
+            from saathimart.api.circuit_breaker import record_delivery_success
+            record_delivery_success(target_vendor)
     frappe.db.commit()
 
 

@@ -1,0 +1,227 @@
+# Production Docker Compose for SaathiMart Hub + Vendor
+# Usage: docker compose -f docker/docker-compose.prod.yml up -d
+#
+# Prerequisites:
+#   - Set WEBHOOK_SECRET, DB_PASSWORD, SALT in .env
+#   - Place SSL certs in ./certs/ or use Let's Encrypt
+#   - Configure domain names in nginx.conf
+
+version: "3.8"
+
+services:
+  nginx:
+    image: nginx:alpine
+    container_name: sm-nginx
+    restart: unless-stopped
+    ports:
+      - "80:80"
+      - "443:443"
+    volumes:
+      - ./nginx.conf:/etc/nginx/nginx.conf:ro
+      - ./certs:/etc/nginx/certs:ro
+      - sm_nginx_logs:/var/log/nginx
+    depends_on:
+      hub:
+        condition: service_healthy
+    networks:
+      - sm-network
+    deploy:
+      resources:
+        limits:
+          memory: 256M
+          cpus: "0.5"
+
+  hub:
+    build:
+      context: ..
+      dockerfile: docker/Dockerfile
+    container_name: sm-hub
+    restart: unless-stopped
+    environment:
+      - SITE=saathimart.localhost
+      - DB_HOST=mariadb
+      - DB_PORT=3306
+      - DB_NAME=saathimart
+      - DB_ROOT_PASSWORD=${DB_PASSWORD}
+      - REDIS_CACHE=redis-cache:6379
+      - REDIS_QUEUE=redis-queue:6379
+      - FRAPPE_SITE_NAME=saathimart.localhost
+      - WORKERS=4
+      - THREADS=8
+    volumes:
+      - sm_hub_sites:/home/frappe/frappe-bench/sites
+      - sm_hub_apps:/home/frappe/frappe-bench/apps
+      - sm_hub_logs:/home/frappe/frappe-bench/logs
+    depends_on:
+      mariadb:
+        condition: service_healthy
+      redis-cache:
+        condition: service_healthy
+      redis-queue:
+        condition: service_healthy
+    healthcheck:
+      test: ["CMD", "curl", "-f", "http://localhost:8000/api/method/ping"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+      start_period: 120s
+    networks:
+      - sm-network
+    deploy:
+      resources:
+        limits:
+          memory: 1G
+          cpus: "1.5"
+
+  hub-worker:
+    build:
+      context: ..
+      dockerfile: docker/Dockerfile
+    container_name: sm-hub-worker
+    restart: unless-stopped
+    command: ["bench", "worker", "--queue", "default,short,long"]
+    environment:
+      - SITE=saathimart.localhost
+      - DB_HOST=mariadb
+      - DB_PORT=3306
+      - DB_NAME=saathimart
+      - DB_ROOT_PASSWORD=${DB_PASSWORD}
+      - REDIS_CACHE=redis-cache:6379
+      - REDIS_QUEUE=redis-queue:6379
+      - WORKER_TYPE=worker
+    volumes:
+      - sm_hub_sites:/home/frappe/frappe-bench/sites
+      - sm_hub_apps:/home/frappe/frappe-bench/apps
+      - sm_hub_logs:/home/frappe/frappe-bench/logs
+    depends_on:
+      hub:
+        condition: service_healthy
+    networks:
+      - sm-network
+    deploy:
+      resources:
+        limits:
+          memory: 512M
+          cpus: "1.0"
+
+  mariadb:
+    image: mariadb:10.6
+    container_name: sm-mariadb
+    restart: unless-stopped
+    environment:
+      - MYSQL_ROOT_PASSWORD=${DB_PASSWORD}
+      - MYSQL_DATABASE=saathimart
+    volumes:
+      - sm_mariadb_data:/var/lib/mysql
+      - ./mariadb.conf:/etc/mysql/conf.d/custom.cnf:ro
+    healthcheck:
+      test: ["CMD", "mysqladmin", "ping", "-h", "localhost", "-p${DB_PASSWORD}"]
+      interval: 10s
+      timeout: 5s
+      retries: 10
+    networks:
+      - sm-network
+    deploy:
+      resources:
+        limits:
+          memory: 512M
+          cpus: "1.0"
+
+  redis-cache:
+    image: redis:7-alpine
+    container_name: sm-redis-cache
+    restart: unless-stopped
+    command: redis-server --maxmemory 256mb --maxmemory-policy allkeys-lru
+    volumes:
+      - sm_redis_cache:/data
+    healthcheck:
+      test: ["CMD", "redis-cli", "ping"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+    networks:
+      - sm-network
+    deploy:
+      resources:
+        limits:
+          memory: 256M
+          cpus: "0.5"
+
+  redis-queue:
+    image: redis:7-alpine
+    container_name: sm-redis-queue
+    restart: unless-stopped
+    command: redis-server --maxmemory 128mb --maxmemory-policy allkeys-lru
+    volumes:
+      - sm_redis_queue:/data
+    healthcheck:
+      test: ["CMD", "redis-cli", "ping"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+    networks:
+      - sm-network
+    deploy:
+      resources:
+        limits:
+          memory: 128M
+          cpus: "0.5"
+
+  scheduler:
+    build:
+      context: ..
+      dockerfile: docker/Dockerfile
+    container_name: sm-scheduler
+    restart: unless-stopped
+    command: ["bench", "schedule"]
+    environment:
+      - SITE=saathimart.localhost
+      - DB_HOST=mariadb
+      - DB_PORT=3306
+      - DB_NAME=saathimart
+      - DB_ROOT_PASSWORD=${DB_PASSWORD}
+      - REDIS_CACHE=redis-cache:6379
+      - REDIS_QUEUE=redis-queue:6379
+    volumes:
+      - sm_hub_sites:/home/frappe/frappe-bench/sites
+      - sm_hub_apps:/home/frappe/frappe-bench/apps
+      - sm_hub_logs:/home/frappe/frappe-bench/logs
+    depends_on:
+      hub:
+        condition: service_healthy
+    networks:
+      - sm-network
+    deploy:
+      resources:
+        limits:
+          memory: 256M
+          cpus: "0.25"
+
+  logrotate:
+    image: alpine:latest
+    container_name: sm-logrotate
+    restart: unless-stopped
+    command: >
+      sh -c "while true; do
+        find /var/log -name '*.log' -size +10M -exec truncate -s 5M {} \;
+        find /var/log -name '*.log.*' -mtime +7 -delete
+        sleep 86400
+      done"
+    volumes:
+      - sm_hub_logs:/var/log/hub
+      - sm_nginx_logs:/var/log/nginx
+    networks:
+      - sm-network
+
+volumes:
+  sm_hub_sites:
+  sm_hub_apps:
+  sm_hub_logs:
+  sm_mariadb_data:
+  sm_redis_cache:
+  sm_redis_queue:
+  sm_nginx_logs:
+
+networks:
+  sm-network:
+    driver: bridge

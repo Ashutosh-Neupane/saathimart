@@ -106,6 +106,7 @@ def verify_hub_secret(endpoint):
     vendor_id = frappe.request.headers.get("X-Vendor-ID", "")
 
     expected = settings_secret
+    expected_old = ""
     if vendor_id and frappe.db.exists("Vendor", vendor_id):
         from frappe.utils.password import get_decrypted_password
         try:
@@ -116,6 +117,15 @@ def verify_hub_secret(endpoint):
             vendor_secret = ""
         if vendor_secret:
             expected = vendor_secret
+        # Zero-downtime rotation: while a rotation is in flight (or its old
+        # value hasn't been cleaned up yet), signatures from either secret
+        # are valid. The old one is accepted but never used for signing.
+        try:
+            expected_old = get_decrypted_password(
+                "Vendor", vendor_id, "webhook_secret_old", raise_exception=False
+            ) or ""
+        except Exception:
+            expected_old = ""
 
     if not expected:
         frappe.throw(_("Webhook secret not configured"), frappe.AuthenticationError)
@@ -127,13 +137,21 @@ def verify_hub_secret(endpoint):
         # here we only need it as part of the signed message.
         raw_body = frappe.request.get_data(cache=True, as_text=False) or b""
         computed = compute_hmac_signature(expected, ts, raw_body)
-        if not hmac.compare_digest(signature.strip(), computed):
-            log_auth_failure(endpoint, "invalid_signature")
-            frappe.throw(_("Invalid signature"), frappe.AuthenticationError)
-        return
+        if hmac.compare_digest(signature.strip(), computed):
+            return
+        if expected_old:
+            computed_old = compute_hmac_signature(expected_old, ts, raw_body)
+            if hmac.compare_digest(signature.strip(), computed_old):
+                return
+        log_auth_failure(endpoint, "invalid_signature")
+        frappe.throw(_("Invalid signature"), frappe.AuthenticationError)
 
     incoming = frappe.request.headers.get("X-SM-Secret", "")
-    if not incoming or not hmac.compare_digest(incoming, expected):
+    matched = bool(incoming) and (
+        hmac.compare_digest(incoming, expected)
+        or (bool(expected_old) and hmac.compare_digest(incoming, expected_old))
+    )
+    if not matched:
         log_auth_failure(endpoint, "invalid_secret")
         frappe.throw(_("Invalid secret"), frappe.AuthenticationError)
 

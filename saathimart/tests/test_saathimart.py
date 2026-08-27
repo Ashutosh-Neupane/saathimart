@@ -16,6 +16,7 @@ Run:
 """
 import json
 import unittest
+from unittest.mock import MagicMock, patch
 
 import frappe
 from frappe.utils import flt, today, add_days
@@ -2816,3 +2817,151 @@ class TestAdminVariantManagement(unittest.TestCase):
         vslug = result["created"][0]["slug"]
         out = delete_variant(vslug)
         self.assertEqual(out["status"], "Inactive")
+
+
+# ── Inbound vendor-push authentication (HMAC signatures) ─────────────────────
+
+class TestVerifyHubSecret(unittest.TestCase):
+    """
+    verify_hub_secret / verify_hub_timestamp (api/utils.py): valid HMAC
+    signatures pass; tampered bodies, wrong secrets and stale timestamps
+    are rejected. Covers the global-secret path, the per-vendor override,
+    and dual-secret acceptance during rotation.
+    """
+
+    GLOBAL = "unit-test-global-secret-0123456789abcdef"
+    VENDOR = "unit-test-vendor-secret-9876543210fedcba"
+    BODY = b'{"event": "stock.low", "payload": {}}'
+
+    def setUp(self):
+        import time as _time
+
+        frappe.set_user("Administrator")
+        from frappe.utils.password import set_encrypted_password
+
+        self._orig_global = (
+            frappe.get_single("Settings").get_password("webhook_secret", raise_exception=False)
+            or ""
+        )
+        set_encrypted_password("Settings", "Settings", self.GLOBAL, "webhook_secret")
+
+        self.vendor = _make_vendor("HMAC Auth Test Vendor")
+        set_encrypted_password("Vendor", self.vendor.name, self.VENDOR, "webhook_secret")
+        frappe.db.commit()
+        self.ts = str(int(_time.time()))
+
+    def tearDown(self):
+        from frappe.utils.password import set_encrypted_password
+
+        set_encrypted_password(
+            "Settings", "Settings", self._orig_global or None, "webhook_secret"
+        )
+        # Clear rotation fields so later tests don't inherit stale secrets.
+        # Password fields live in __Auth — db.set_value to None doesn't
+        # remove the encrypted row, so use db.delete instead.
+        frappe.db.delete("__Auth", {
+            "doctype": "Vendor",
+            "name": self.vendor.name,
+            "fieldname": "webhook_secret_old",
+        })
+        frappe.db.commit()
+
+    def _headers(self, vendor_id=None, ts=None):
+        headers = {"X-SM-Timestamp": ts or self.ts}
+        if vendor_id:
+            headers["X-Vendor-ID"] = vendor_id
+        return headers
+
+    def _verify(self, headers, body=None, expect_error=False):
+        from saathimart.api.utils import verify_hub_secret
+
+        fake = MagicMock()
+        fake.headers = headers
+        fake.get_data.return_value = self.BODY if body is None else body
+        with patch("frappe.request", fake), \
+             patch("saathimart.api.utils.log_auth_failure"):
+            if expect_error:
+                with self.assertRaises(frappe.AuthenticationError):
+                    verify_hub_secret("test")
+            else:
+                verify_hub_secret("test")
+
+    def _sig(self, secret, body=None, ts=None):
+        from saathimart.api.utils import compute_hmac_signature
+
+        return compute_hmac_signature(secret, ts or self.ts, self.BODY if body is None else body)
+
+    # ── happy paths ──
+
+    def test_valid_signature_with_global_secret_accepted(self):
+        h = self._headers()
+        h["X-SM-Signature"] = self._sig(self.GLOBAL)
+        self._verify(h)
+
+    def test_valid_signature_with_vendor_secret_accepted(self):
+        h = self._headers(vendor_id=self.vendor.name)
+        h["X-SM-Signature"] = self._sig(self.VENDOR)
+        self._verify(h)
+
+    def test_legacy_secret_header_accepted(self):
+        h = self._headers()
+        h["X-SM-Secret"] = self.GLOBAL
+        self._verify(h)
+
+    # ── attack scenarios ──
+
+    def test_tampered_body_rejected(self):
+        h = self._headers()
+        h["X-SM-Signature"] = self._sig(self.GLOBAL, body=self.BODY)
+        tampered = self.BODY.replace(b"{}", b'{"qty": 999999}')
+        self._verify(h, body=tampered, expect_error=True)
+
+    def test_wrong_secret_rejected(self):
+        h = self._headers(vendor_id=self.vendor.name)
+        # Signed with the GLOBAL secret but claims the vendor identity —
+        # must fail because that vendor's own secret overrides.
+        h["X-SM-Signature"] = self._sig(self.GLOBAL)
+        self._verify(h, expect_error=True)
+
+    def test_garbage_signature_rejected(self):
+        h = self._headers()
+        h["X-SM-Signature"] = "not-a-real-signature"
+        self._verify(h, expect_error=True)
+
+    def test_stale_timestamp_rejected(self):
+        import time as _time
+
+        from saathimart.api.utils import verify_hub_timestamp
+
+        old_ts = str(int(_time.time()) - 600)
+        fake = MagicMock()
+        fake.headers = {"X-SM-Timestamp": old_ts}
+        with patch("frappe.request", fake):
+            with self.assertRaises(frappe.AuthenticationError):
+                verify_hub_timestamp(max_age_seconds=300)
+
+    def test_fresh_timestamp_accepted(self):
+        from saathimart.api.utils import verify_hub_timestamp
+
+        fake = MagicMock()
+        fake.headers = {"X-SM-Timestamp": self.ts}
+        with patch("frappe.request", fake):
+            verify_hub_timestamp(max_age_seconds=300)
+
+    # ── rotation window ──
+
+    def test_old_vendor_secret_accepted_during_rotation(self):
+        from frappe.utils.password import set_encrypted_password
+
+        set_encrypted_password("Vendor", self.vendor.name, self.GLOBAL, "webhook_secret_old")
+        # NEW primary...
+        h = self._headers(vendor_id=self.vendor.name)
+        h["X-SM-Signature"] = self._sig(self.VENDOR)
+        self._verify(h)
+        # ...and OLD both verify; an unknown third secret does not.
+        h2 = self._headers(vendor_id=self.vendor.name)
+        h2["X-SM-Signature"] = self._sig(self.GLOBAL)
+        self._verify(h2)
+        h3 = self._headers(vendor_id=self.vendor.name)
+        h3["X-SM-Signature"] = self._sig("third-unknown-secret-00000000000000")
+        self._verify(h3, expect_error=True)

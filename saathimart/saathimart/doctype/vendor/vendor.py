@@ -8,6 +8,22 @@ class Vendor(Document):
         if not self.slug:
             self.slug = frappe.scrub(self.vendor_name).replace("_", "-")
 
+        # Validate only one default warehouse
+        defaults = [w for w in (self.warehouses or []) if w.is_default]
+        if len(defaults) > 1:
+            frappe.throw(
+                "Only one warehouse can be marked as default. "
+                "{0} and {1} are both set as default.".format(
+                    defaults[0].warehouse_name, defaults[1].warehouse_name
+                )
+            )
+
+        # Sync read-only default_warehouse_name field
+        if defaults:
+            self.default_warehouse_name = defaults[0].warehouse_name
+        else:
+            self.default_warehouse_name = self.default_warehouse or ""
+
     def on_update(self):
         frappe.cache().delete_key(f"sm_vendor:{self.name}")
         frappe.cache().delete_key("sm_vendor_list")

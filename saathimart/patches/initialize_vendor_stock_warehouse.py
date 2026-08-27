@@ -1,27 +1,37 @@
 """
 Patch: Initialize warehouse dimension on existing Vendor Stock rows.
 
-Existing rows have no warehouse field value — they represent the vendor's
-default warehouse stock. This patch sets is_default_warehouse=1 on all
-existing rows so the multi-warehouse system recognizes them as the fallback.
-
-No data migration is needed: the new warehouse field is optional, and rows
-with empty warehouse continue to work exactly as before. The patch just
-marks them explicitly for clarity.
+Existing rows have names like {vendor}-{product} (no warehouse suffix).
+The new autoname is {vendor}-{product}-{warehouse}, so we rename
+existing rows to {vendor}-{product}-default and set the warehouse field
+to 'default' for backward compatibility.
 """
 import frappe
 
 
 def execute():
-    # Mark all existing Vendor Stock rows (with no warehouse set) as default
+    # 1. Rename existing Vendor Stock rows to include warehouse suffix
+    rows = frappe.db.sql("""
+        SELECT name, vendor, product FROM `tabVendor Stock`
+        WHERE warehouse IS NULL OR warehouse = '' OR warehouse = 'default'
+    """, as_dict=True)
+
+    for row in rows:
+        new_name = f"{row.vendor}-{row.product}-default"
+        if row.name != new_name:
+            try:
+                frappe.rename_doc("Vendor Stock", row.name, new_name, force=True)
+            except Exception:
+                pass  # name collision or other issue — skip
+
+    # 2. Set warehouse='default' and is_default_warehouse=1 on all empty-warehouse rows
     frappe.db.sql("""
         UPDATE `tabVendor Stock`
-        SET is_default_warehouse = 1, warehouse = ''
+        SET is_default_warehouse = 1, warehouse = 'default'
         WHERE (warehouse IS NULL OR warehouse = '')
     """)
 
-    # Mark all existing Vendor Listing rows with a warehouse field as
-    # linking to the default warehouse if the vendor has warehouses
+    # 3. Mark existing Vendor Listing rows with default warehouse
     frappe.db.sql("""
         UPDATE `tabVendor Listing` vl
         INNER JOIN `tabVendor` v ON vl.vendor = v.name

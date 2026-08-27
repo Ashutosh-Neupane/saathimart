@@ -12,22 +12,6 @@ class VendorWarehouse(Document):
     """
 
     def validate(self):
-        # Only one default warehouse per vendor
-        if self.is_default and self.parent and self.parenttype == "Vendor":
-            existing = [
-                r.name
-                for r in frappe.get_all(
-                    "Vendor Warehouse",
-                    filters={
-                        "parent": self.parent,
-                        "parenttype": "Vendor",
-                        "is_default": 1,
-                        "name": ("!=", self.name),
-                    },
-                )
-            ]
-            if existing:
-                frappe.throw(
-                    "Vendor {0} already has a default warehouse ({1}). "
-                    "Uncheck it first.".format(self.parent, existing[0])
-                )
+        # Default-warehouse uniqueness is validated in Vendor.before_save
+        # (the parent doc) where all siblings are visible in memory.
+        pass

@@ -51,17 +51,19 @@ def _generate_event_id():
 
 
 def get_or_create(vendor, product, warehouse=None):
-    name = _row_name(vendor, product, warehouse)
+    # Use 'default' as the warehouse value for backward-compat rows
+    wh = warehouse or "default"
+    name = _row_name(vendor, product, wh)
     if frappe.db.exists("Vendor Stock", name):
         return frappe.get_doc("Vendor Stock", name)
     doc = frappe.new_doc("Vendor Stock")
     doc.vendor = vendor
     doc.product = product
-    doc.warehouse = warehouse or ""
+    doc.warehouse = wh
     doc.is_default_warehouse = 0 if warehouse else 1
     doc.insert(ignore_permissions=True)
     frappe.cache().delete_key(f"sm_stock:{vendor}:{product}")
-    frappe.cache().delete_key(f"sm_stock:{vendor}:{product}:{warehouse or ''}")
+    frappe.cache().delete_key(f"sm_stock:{vendor}:{product}:{wh}")
     return doc
 
 

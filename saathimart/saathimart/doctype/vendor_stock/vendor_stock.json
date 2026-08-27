@@ -2,7 +2,7 @@
  "name": "Vendor Stock",
  "module": "Saathimart",
  "doctype": "DocType",
- "autoname": "format:{vendor}-{product}",
+ "autoname": "format:{vendor}-{product}-{warehouse}",
  "track_changes": 1,
  "fields": [
   {
@@ -26,7 +26,8 @@
    "fieldtype": "Data",
    "label": "Warehouse",
    "description": "Warehouse name. Empty = default warehouse. Unique per vendor+product+warehouse enforced in controller.",
-   "in_list_view": 1
+   "in_list_view": 1,
+   "default": "default"
   },
   {
    "fieldname": "is_default_warehouse",

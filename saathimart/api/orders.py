@@ -179,14 +179,19 @@ def checkout(session_id, customer_name, customer_phone, delivery_address,
                 else flt(zone.delivery_charge)
             )
 
-    # Create vendor fulfillments
+    # Create vendor fulfillments — find nearest warehouse for each vendor
+    from saathimart.api.warehouses import find_nearest_warehouse
     for v, items in vendor_groups.items():
         subtotal = sum(flt(i.qty) * flt(i.rate) for i in items)
+        # Route to the nearest warehouse with stock for this vendor
+        nearest_wh = find_nearest_warehouse(v, customer_lat, customer_lng)
         fulfillment = order.append("vendor_fulfillments", {
             "vendor": v,
             "subtotal": subtotal,
             "items_count": len(items),
             "status": "Pending",
+            "warehouse": nearest_wh.get("warehouse_name") if nearest_wh else "",
+            "warehouse_distance_km": nearest_wh.get("distance_km") if nearest_wh else 0,
         })
 
     # Run full totals engine

@@ -163,6 +163,8 @@ def on_order_created(doc, method):
             "grand_total": f.subtotal,
             "payment_method": doc.payment_method,
             "payment_status": doc.payment_status,
+            "warehouse": getattr(f, "warehouse", "") or "",
+            "warehouse_distance_km": getattr(f, "warehouse_distance_km", 0) or 0,
             "items": [
                 {"product": i.product, "qty": i.qty, "rate": i.rate}
                 for i in vendor_items

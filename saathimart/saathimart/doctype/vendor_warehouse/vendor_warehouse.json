@@ -1,0 +1,77 @@
+{
+  "name": "Vendor Warehouse",
+  "module": "Saathimart",
+  "doctype": "DocType",
+  "istable": 1,
+  "fields": [
+    {
+      "fieldname": "warehouse_name",
+      "fieldtype": "Data",
+      "label": "Warehouse Name",
+      "reqd": 1,
+      "in_list_view": 1
+    },
+    {
+      "fieldname": "erpnext_warehouse",
+      "fieldtype": "Data",
+      "label": "ERPNext Warehouse",
+      "description": "Name of the corresponding Warehouse doctype in the vendor's ERPNext site"
+    },
+    {
+      "fieldname": "col_break_1",
+      "fieldtype": "Column Break"
+    },
+    {
+      "fieldname": "lat",
+      "fieldtype": "Float",
+      "label": "Latitude",
+      "description": "Used for nearest-warehouse routing to customers"
+    },
+    {
+      "fieldname": "lng",
+      "fieldtype": "Float",
+      "label": "Longitude",
+      "description": "Used for nearest-warehouse routing to customers"
+    },
+    {
+      "fieldname": "col_break_2",
+      "fieldtype": "Column Break"
+    },
+    {
+      "fieldname": "is_default",
+      "fieldtype": "Check",
+      "label": "Default Warehouse",
+      "description": "Fallback when no warehouse is specified. Only one per vendor."
+    },
+    {
+      "fieldname": "priority",
+      "fieldtype": "Int",
+      "label": "Priority",
+      "default": "1",
+      "description": "Higher = preferred for fulfillment when distance is similar"
+    },
+    {
+      "fieldname": "status",
+      "fieldtype": "Select",
+      "label": "Status",
+      "options": "Active\nInactive",
+      "default": "Active",
+      "in_list_view": 1
+    },
+    {
+      "fieldname": "capacity_note",
+      "fieldtype": "Small Text",
+      "label": "Capacity Note",
+      "description": "Optional: e.g. 'Max 500 orders/day' for admin reference"
+    }
+  ],
+  "permissions": [
+    {
+      "role": "SM Admin",
+      "read": 1,
+      "write": 1,
+      "create": 1,
+      "delete": 1
+    }
+  ]
+}

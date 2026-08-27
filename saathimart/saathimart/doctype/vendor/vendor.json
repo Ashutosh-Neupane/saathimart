@@ -106,6 +106,24 @@
    "label": "Stock & Location"
   },
   {
+   "fieldname": "warehouses",
+   "fieldtype": "Table",
+   "label": "Warehouses",
+   "description": "Physical warehouse locations for this vendor. Used for multi-location stock and nearest-warehouse routing.",
+   "options": "Vendor Warehouse"
+  },
+  {
+   "fieldname": "col_break_wh",
+   "fieldtype": "Column Break"
+  },
+  {
+   "fieldname": "default_warehouse_name",
+   "fieldtype": "Data",
+   "label": "Default Warehouse Name",
+   "description": "Read-only: auto-populated from the warehouse marked as default. Fallback when no warehouse is specified.",
+   "read_only": 1
+  },
+  {
    "fieldname": "lat",
    "fieldtype": "Float",
    "label": "Latitude"

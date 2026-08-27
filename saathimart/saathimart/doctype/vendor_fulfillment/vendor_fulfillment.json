@@ -1,23 +1,83 @@
 {
-  "name": "Vendor Fulfillment",
-  "module": "Saathimart",
-  "doctype": "DocType",
-  "istable": 1,
-  "fields": [
-    {"fieldname": "vendor", "fieldtype": "Link", "label": "Vendor", "options": "Vendor", "in_list_view": 1},
-    {"fieldname": "vendor_name", "fieldtype": "Data", "label": "Vendor Name", "read_only": 1,
-     "fetch_from": "vendor.vendor_name", "in_list_view": 1,
-     "description": "Vendor.name is an autoname hash, not the vendor's business name — this fetched column is what actually shows in the fulfillments grid instead of the unreadable id."},
-    {"fieldname": "vendor_order_id", "fieldtype": "Data", "label": "Vendor Order ID", "in_list_view": 1},
-    {"fieldname": "status", "fieldtype": "Select", "label": "Status",
-     "options": "Pending\nConfirmed\nPreparing\nOut for Delivery\nDelivered\nCancelled",
-     "default": "Pending", "in_list_view": 1},
-    {"fieldname": "subtotal", "fieldtype": "Currency", "label": "Subtotal", "read_only": 1},
-    {"fieldname": "delivery_charge", "fieldtype": "Currency", "label": "Delivery Charge", "default": "0"},
-    {"fieldname": "items_count", "fieldtype": "Int", "label": "Items Count", "read_only": 1, "default": "0"},
-    {"fieldname": "notes", "fieldtype": "Small Text", "label": "Notes"},
-    {"fieldname": "vendor_payout", "fieldtype": "Link", "label": "Vendor Payout", "options": "Vendor Payout",
-     "read_only": 1, "in_list_view": 1,
-     "description": "Set once this fulfillment's cut has been paid out — blank means still owed."}
-  ]
+ "name": "Vendor Fulfillment",
+ "module": "Saathimart",
+ "doctype": "DocType",
+ "istable": 1,
+ "fields": [
+  {
+   "fieldname": "vendor",
+   "fieldtype": "Link",
+   "label": "Vendor",
+   "options": "Vendor",
+   "in_list_view": 1
+  },
+  {
+   "fieldname": "vendor_name",
+   "fieldtype": "Data",
+   "label": "Vendor Name",
+   "read_only": 1,
+   "fetch_from": "vendor.vendor_name",
+   "in_list_view": 1,
+   "description": "Vendor.name is an autoname hash, not the vendor's business name \u2014 this fetched column is what actually shows in the fulfillments grid instead of the unreadable id."
+  },
+  {
+   "fieldname": "vendor_order_id",
+   "fieldtype": "Data",
+   "label": "Vendor Order ID",
+   "in_list_view": 1
+  },
+  {
+   "fieldname": "status",
+   "fieldtype": "Select",
+   "label": "Status",
+   "options": "Pending\nConfirmed\nPreparing\nOut for Delivery\nDelivered\nCancelled",
+   "default": "Pending",
+   "in_list_view": 1
+  },
+  {
+   "fieldname": "subtotal",
+   "fieldtype": "Currency",
+   "label": "Subtotal",
+   "read_only": 1
+  },
+  {
+   "fieldname": "delivery_charge",
+   "fieldtype": "Currency",
+   "label": "Delivery Charge",
+   "default": "0"
+  },
+  {
+   "fieldname": "warehouse",
+   "fieldtype": "Data",
+   "label": "Fulfillment Warehouse",
+   "description": "Which warehouse this vendor fulfills from. Set by nearest-warehouse routing."
+  },
+  {
+   "fieldname": "warehouse_distance_km",
+   "fieldtype": "Float",
+   "label": "Warehouse Distance (km)",
+   "description": "Distance from the fulfillment warehouse to the customer"
+  },
+  {
+   "fieldname": "items_count",
+   "fieldtype": "Int",
+   "label": "Items Count",
+   "read_only": 1,
+   "default": "0"
+  },
+  {
+   "fieldname": "notes",
+   "fieldtype": "Small Text",
+   "label": "Notes"
+  },
+  {
+   "fieldname": "vendor_payout",
+   "fieldtype": "Link",
+   "label": "Vendor Payout",
+   "options": "Vendor Payout",
+   "read_only": 1,
+   "in_list_view": 1,
+   "description": "Set once this fulfillment's cut has been paid out \u2014 blank means still owed."
+  }
+ ]
 }

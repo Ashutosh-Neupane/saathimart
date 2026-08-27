@@ -29,7 +29,9 @@ MAX_SINGLE_EVENT_QTY = 1000  # guards against a vendor fat-fingering qty_change
 
 # ── Helpers ──────────────────────────────────────────────────────────────────
 
-def _row_name(vendor, product):
+def _row_name(vendor, product, warehouse=None):
+    if warehouse:
+        return f"{vendor}-{product}-{warehouse}"
     return f"{vendor}-{product}"
 
 
@@ -48,15 +50,18 @@ def _generate_event_id():
     return str(uuid.uuid4())
 
 
-def get_or_create(vendor, product):
-    name = _row_name(vendor, product)
+def get_or_create(vendor, product, warehouse=None):
+    name = _row_name(vendor, product, warehouse)
     if frappe.db.exists("Vendor Stock", name):
         return frappe.get_doc("Vendor Stock", name)
     doc = frappe.new_doc("Vendor Stock")
     doc.vendor = vendor
     doc.product = product
+    doc.warehouse = warehouse or ""
+    doc.is_default_warehouse = 0 if warehouse else 1
     doc.insert(ignore_permissions=True)
     frappe.cache().delete_key(f"sm_stock:{vendor}:{product}")
+    frappe.cache().delete_key(f"sm_stock:{vendor}:{product}:{warehouse or ''}")
     return doc
 
 
@@ -98,7 +103,8 @@ def _validate_event(vendor, product, payload):
     if not vendor or not frappe.db.exists("Vendor", vendor):
         return False, f"Unknown vendor {vendor!r}", None
 
-    row = get_or_create(vendor, product)
+    warehouse = payload.get("warehouse") or ""
+    row = get_or_create(vendor, product, warehouse)
 
     # Idempotency: if we have seen this event_id, skip
     if event_id and row.last_event_id == event_id:

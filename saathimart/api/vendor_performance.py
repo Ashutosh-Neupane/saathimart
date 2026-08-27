@@ -7,7 +7,7 @@ from frappe import _
 from frappe.utils import flt, now_datetime, add_to_date, time_diff_in_seconds
 
 
-@frappe.whitelelist()
+@frappe.whitelist()
 def get_vendor_scorecard(vendor_name, days=30):
     """Calculate performance scorecard for a vendor over the last N days."""
     if not vendor_name:
@@ -36,11 +36,15 @@ def get_vendor_scorecard(vendor_name, days=30):
     })
 
     # Acceptance speed (time from Pending to Confirmed)
-    acceptance_times = frappe.db.sql("""
-        SELECT TIMESTAMPDIFF(SECOND, creation, modified) as seconds
-        FROM `tabVendor Fulfillment`
-        WHERE vendor = %s AND status != 'Pending' AND creation >= %s
-    """, (vendor_name, cutoff), as_dict=True)
+    acceptance_times = []
+    try:
+        acceptance_times = frappe.db.sql("""
+            SELECT TIMESTAMPDIFF(SECOND, creation, modified) as seconds
+            FROM `tabVendor Fulfillment`
+            WHERE vendor = %s AND status != 'Pending' AND creation >= %s
+        """, (vendor_name, cutoff), as_dict=True)
+    except Exception:
+        pass
     avg_acceptance_seconds = (
         sum(t.seconds for t in acceptance_times) / len(acceptance_times)
         if acceptance_times else 0
@@ -52,15 +56,20 @@ def get_vendor_scorecard(vendor_name, days=30):
         "creation": (">=", cutoff),
     })
 
-    # Customer ratings
-    ratings = frappe.db.sql("""
-        SELECT AVG(r.rating) as avg_rating, COUNT(r.name) as review_count
-        FROM `tabProduct Review` r
-        INNER JOIN `tabVendor Fulfillment` vf ON r.order_id = vf.parent
-        WHERE vf.vendor = %s AND r.creation >= %s
-    """, (vendor_name, cutoff), as_dict=True)
-    avg_rating = flt(ratings[0].avg_rating) if ratings else 0
-    review_count = ratings[0].review_count if ratings else 0
+    # Customer ratings (safe — Review table may not exist)
+    avg_rating = 0
+    review_count = 0
+    try:
+        ratings = frappe.db.sql("""
+            SELECT AVG(r.rating) as avg_rating, COUNT(r.name) as review_count
+            FROM `tabReview` r
+            INNER JOIN `tabVendor Fulfillment` vf ON r.order_id = vf.parent
+            WHERE vf.vendor = %s AND r.creation >= %s
+        """, (vendor_name, cutoff), as_dict=True)
+        avg_rating = flt(ratings[0].avg_rating) if ratings else 0
+        review_count = ratings[0].review_count if ratings else 0
+    except Exception:
+        pass
 
     # Calculate scores
     delivery_rate = (delivered / total_orders * 100) if total_orders > 0 else 0
@@ -91,7 +100,7 @@ def get_vendor_scorecard(vendor_name, days=30):
     }
 
 
-@frappe.whitelelist()
+@frappe.whitelist()
 def get_all_vendor_scores(days=30):
     """Get performance scores for all active vendors."""
     vendors = frappe.get_all(

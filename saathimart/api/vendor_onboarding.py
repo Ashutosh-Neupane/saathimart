@@ -7,7 +7,7 @@ from frappe import _
 import secrets
 
 
-@frappe.whitelelist(allow_guest=True)
+@frappe.whitelist(allow_guest=True)
 def register_vendor(vendor_name, contact_email, contact_phone,
                     business_type="retail", address=""):
     """
@@ -105,7 +105,7 @@ def reject_vendor(vendor_name, reason=""):
     return {"ok": True, "vendor": vendor_name, "status": "Suspended"}
 
 
-@frappe.whitelelist(allow_guest=True)
+@frappe.whitelist(allow_guest=True)
 def get_onboarding_status(vendor_name):
     """Check onboarding status for a vendor."""
     if not frappe.db.exists("Vendor", vendor_name):

@@ -23,7 +23,7 @@ def get_customer_tier(customer_email):
     total_earned = frappe.db.sql("""
         SELECT COALESCE(SUM(points), 0) as total
         FROM `tabLoyalty Point Entry`
-        WHERE customer_email = %s AND type = 'Earn'
+        WHERE customer_email = %s AND entry_type = 'Earn'
     """, (customer_email,), as_dict=True)
 
     points = total_earned[0].total if total_earned else 0
@@ -63,9 +63,9 @@ def earn_points(customer_email, order_id, amount, vendor=None):
     try:
         entry = frappe.new_doc("Loyalty Point Entry")
         entry.customer_email = customer_email
-        entry.order_id = order_id
+        entry.order = order_id
         entry.points = points
-        entry.type = "Earn"
+        entry.entry_type = "Earn"
         entry.source = "order"
         entry.tier = tier
         entry.insert(ignore_permissions=True)
@@ -97,9 +97,9 @@ def redeem_points(customer_email, order_id, points_requested):
     try:
         entry = frappe.new_doc("Loyalty Point Entry")
         entry.customer_email = customer_email
-        entry.order_id = order_id
+        entry.order = order_id
         entry.points = -points_requested
-        entry.type = "Redeem"
+        entry.entry_type = "Redeem"
         entry.source = "order"
         entry.tier = tier
         entry.insert(ignore_permissions=True)
@@ -145,7 +145,7 @@ def get_loyalty_dashboard(customer_email):
     history = frappe.get_all(
         "Loyalty Point Entry",
         filters={"customer_email": customer_email},
-        fields=["points", "type", "order_id", "creation"],
+        fields=["points", "entry_type", "order", "creation"],
         order_by="creation desc",
         limit=10,
     )
@@ -172,7 +172,7 @@ def apply_referral(referrer_email, new_customer_email):
     existing = frappe.db.exists("Loyalty Point Entry", {
         "customer_email": referrer_email,
         "source": "referral",
-        "order_id": ("like", "%{0}%".format(new_customer_email)),
+        "order": ("like", "%{0}%".format(new_customer_email)),
     })
     if existing:
         return
@@ -182,9 +182,9 @@ def apply_referral(referrer_email, new_customer_email):
         entry = frappe.new_doc("Loyalty Point Entry")
         entry.customer_email = referrer_email
         entry.points = 100
-        entry.type = "Earn"
+        entry.entry_type = "Earn"
         entry.source = "referral"
-        entry.order_id = "referral:{0}".format(new_customer_email)
+        entry.order = "referral:{0}".format(new_customer_email)
         entry.insert(ignore_permissions=True)
         frappe.db.commit()
     except Exception:
@@ -224,9 +224,9 @@ def check_birthday_rewards():
             entry = frappe.new_doc("Loyalty Point Entry")
             entry.customer_email = c.email_id
             entry.points = 50
-            entry.type = "Earn"
+            entry.entry_type = "Earn"
             entry.source = "birthday"
-            entry.order_id = "birthday:{0}".format(today.year)
+            entry.order = "birthday:{0}".format(today.year)
             entry.insert(ignore_permissions=True)
         except Exception:
             pass

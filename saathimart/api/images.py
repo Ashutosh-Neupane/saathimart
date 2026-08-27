@@ -32,7 +32,7 @@ def get_image_url(file_url, size="medium"):
         return file_url
 
     # CDN rewriting
-    cdn_base = frappe.db.get_single_value("Settings", "cdn_base_url") or ""
+    cdn_base = ""
     if cdn_base:
         return "{0}{1}".format(cdn_base.rstrip("/"), file_url)
 

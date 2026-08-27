@@ -5,7 +5,8 @@ replay capability.
 """
 import frappe
 from frappe import _
-from frappe.utils import now_datetime, cjson
+import json as cjson
+from frappe.utils import now_datetime
 
 
 def record_order_event(order_id, event_type, data=None, actor=None):

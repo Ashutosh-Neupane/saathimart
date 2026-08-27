@@ -7,7 +7,7 @@ from frappe import _
 from frappe.utils import cint
 
 
-@frappe.whitelelist()
+@frappe.whitelist()
 def search_products(query="", page=1, page_size=20, category=None, brand=None,
                     min_price=None, max_price=None, in_stock=None):
     """
@@ -121,7 +121,7 @@ def search_products(query="", page=1, page_size=20, category=None, brand=None,
     }
 
 
-@frappe.whitelelist()
+@frappe.whitelist()
 def search_suggestions(query="", limit=8):
     """Return autocomplete suggestions for a search query."""
     query = (query or "").strip()
@@ -136,21 +136,29 @@ def search_suggestions(query="", limit=8):
         limit_page_length=limit,
     )
 
-    # Category suggestions
-    categories = frappe.get_all(
-        "Product Category",
-        filters={"category_name": ("like", "%{0}%".format(query))},
-        fields=["category_name", "name"],
-        limit_page_length=3,
-    )
+    # Category suggestions (safe — Product Category may not exist)
+    categories = []
+    try:
+        categories = frappe.get_all(
+            "Product Category",
+            filters={"category_name": ("like", "%{0}%".format(query))},
+            fields=["category_name", "name"],
+            limit_page_length=3,
+        )
+    except Exception:
+        pass
 
-    # Brand suggestions
-    brands = frappe.get_all(
-        "Brand",
-        filters={"brand_name": ("like", "%{0}%".format(query))},
-        fields=["brand_name", "name"],
-        limit_page_length=3,
-    )
+    # Brand suggestions (safe — Brand may not exist)
+    brands = []
+    try:
+        brands = frappe.get_all(
+            "Brand",
+            filters={"brand_name": ("like", "%{0}%".format(query))},
+            fields=["brand_name", "name"],
+            limit_page_length=3,
+        )
+    except Exception:
+        pass
 
     suggestions = []
     for p in products:

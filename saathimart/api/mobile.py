@@ -8,7 +8,7 @@ from frappe.utils import cint, cstr
 import json
 
 
-@frappe.whitelelist(allow_guest=True)
+@frappe.whitelist(allow_guest=True)
 def list_products_light(category=None, search=None, page=1, page_size=20,
                         sort=None, lat=None, lng=None, cursor=None,
                         fields=None):
@@ -111,7 +111,7 @@ def list_products_light(category=None, search=None, page=1, page_size=20,
     }
 
 
-@frappe.whitelelist(allow_guest=True)
+@frappe.whitelist(allow_guest=True)
 def get_product_light(slug):
     """Lightweight product detail for mobile — minimal fields, fast response."""
     from saathimart.api.products import get_product
@@ -119,7 +119,7 @@ def get_product_light(slug):
     return get_product(slug)
 
 
-@frappe.whitelelist(allow_guest=True)
+@frappe.whitelist(allow_guest=True)
 def get_cart_light(session_id=None):
     """Lightweight cart for mobile — minimal fields."""
     from saathimart.api.cart import find_active_cart, get_cart

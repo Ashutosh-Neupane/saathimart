@@ -7,6 +7,7 @@ States: CLOSED (normal) → OPEN (blocking) → HALF_OPEN (testing) → CLOSED
 """
 import frappe
 from frappe.utils import now_datetime
+from saathimart.api.redis_fallback import get_cache_fallback
 
 # Configuration
 FAILURE_THRESHOLD = 5      # consecutive failures before opening
@@ -16,7 +17,7 @@ SUCCESS_THRESHOLD = 2      # successes in half-open to close circuit
 
 def record_delivery_failure(vendor_name):
     """Record a failed delivery attempt to a vendor."""
-    cache = frappe.cache()
+    cache = get_cache_fallback()
     key = f"sm_circuit:{vendor_name}"
 
     state = cache.get_value(key) or {"failures": 0, "state": "closed", "opened_at": None}
@@ -33,7 +34,7 @@ def record_delivery_failure(vendor_name):
 
 def record_delivery_success(vendor_name):
     """Record a successful delivery to a vendor."""
-    cache = frappe.cache()
+    cache = get_cache_fallback()
     key = f"sm_circuit:{vendor_name}"
 
     state = cache.get_value(key) or {"failures": 0, "state": "closed"}
@@ -56,7 +57,7 @@ def should_attempt_delivery(vendor_name):
     Returns True if circuit is closed or half-open (test request allowed).
     Returns False if circuit is open (vendor is down, don't waste resources).
     """
-    cache = frappe.cache()
+    cache = get_cache_fallback()
     key = f"sm_circuit:{vendor_name}"
     state = cache.get_value(key)
 
@@ -85,7 +86,7 @@ def should_attempt_delivery(vendor_name):
 
 def get_circuit_state(vendor_name):
     """Return current circuit state for a vendor."""
-    cache = frappe.cache()
+    cache = get_cache_fallback()
     state = cache.get_value(f"sm_circuit:{vendor_name}")
     if not state:
         return {"state": "closed", "failures": 0}
@@ -110,7 +111,7 @@ def get_all_circuit_states():
 
 def reset_circuit(vendor_name):
     """Manually reset a vendor's circuit (admin override)."""
-    cache = frappe.cache()
+    cache = get_cache_fallback()
     cache.delete_key(f"sm_circuit:{vendor_name}")
     _log_circuit_event(vendor_name, "manually_reset")
 

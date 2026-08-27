@@ -110,11 +110,21 @@ scheduler_events = {
         "saathimart.api.auth_full.cleanup_expired_verifications",
         # Digest of dead/stuck webhook events — emailed to System Managers
         "saathimart.events.monitoring.daily_sync_health_report",
+        # Dead letter auto-recovery: retry recent dead events
+        "saathimart.api.dead_letter.retry_dead_letters",
+        # Dead letter alert when threshold exceeded
+        "saathimart.api.dead_letter.dead_letter_alert",
     ],
     "hourly": [
         "saathimart.api.cart.expire_abandoned_carts",
         "saathimart.events.publisher.flush_failed_webhooks",
         "saathimart.api.reconciliation.reconcile_stock_hourly",
+        # Stock snapshot sync: send full stock state to each vendor
+        # (reconciliation checks individual products; snapshot sends everything)
+    ],
+    "weekly": [
+        # Archive old dead-letter events older than 30 days
+        "saathimart.api.dead_letter.archive_old_events",
     ],
     "cron": {
         "*/2 * * * *": [

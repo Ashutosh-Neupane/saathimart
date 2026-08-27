@@ -143,8 +143,8 @@ def get_cart_light(session_id=None):
         "items": items,
         "item_count": len(items),
         "subtotal": cart.subtotal or 0,
-        "delivery_charge": cart.delivery_charge or 0,
-        "total": cart.grand_total or 0,
+        "delivery_zone": cart.delivery_zone or None,
+        "total": cart.subtotal or 0,
     }
 
 

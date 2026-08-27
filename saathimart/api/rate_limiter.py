@@ -6,6 +6,7 @@ MAX_FAILURES failures within the WINDOW, the IP is blocked for BLOCK_DURATION.
 """
 import frappe
 from frappe import _
+from saathimart.api.redis_fallback import get_cache_fallback
 
 # Configuration
 MAX_FAILURES = 10          # failures before block
@@ -21,7 +22,7 @@ def check_rate_limit(key, max_failures=None, window=None):
     max_failures = max_failures or MAX_FAILURES
     window = window or WINDOW_SECONDS
 
-    cache = frappe.cache()
+    cache = get_cache_fallback()
     block_key = f"sm_auth_block:{key}"
     count_key = f"sm_auth_count:{key}"
 
@@ -44,7 +45,7 @@ def check_rate_limit(key, max_failures=None, window=None):
 def record_failure(key, window=None):
     """Record an auth failure for the given key. Increments counter."""
     window = window or WINDOW_SECONDS
-    cache = frappe.cache()
+    cache = get_cache_fallback()
     count_key = f"sm_auth_count:{key}"
 
     count = cache.get_value(count_key) or 0
@@ -56,19 +57,21 @@ def record_failure(key, window=None):
 
 def clear_failures(key):
     """Clear failure count for a key (e.g. after successful auth)."""
-    cache = frappe.cache()
+    cache = get_cache_fallback()
     cache.delete_key(f"sm_auth_count:{key}")
     cache.delete_key(f"sm_auth_block:{key}")
 
 
 def is_blocked(key):
     """Check if a key is currently blocked."""
-    return bool(frappe.cache().get_value(f"sm_auth_block:{key}"))
+    cache = get_cache_fallback()
+    return bool(cache.get_value(f"sm_auth_block:{key}"))
 
 
 def get_failure_count(key):
     """Get current failure count for a key."""
-    return frappe.cache().get_value(f"sm_auth_count:{key}") or 0
+    cache = get_cache_fallback()
+    return cache.get_value(f"sm_auth_count:{key}") or 0
 
 
 def _log_rate_limit_event(key, event_type):

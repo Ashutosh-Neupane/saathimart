@@ -122,6 +122,38 @@ def earn_points(customer_email: str, order_name: str, order_amount: float) -> fl
     return points
 
 
+def earn_points_preview(customer_email: str, order_amount: float) -> float:
+    """How many points an order of this amount would earn RIGHT NOW.
+
+    Read-only — no entry is written. Used by the cart/checkout preview so
+    the number shown before placing an order matches what earn_points will
+    actually credit.
+    """
+    import math
+    s = frappe.get_single("Settings")
+    if not s.enable_loyalty or not s.loyalty_program:
+        return 0.0
+
+    program = frappe.get_doc("Loyalty Program", s.loyalty_program)
+    if not program.is_active:
+        return 0.0
+
+    tier_info = get_tier(customer_email, program.name)
+    tier_multiplier = tier_info["current_tier"]["multiplier"]
+    base_points = flt(order_amount) * flt(program.collection_factor) * tier_multiplier
+    return float(math.floor(base_points))
+
+
+@frappe.whitelist()
+def get_earn_preview(order_amount=0):
+    """Whitelisted endpoint: preview how many loyalty points this order would earn."""
+    user = frappe.session.user
+    if user == "Guest":
+        return {"points": 0, "message": "Login to earn loyalty points"}
+    points = earn_points_preview(user, flt(order_amount))
+    return {"points": points, "message": f"You'll earn {int(points)} points on this order"}
+
+
 # ── Redeem ────────────────────────────────────────────────────────────────────
 
 def calculate_redemption_discount(customer_email: str, points_to_redeem: float,

@@ -840,7 +840,14 @@ def get_product(slug, vendor=None, delivery_zone=None, lat=None, lng=None, radiu
     import hashlib
     etag_source = f"{name}:{vendor or ''}:{delivery_zone or ''}:{lat or ''}:{lng or ''}:{radius_km or ''}"
     etag = hashlib.md5(etag_source.encode()).hexdigest()
-    if_modified_since = frappe.request.headers.get("If-None-Match") or frappe.request.headers.get("If-Modified-Since")
+    # frappe.request is unbound outside a real HTTP request (bench execute,
+    # tests, background jobs) — LocalProxy raises RuntimeError there.
+    if_modified_since = None
+    if frappe.request:
+        if_modified_since = (
+            frappe.request.headers.get("If-None-Match")
+            or frappe.request.headers.get("If-Modified-Since")
+        )
     if if_modified_since and if_modified_since.strip('"') == etag:
         from frappe import response as frappe_response
         frappe_response.status_code = 304
@@ -1389,5 +1396,85 @@ def get_vendor_listings(product_slug):
             **l,
             "vendor_name": vendor_names.get(l.vendor, l.vendor),
         })
+
+    return result
+
+
+@frappe.whitelist(allow_guest=True)
+def get_vendor_listings_by_location(product_slug, lat=None, lng=None, radius_km=10):
+    """All vendors selling a product, sorted by distance from customer.
+
+    Like middleware's get_franchise_listings but location-aware.
+    Returns cheapest first within radius, then outside radius.
+    """
+    from saathimart.api.utils import guest_rate_limit
+    guest_rate_limit("products.vendor_listings", limit=60, window_seconds=60)
+    from saathimart.api.cart import _get_customer_location
+    lat, lng = _get_customer_location(None, lat, lng)
+
+    name = frappe.db.get_value("Product", {"slug": product_slug, "status": "Active"}, "name")
+    if not name:
+        frappe.throw(_("Product not found"), frappe.DoesNotExistError)
+
+    # Get all vendor listings for this product
+    listings = frappe.get_list(
+        "Vendor Listing",
+        filters={"product": name, "status": "Active"},
+        fields=["name", "vendor", "price", "compare_price", "available_qty",
+                "track_inventory", "delivery_zone", "estimated_delivery_minutes",
+                "warehouse"],
+        order_by="price asc",
+    )
+
+    if not listings:
+        return []
+
+    # Enrich with vendor location and distance
+    vendor_names = set(l.vendor for l in listings if l.vendor)
+    vendor_locations = {}
+    if vendor_names and lat and lng:
+        rows = frappe.db.sql(
+            """SELECT name, vendor_name, lat, lng, service_radius_km,
+                      ST_Distance_Sphere(
+                          ST_PointFromText(CONCAT('POINT(', lng, ' ', lat, ')')),
+                          ST_PointFromText(CONCAT('POINT(', %s, ' ', %s, ')'))
+                      ) AS distance_meters
+               FROM `tabVendor`
+               WHERE name IN %s AND lat IS NOT NULL AND lng IS NOT NULL""",
+            (lng, lat, tuple(vendor_names)),
+            as_dict=True,
+        )
+        for r in rows:
+            vendor_locations[r.name] = {
+                "vendor_name": r.vendor_name or r.name,
+                "lat": flt(r.lat),
+                "lng": flt(r.lng),
+                "distance_km": round(flt(r.distance_meters or 0) / 1000, 2),
+                "service_radius_km": flt(r.service_radius_km or 5),
+            }
+
+    result = []
+    for l in listings:
+        loc = vendor_locations.get(l.vendor, {})
+        result.append({
+            "vendor": l.vendor,
+            "vendor_name": loc.get("vendor_name", l.vendor),
+            "price": flt(l.price),
+            "compare_price": flt(l.compare_price or 0),
+            "available_qty": flt(l.available_qty or 0),
+            "in_stock": (not l.track_inventory) or flt(l.available_qty or 0) > 0,
+            "delivery_zone": l.delivery_zone or "",
+            "estimated_delivery_minutes": l.estimated_delivery_minutes or 30,
+            "distance_km": loc.get("distance_km", 0),
+            "lat": loc.get("lat"),
+            "lng": loc.get("lng"),
+            "service_radius_km": loc.get("service_radius_km", 5),
+        })
+
+    # Sort by distance if location provided, else by price
+    if lat and lng:
+        result.sort(key=lambda x: x.get("distance_km", 9999))
+    else:
+        result.sort(key=lambda x: x.get("price", 0))
 
     return result

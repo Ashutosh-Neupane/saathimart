@@ -139,12 +139,11 @@ def checkout(session_id, customer_name, customer_phone, delivery_address,
             vendor_groups[v] = []
         vendor_groups[v].append(ci)
 
-    # The storefront currently operates as a single-vendor checkout. Keep
-    # the hub's vendor-aware data model intact, but reject a mixed cart rather
-    # than silently creating multiple fulfillment deliveries.
-    if len(vendor_groups) > 1:
-        frappe.throw(_("All items in one order must come from the same vendor"))
-
+    # Multi-vendor carts are supported: one Order, one Vendor Fulfillment
+    # row per vendor (see MULTI_VENDOR_ARCHITECTURE.md and the
+    # TestCheckoutVendorRouting regression tests). A same-vendor guard
+    # here was rejecting exactly the mixed carts the fulfillment model
+    # was built to split.
     order = frappe.new_doc("Order")
     order.customer_name    = customer_name
     order.customer_phone   = customer_phone
@@ -586,3 +585,37 @@ def expire_pending_payment_orders():
             frappe.db.commit()
         except Exception:
             frappe.log_error(frappe.get_traceback(), f"Payment expiry failed for {row.name}")
+
+
+def retry_failed_order_syncs():
+    """Cron: retry order events that failed to deliver to vendors.
+
+    Looks for Dead webhook events related to order operations and retries
+    them (up to 5 attempts). Complements dead_letter.retry_dead_letters
+    by specifically targeting order-related failures.
+    """
+    failed_events = frappe.get_list(
+        "Webhook Event",
+        filters={
+            "event_type": ["like", "order.%"],
+            "delivery_status": "Dead",
+            "retry_count": ["<", 5],
+        },
+        fields=["name", "event_type", "target_vendor"],
+        limit_page_length=20,
+    )
+
+    retried = 0
+    for evt in failed_events:
+        try:
+            from saathimart.events.publisher import _enqueue
+            frappe.db.set_value("Webhook Event", evt.name, {
+                "delivery_status": "Pending",
+                "retry_count": (evt.get("retry_count") or 0) + 1,
+            })
+            frappe.db.commit()
+            retried += 1
+        except Exception:
+            frappe.log_error(frappe.get_traceback(), f"Order sync retry failed for {evt.name}")
+
+    return {"retried": retried, "total_failed": len(failed_events)}

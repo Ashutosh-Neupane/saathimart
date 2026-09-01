@@ -51,6 +51,10 @@ doc_events = {
     "Review": {
         "on_update": "saathimart.api.reviews._update_product_rating",
     },
+    "SM Product Review": {
+        "on_update": "saathimart.doctype.sm_product_review.sm_product_review._recompute_product_rating",
+        "on_trash": "saathimart.doctype.sm_product_review.sm_product_review._recompute_product_rating",
+    },
     "Vendor Listing": {
         "after_insert": "saathimart.events.publisher.on_vendor_listing_changed",
         "on_update":    "saathimart.events.publisher.on_vendor_listing_changed",
@@ -173,6 +177,7 @@ scheduler_events = {
         ],
         "0 * * * *": [
             "saathimart.api.orders.expire_pending_payment_orders",
+            "saathimart.api.orders.retry_failed_order_syncs",
         ],
     },
 }
@@ -200,6 +205,8 @@ fixtures = [
     {"dt": "Trust Badge"},
     {"dt": "Product Rail Heading"},
     {"dt": "Website Content"},
+    {"dt": "SM Product Review"},
+    {"dt": "SM Search Term"},
     # ── Static Pages ──
     {"dt": "About Us"},
     {"dt": "Terms Page"},
@@ -244,9 +251,17 @@ fixtures = [
 
 # ── Permissions ───────────────────────────────────────────────────────────────
 has_permission = {
-    "Cart":    "saathimart.api.auth.has_cart_permission",
-    "Order":   "saathimart.api.auth.has_order_permission",
-    "Address": "saathimart.api.auth.has_address_permission",
+    "Cart":              "saathimart.api.auth.has_cart_permission",
+    "Order":             "saathimart.api.auth.has_order_permission",
+    "Address":           "saathimart.api.auth.has_address_permission",
+    "Wishlist":          "saathimart.api.auth.has_wishlist_permission",
+    "SM Product Review": "saathimart.api.auth.has_review_permission",
+}
+
+permission_query_conditions = {
+    "Address":           "saathimart.api.auth.get_address_permission_query_conditions",
+    "Wishlist":          "saathimart.api.auth.get_wishlist_permission_query_conditions",
+    "SM Product Review": "saathimart.api.auth.get_review_permission_query_conditions",
 }
 
 # ── Boot info ─────────────────────────────────────────────────────────

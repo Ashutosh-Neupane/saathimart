@@ -86,6 +86,7 @@ def get_homepage_data(lat=None, lng=None, radius_km=5):
         "recommended": _get_recommended(limit=12, customer_lat=clat, customer_lng=clng, max_radius=max_radius),
         "quick_links": _get_quick_links(),
         "announcement": _get_announcement(),
+        "marketplace_banner": _get_marketplace_banner(),
     }
     return data
 
@@ -366,3 +367,32 @@ def _get_announcement():
         return {"text": text} if text else None
     except Exception:
         return None
+
+
+def _get_marketplace_banner():
+    """Marketplace-specific promo banner for the homepage.
+
+    Uses the existing Hero Slide doctype with type='marketplace' or falls
+    back to the first active hero slide. Shows "Shop from multiple vendors"
+    style messaging.
+    """
+    try:
+        # Try marketplace-specific slide first
+        slide = frappe.db.get_value(
+            "Hero Slide",
+            {"is_active": 1, "slide_type": "marketplace"},
+            ["title", "subtitle", "image", "link", "button_text"],
+            as_dict=True,
+        )
+        if slide:
+            return {
+                "title": slide.title or "Shop from Multiple Vendors",
+                "subtitle": slide.subtitle or "Best prices from vendors near you",
+                "image": slide.image or "",
+                "link": slide.link or "",
+                "button_text": slide.button_text or "Shop Now",
+            }
+    except Exception:
+        pass
+
+    return None

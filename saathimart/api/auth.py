@@ -11,7 +11,7 @@ _COOKIE_NAME = "sm_cart_session"
 
 
 def get_session_id():
-	"""Return the guest cart-session ID (ported from saathi_middleware).
+	"""Return the guest cart-session ID.
 
 	Resolution order:
 	1. sm_cart_session cookie from the request
@@ -69,7 +69,15 @@ def has_app_permission():
 
 def has_cart_permission(doc, ptype):
     if frappe.session.user == "Guest":
-        return doc.session_id == (frappe.request.cookies.get("sm_cart_session") or "")
+        # frappe.request is unbound outside a real HTTP request (tests,
+        # bench execute) — LocalProxy raises RuntimeError there.
+        cookie = ""
+        if frappe.request:
+            try:
+                cookie = frappe.request.cookies.get("sm_cart_session") or ""
+            except Exception:
+                cookie = ""
+        return doc.session_id == cookie
     return doc.user == frappe.session.user or "SM Admin" in frappe.get_roles()
 
 
@@ -83,6 +91,48 @@ def has_address_permission(doc, ptype):
     if "SM Admin" in frappe.get_roles():
         return True
     return doc.user == frappe.session.user
+
+
+def get_address_permission_query_conditions(user=None):
+    """Row-level security: non-admins can only see their own addresses via REST."""
+    user = user or frappe.session.user
+    if "SM Admin" in frappe.get_roles(user):
+        return ""
+    return f"(`tabAddress`.user = {frappe.db.escape(user)})"
+
+
+def has_wishlist_permission(doc, ptype):
+    if "SM Admin" in frappe.get_roles():
+        return True
+    return doc.user == frappe.session.user
+
+
+def get_wishlist_permission_query_conditions(user=None):
+    """Row-level security: non-admins can only see their own wishlist."""
+    user = user or frappe.session.user
+    if "SM Admin" in frappe.get_roles(user):
+        return ""
+    return f"(`tabWishlist`.user = {frappe.db.escape(user)})"
+
+
+def has_review_permission(doc, ptype):
+    """Approved reviews are public; pending/rejected are owner-only."""
+    if "SM Admin" in frappe.get_roles():
+        return True
+    if ptype == "read" and doc.status == "Approved":
+        return True
+    return doc.user == frappe.session.user
+
+
+def get_review_permission_query_conditions(user=None):
+    """Row-level security: admins see all; others see approved + own."""
+    user = user or frappe.session.user
+    if "SM Admin" in frappe.get_roles(user):
+        return ""
+    return (
+        f"(`tabSM Product Review`.status = 'Approved' "
+        f"OR `tabSM Product Review`.user = {frappe.db.escape(user)})"
+    )
 
 
 def get_user_token(user):

@@ -136,6 +136,10 @@ def search_products(query="", page=1, page_size=20, category=None, brand=None,
             r["in_stock"] = False
         enriched.append(r)
 
+    # Record search for analytics (background job)
+    if query:
+        _record_search(query, total)
+
     return {
         "results": enriched,
         "total": total,
@@ -193,3 +197,99 @@ def search_suggestions(query="", limit=8):
         suggestions.append({"type": "brand", "text": b.brand_name, "slug": b.name})
 
     return suggestions[:limit]
+
+
+# ── Search Tracking ────────────────────────────────────────────────────────────
+
+def normalize_search_key(query):
+    """Normalize a search query for deduplication.
+
+    Lowercases, strips whitespace, collapses multiple spaces.
+    """
+    return " ".join(query.lower().split()).strip()
+
+
+@frappe.whitelist(allow_guest=True)
+def get_top_searches(limit=10):
+    """Most popular search terms — for empty-search-box suggestions.
+
+    Falls back to best-selling items of the last 30 days if no searches
+    have been recorded yet.
+    """
+    from frappe.utils import cint, add_days, today
+    limit = min(50, max(1, cint(limit) or 10))
+
+    terms = frappe.get_all(
+        "SM Search Term",
+        fields=["search_term", "search_count"],
+        filters={"search_count": (">", 0)},
+        order_by="search_count desc",
+        limit_page_length=limit,
+    )
+    if terms:
+        return [{"term": t.search_term, "count": cint(t.search_count)} for t in terms]
+
+    # Fallback: recent bestsellers
+    rows = frappe.db.sql(
+        """
+        SELECT oi.product_name, COUNT(*) AS order_count
+        FROM `tabOrder Item` oi
+        JOIN `tabOrder` o ON oi.parent = o.name
+        WHERE o.creation >= %(since)s
+          AND o.status NOT IN ('Cancelled', 'Refunded')
+          AND oi.product_name IS NOT NULL AND oi.product_name != ''
+        GROUP BY oi.product_name
+        ORDER BY order_count DESC
+        LIMIT %(limit)s
+        """,
+        {"since": add_days(today(), -30), "limit": limit},
+        as_dict=True,
+    )
+    return [{"term": r.product_name, "count": cint(r.order_count)} for r in rows]
+
+
+def record_search_term(key, term, result_count):
+    """Background job — bump one term's counter.
+
+    Uses INSERT ... ON DUPLICATE KEY UPDATE for concurrency safety.
+    """
+    from frappe.utils import cint, now_datetime
+    try:
+        frappe.db.sql(
+            """
+            INSERT INTO `tabSM Search Term`
+                (name, search_key, search_term, search_count, last_result_count,
+                 last_searched_at, creation, modified, owner, modified_by)
+            VALUES
+                (%(key)s, %(key)s, %(term)s, 1, %(count)s,
+                 %(now)s, %(now)s, %(now)s, 'Administrator', 'Administrator')
+            ON DUPLICATE KEY UPDATE
+                search_count = search_count + 1,
+                last_result_count = %(count)s,
+                last_searched_at = %(now)s,
+                modified = %(now)s
+            """,
+            {"key": key, "term": term, "count": cint(result_count), "now": now_datetime()},
+        )
+        frappe.db.commit()
+    except Exception:
+        frappe.log_error(f"Failed to record search term: {key}", "search_tracking")
+
+
+def _record_search(query, result_count):
+    """Queue analytics write for this search (background job)."""
+    settings = frappe.get_single("Settings")
+    if not getattr(settings, "search_tracking_enabled", 1):
+        return
+
+    key = normalize_search_key(query)
+    if not key:
+        return
+
+    frappe.enqueue(
+        "saathimart.api.search.record_search_term",
+        queue="short",
+        key=key,
+        term=query.strip(),
+        result_count=cint(result_count),
+    )

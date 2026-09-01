@@ -138,10 +138,16 @@ def get_public_settings():
     """
     s = get_settings()
     return {
+        "site_name": getattr(s, "site_name", None) or "SaathiMart",
         "currency": getattr(s, "currency", None) or "NPR",
         "payment_methods": get_payment_methods(),
         "min_order_amount": get_min_order_amount(),
         "free_delivery_above": get_free_delivery_above(),
         "is_coupon_enabled": is_coupon_enabled(),
         "is_loyalty_enabled": is_loyalty_enabled(),
+        "cart_expiry_days": get_cart_expiry_days(),
+        "payment_pending_expiry_hours": get_payment_pending_expiry_hours(),
+        "abandoned_cart_hours": get_abandoned_cart_hours(),
+        "retain_cart_days": get_retain_cart_days(),
+        "retain_orders_days": get_retain_orders_days(),
     }

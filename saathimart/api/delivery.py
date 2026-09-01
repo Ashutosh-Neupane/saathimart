@@ -67,3 +67,52 @@ def estimate_delivery(zone_name, order_total=None):
         "estimated_days": int(zone.estimated_days or 1),
         "estimated_text": f"{zone.estimated_days or 1} day{'s' if (zone.estimated_days or 1) > 1 else ''}",
     }
+
+
+def free_delivery_threshold(vendor_doc):
+    """Order value above which delivery is free for a vendor.
+
+    Checks the vendor's own free_delivery_above setting first;
+    falls back to the global Settings value.
+    """
+    per_vendor = flt(getattr(vendor_doc, "free_delivery_above", 0) or 0)
+    if per_vendor > 0:
+        return per_vendor
+    settings = frappe.get_single("Settings")
+    return flt(getattr(settings, "free_delivery_above", 0) or 0)
+
+
+@frappe.whitelist(allow_guest=True)
+def get_delivery_summary(zone_name=None, order_total=None):
+    """Compact delivery summary: charge, free threshold, and whether it's free.
+
+    Useful for the cart page to show 'Add Rs X more for free delivery'.
+    """
+    from saathimart.api.cart import _get_or_create_cart, find_active_cart
+    from saathimart.api.utils import guest_rate_limit
+    guest_rate_limit("delivery.summary", limit=60, window_seconds=60)
+
+    if not zone_name:
+        # Try to get from cart
+        cart_name = find_active_cart()
+        if cart_name:
+            cart = frappe.get_doc("Cart", cart_name)
+            zone_name = cart.delivery_zone
+
+    if not zone_name:
+        return {"delivery_charge": 0, "free_delivery_above": 0, "is_free": True, "amount_to_free": 0}
+
+    zone = frappe.get_doc("Delivery Zone", zone_name)
+    charge = flt(zone.delivery_charge or 0)
+    free_above = flt(zone.free_delivery_above or 0)
+    total = flt(order_total or 0)
+
+    is_free = (free_above > 0 and total >= free_above) if free_above else (charge == 0)
+    amount_to_free = max(0, free_above - total) if free_above and not is_free else 0
+
+    return {
+        "delivery_charge": charge if not is_free else 0,
+        "free_delivery_above": free_above,
+        "is_free": is_free,
+        "amount_to_free": amount_to_free,
+    }

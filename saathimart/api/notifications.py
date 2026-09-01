@@ -87,3 +87,109 @@ def send_dispatch_notification(email, order_id, vendor_name=""):
         )
     except Exception:
         pass
+
+
+# ── Notification Preferences ───────────────────────────────────────────────────
+
+def get_notification_preferences():
+    """Return the current user's notification preference toggles.
+
+    Guests get safe defaults. Logged-in users read from custom User fields
+    (notify_order_updates, notify_promotions, notify_delivery_reminders).
+    If the fields don't exist yet (migration hasn't run), return defaults.
+    """
+    from saathimart.api.responses import handle_api_errors
+
+    if frappe.session.user == "Guest":
+        return {
+            "order_updates": True,
+            "promotions": False,
+            "delivery_reminders": True,
+        }
+
+    user = frappe.get_doc("User", frappe.session.user)
+    return {
+        "order_updates": bool(getattr(user, "notify_order_updates", 1)),
+        "promotions": bool(getattr(user, "notify_promotions", 0)),
+        "delivery_reminders": bool(getattr(user, "notify_delivery_reminders", 1)),
+    }
+
+
+@frappe.whitelist()
+def update_notification_preferences(order_updates=None, promotions=None, delivery_reminders=None):
+    """Save the current user's notification preference toggles."""
+    from saathimart.api.responses import handle_api_errors
+
+    if frappe.session.user == "Guest":
+        frappe.throw("Login required", frappe.PermissionError)
+
+    user = frappe.get_doc("User", frappe.session.user)
+    if order_updates is not None:
+        user.notify_order_updates = 1 if order_updates else 0
+    if promotions is not None:
+        user.notify_promotions = 1 if promotions else 0
+    if delivery_reminders is not None:
+        user.notify_delivery_reminders = 1 if delivery_reminders else 0
+    user.save(ignore_permissions=True)
+    frappe.db.commit()
+    return get_notification_preferences()
+
+
+@frappe.whitelist()
+def list_notifications(limit=50, page=1):
+    """List in-app notifications for the current user (paginated)."""
+    from frappe.utils import cint
+    from saathimart.api.responses import handle_api_errors
+
+    user = frappe.session.user
+    if user == "Guest":
+        return {"notifications": [], "total": 0}
+
+    limit = min(cint(limit) or 50, 100)
+    page = max(1, cint(page) or 1)
+    offset = (page - 1) * limit
+
+    total = frappe.db.count("SM Notification", {"user": user})
+    notifications = frappe.db.sql(
+        """SELECT name, kind, title, message, read, created_at
+           FROM `tabSM Notification`
+           WHERE user = %s
+           ORDER BY created_at DESC
+           LIMIT %s OFFSET %s""",
+        (user, limit, offset),
+        as_dict=True,
+    )
+    return {
+        "notifications": notifications,
+        "total": total,
+        "unread_count": frappe.db.count("SM Notification", {"user": user, "read": 0}),
+    }
+
+
+@frappe.whitelist()
+def mark_notifications_read(names=None, mark_all=False):
+    """Mark one or all notifications as read."""
+    from saathimart.api.responses import handle_api_errors
+
+    user = frappe.session.user
+    if user == "Guest":
+        frappe.throw("Login required", frappe.PermissionError)
+
+    if mark_all:
+        frappe.db.sql(
+            "UPDATE `tabSM Notification` SET read=1 WHERE user=%s AND read=0",
+            user,
+        )
+        frappe.db.commit()
+        return {"ok": True}
+
+    if names:
+        if isinstance(names, str):
+            names = [n.strip() for n in names.split(",") if n.strip()]
+        for name in names:
+            doc = frappe.get_doc("SM Notification", name)
+            if doc.user == user:
+                doc.read = 1
+                doc.save(ignore_permissions=True)
+        frappe.db.commit()
+    return {"ok": True}

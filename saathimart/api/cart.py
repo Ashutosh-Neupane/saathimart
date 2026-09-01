@@ -18,6 +18,33 @@ from saathimart.api.responses import handle_api_errors
 from saathimart.api.utils import guest_rate_limit
 
 
+def _item_images(product_names):
+    """Batch-load the primary image URL for each product.
+
+    Returns {product_name: image_url}. One query regardless of cart size.
+    """
+    if not product_names:
+        return {}
+    rows = frappe.db.sql(
+        """
+        SELECT parent AS product, file
+        FROM `tabProduct Media`
+        WHERE parent IN %(names)s AND is_primary = 1
+        """,
+        {"names": tuple(product_names)},
+        as_dict=True,
+    )
+    result = {r.product: r.file for r in rows if r.file}
+    # Fill gaps with the Product.thumbnail field
+    missing = [n for n in product_names if n not in result]
+    if missing:
+        for name in missing:
+            thumb = frappe.db.get_value("Product", name, "thumbnail")
+            if thumb:
+                result[name] = thumb
+    return result
+
+
 def _current_user():
     return frappe.session.user if frappe.session.user != "Guest" else None
 
@@ -216,7 +243,16 @@ def _get_vendor_stock(vendor, product):
 def get_cart(session_id=None):
     guest_rate_limit("cart.get", limit=300, window_seconds=60)
     cart = _get_or_create_cart(session_id)
-    return cart.as_dict()
+    data = cart.as_dict()
+
+    # Attach product images to each cart item (like middleware's _item_images)
+    product_names = [item.product for item in cart.items if item.product]
+    if product_names:
+        images = _item_images(product_names)
+        for item_dict in data.get("items", []):
+            item_dict["image"] = images.get(item_dict.get("product"), "")
+
+    return data
 
 
 @frappe.whitelist(allow_guest=True)

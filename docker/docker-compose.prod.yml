@@ -1,12 +1,12 @@
-# Production Docker Compose for SaathiMart Hub + Vendor
+# Production Docker Compose for the SaathiMart Hub only (no vendor service —
+# each vendor runs its own saathimart-vendor deployment against this hub's
+# public URL; see saathimart-vendor's own docs for that side).
 # Usage: docker compose -f docker/docker-compose.prod.yml up -d
 #
 # Prerequisites:
-#   - Set WEBHOOK_SECRET, DB_PASSWORD, SALT in .env
+#   - Set WEBHOOK_SECRET, DB_PASSWORD, ADMIN_PASSWORD in .env
 #   - Place SSL certs in ./certs/ or use Let's Encrypt
 #   - Configure domain names in nginx.conf
-
-version: "3.8"
 
 services:
   nginx:
@@ -34,24 +34,24 @@ services:
   hub:
     build:
       context: ..
-      dockerfile: docker/Dockerfile
+      dockerfile: Dockerfile
     container_name: sm-hub
     restart: unless-stopped
     environment:
-      - SITE=saathimart.localhost
+      - FRAPPE_SITE=saathimart.localhost
       - DB_HOST=mariadb
       - DB_PORT=3306
-      - DB_NAME=saathimart
       - DB_ROOT_PASSWORD=${DB_PASSWORD}
-      - REDIS_CACHE=redis-cache:6379
-      - REDIS_QUEUE=redis-queue:6379
-      - FRAPPE_SITE_NAME=saathimart.localhost
+      - ADMIN_PASSWORD=${ADMIN_PASSWORD}
+      - WEBHOOK_SECRET=${WEBHOOK_SECRET}
+      - REDIS_HOST=redis-cache
+      - REDIS_PORT=6379
+      - REDIS_QUEUE_HOST=redis-queue
+      - REDIS_QUEUE_PORT=6379
       - WORKERS=4
       - THREADS=8
     volumes:
-      - sm_hub_sites:/home/frappe/frappe-bench/sites
-      - sm_hub_apps:/home/frappe/frappe-bench/apps
-      - sm_hub_logs:/home/frappe/frappe-bench/logs
+      - sm_hub_bench:/home/frappe/bench
     depends_on:
       mariadb:
         condition: service_healthy
@@ -76,23 +76,18 @@ services:
   hub-worker:
     build:
       context: ..
-      dockerfile: docker/Dockerfile
+      dockerfile: Dockerfile
     container_name: sm-hub-worker
     restart: unless-stopped
-    command: ["bench", "worker", "--queue", "default,short,long"]
-    environment:
-      - SITE=saathimart.localhost
-      - DB_HOST=mariadb
-      - DB_PORT=3306
-      - DB_NAME=saathimart
-      - DB_ROOT_PASSWORD=${DB_PASSWORD}
-      - REDIS_CACHE=redis-cache:6379
-      - REDIS_QUEUE=redis-queue:6379
-      - WORKER_TYPE=worker
+    # cwd must be $BENCH/sites (see docker/init.sh's Procfile comment) —
+    # Frappe's per-site log handler builds its file path as a relative
+    # join of site + "logs" + logfile, so any other cwd throws
+    # FileNotFoundError. Shares the hub's full bench volume (env, config,
+    # apps, sites) rather than a partial split — `bench worker` needs the
+    # whole bench directory (virtualenv included), not just sites/apps/logs.
+    command: ["sh", "-c", "cd /home/frappe/bench/sites && /usr/local/bin/bench worker --queue default,short,long"]
     volumes:
-      - sm_hub_sites:/home/frappe/frappe-bench/sites
-      - sm_hub_apps:/home/frappe/frappe-bench/apps
-      - sm_hub_logs:/home/frappe/frappe-bench/logs
+      - sm_hub_bench:/home/frappe/bench
     depends_on:
       hub:
         condition: service_healthy
@@ -170,22 +165,12 @@ services:
   scheduler:
     build:
       context: ..
-      dockerfile: docker/Dockerfile
+      dockerfile: Dockerfile
     container_name: sm-scheduler
     restart: unless-stopped
-    command: ["bench", "schedule"]
-    environment:
-      - SITE=saathimart.localhost
-      - DB_HOST=mariadb
-      - DB_PORT=3306
-      - DB_NAME=saathimart
-      - DB_ROOT_PASSWORD=${DB_PASSWORD}
-      - REDIS_CACHE=redis-cache:6379
-      - REDIS_QUEUE=redis-queue:6379
+    command: ["sh", "-c", "cd /home/frappe/bench/sites && /usr/local/bin/bench schedule"]
     volumes:
-      - sm_hub_sites:/home/frappe/frappe-bench/sites
-      - sm_hub_apps:/home/frappe/frappe-bench/apps
-      - sm_hub_logs:/home/frappe/frappe-bench/logs
+      - sm_hub_bench:/home/frappe/bench
     depends_on:
       hub:
         condition: service_healthy
@@ -208,15 +193,15 @@ services:
         sleep 86400
       done"
     volumes:
-      - sm_hub_logs:/var/log/hub
+      # Whole bench volume, not just a logs subpath — `find` below only
+      # touches *.log files regardless of what else lives under the mount.
+      - sm_hub_bench:/var/log/hub
       - sm_nginx_logs:/var/log/nginx
     networks:
       - sm-network
 
 volumes:
-  sm_hub_sites:
-  sm_hub_apps:
-  sm_hub_logs:
+  sm_hub_bench:
   sm_mariadb_data:
   sm_redis_cache:
   sm_redis_queue:

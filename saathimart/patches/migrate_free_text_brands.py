@@ -4,7 +4,7 @@ import frappe
 def execute():
 	"""
 	Product.brand changed from a free-text Data field to a Link -> Brand
-	(mirroring saathi_middleware's Saathi Item -> SM Brand). Any legacy free-
+	(mirroring the legacy Saathi Item -> SM Brand mapping). Any legacy free-
 	text value is promoted to a real Brand document so no product loses its
 	brand after the fieldtype switch. Matching is case-insensitive ("nestle"
 	and "Nestle" collapse into one Brand) and every Product is repointed at

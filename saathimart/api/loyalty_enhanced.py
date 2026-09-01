@@ -15,6 +15,26 @@ TIERS = {
 }
 
 
+def _resolve_loyalty_program():
+    """
+    Every Loyalty Point Entry requires a program Link (mandatory field) —
+    this module used to never set it at all, so every insert in this file
+    failed with MandatoryError, silently (every call site wraps insert() in
+    try/except: log_error). Mirrors api/loyalty.py's own resolution via
+    Settings.loyalty_program, since Loyalty Point Entry is one shared table
+    regardless of which module is writing to it.
+
+    Returns the program name, or None if loyalty isn't configured/enabled
+    — callers should treat None as "skip, nothing to record".
+    """
+    s = frappe.get_single("Settings")
+    if not s.enable_loyalty or not s.loyalty_program:
+        return None
+    if not frappe.db.get_value("Loyalty Program", s.loyalty_program, "is_active"):
+        return None
+    return s.loyalty_program
+
+
 def get_customer_tier(customer_email):
     """Determine customer loyalty tier based on total earned points."""
     if not customer_email:
@@ -23,7 +43,7 @@ def get_customer_tier(customer_email):
     total_earned = frappe.db.sql("""
         SELECT COALESCE(SUM(points), 0) as total
         FROM `tabLoyalty Point Entry`
-        WHERE customer_email = %s AND entry_type = 'Earn'
+        WHERE customer_email = %s AND entry_type = 'Earned'
     """, (customer_email,), as_dict=True)
 
     points = total_earned[0].total if total_earned else 0
@@ -57,15 +77,21 @@ def earn_points(customer_email, order_id, amount, vendor=None):
     if not customer_email:
         return 0
 
+    program = _resolve_loyalty_program()
+    if not program:
+        return 0
+
     points = calculate_earn_points(amount, vendor, customer_email)
     tier = get_customer_tier(customer_email)
 
     try:
         entry = frappe.new_doc("Loyalty Point Entry")
         entry.customer_email = customer_email
-        entry.order = order_id
+        entry.program = program
+        if order_id and frappe.db.exists("Order", order_id):
+            entry.order = order_id
         entry.points = points
-        entry.entry_type = "Earn"
+        entry.entry_type = "Earned"
         entry.source = "order"
         entry.tier = tier
         entry.insert(ignore_permissions=True)
@@ -90,6 +116,10 @@ def redeem_points(customer_email, order_id, points_requested):
     if points_requested <= 0:
         return 0
 
+    program = _resolve_loyalty_program()
+    if not program:
+        return 0
+
     tier = get_customer_tier(customer_email)
     redeem_rate = TIERS[tier]["redeem_rate"]
     discount = flt(points_requested) * redeem_rate
@@ -97,9 +127,11 @@ def redeem_points(customer_email, order_id, points_requested):
     try:
         entry = frappe.new_doc("Loyalty Point Entry")
         entry.customer_email = customer_email
-        entry.order = order_id
+        entry.program = program
+        if order_id and frappe.db.exists("Order", order_id):
+            entry.order = order_id
         entry.points = -points_requested
-        entry.entry_type = "Redeem"
+        entry.entry_type = "Redeemed"
         entry.source = "order"
         entry.tier = tier
         entry.insert(ignore_permissions=True)
@@ -168,11 +200,18 @@ def apply_referral(referrer_email, new_customer_email):
     if not referrer_email or not new_customer_email:
         return
 
-    # Check if already referred
+    program = _resolve_loyalty_program()
+    if not program:
+        return
+
+    # Check if already referred. order is a strict Link to Order — it can't
+    # hold a synthetic "referral:<email>" marker (that used to fail Order
+    # link validation on every insert); remarks is the free-text field.
+    marker = "referral:{0}".format(new_customer_email)
     existing = frappe.db.exists("Loyalty Point Entry", {
         "customer_email": referrer_email,
         "source": "referral",
-        "order": ("like", "%{0}%".format(new_customer_email)),
+        "remarks": marker,
     })
     if existing:
         return
@@ -181,14 +220,15 @@ def apply_referral(referrer_email, new_customer_email):
     try:
         entry = frappe.new_doc("Loyalty Point Entry")
         entry.customer_email = referrer_email
+        entry.program = program
         entry.points = 100
-        entry.entry_type = "Earn"
+        entry.entry_type = "Earned"
         entry.source = "referral"
-        entry.order = "referral:{0}".format(new_customer_email)
+        entry.remarks = marker
         entry.insert(ignore_permissions=True)
         frappe.db.commit()
     except Exception:
-        pass
+        frappe.log_error(frappe.get_traceback(), "Loyalty referral bonus failed")
 
 
 # ── Birthday Rewards ───────────────────────────────────────────────────────
@@ -207,14 +247,19 @@ def check_birthday_rewards():
           AND email_id != ''
     """, (month_day,), as_dict=True)
 
+    program = _resolve_loyalty_program()
+    if not program:
+        return
+
     for c in customers:
         if not c.email_id:
             continue
+        marker = "birthday:{0}".format(today.year)
         # Check if already rewarded this year
         existing = frappe.db.exists("Loyalty Point Entry", {
             "customer_email": c.email_id,
             "source": "birthday",
-            "creation": (">=", str(today.year) + "-01-01"),
+            "remarks": marker,
         })
         if existing:
             continue
@@ -223,12 +268,13 @@ def check_birthday_rewards():
         try:
             entry = frappe.new_doc("Loyalty Point Entry")
             entry.customer_email = c.email_id
+            entry.program = program
             entry.points = 50
-            entry.entry_type = "Earn"
+            entry.entry_type = "Earned"
             entry.source = "birthday"
-            entry.order = "birthday:{0}".format(today.year)
+            entry.remarks = marker
             entry.insert(ignore_permissions=True)
         except Exception:
-            pass
+            frappe.log_error(frappe.get_traceback(), "Loyalty birthday bonus failed")
 
     frappe.db.commit()

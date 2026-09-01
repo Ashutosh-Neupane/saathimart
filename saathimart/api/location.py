@@ -58,7 +58,7 @@ def resolve_vendors(lat, lng, radius_km=5):
           AND ST_Distance_Sphere(
               ST_PointFromText(CONCAT('POINT(', lng, ' ', lat, ')')),
               ST_PointFromText(CONCAT('POINT(', %s, ' ', %s, ')'))
-          ) <= service_radius_km * 1000
+          ) <= COALESCE(NULLIF(service_radius_km, 0), 5) * 1000
         ORDER BY distance_meters ASC
     """, (lng, lat, lat_min, lat_max, lng_min, lng_max, lng, lat), as_dict=True)
 
@@ -97,7 +97,8 @@ def nearest_vendor_for_product(product, lat, lng, radius_km=5):
     listings = frappe.db.sql("""
         SELECT vl.vendor, vl.price, vl.available_qty, vl.reserved_qty,
                vl.delivery_zone, vl.estimated_delivery_minutes, vl.priority,
-               v.vendor_name, v.lat, v.lng, v.service_radius_km,
+               v.vendor_name, v.lat, v.lng,
+               COALESCE(NULLIF(v.service_radius_km, 0), 5) AS service_radius_km,
                ST_Distance_Sphere(
                    ST_PointFromText(CONCAT('POINT(', v.lng, ' ', v.lat, ')')),
                    ST_PointFromText(CONCAT('POINT(', %s, ' ', %s, ')'))
@@ -111,7 +112,7 @@ def nearest_vendor_for_product(product, lat, lng, radius_km=5):
           AND ST_Distance_Sphere(
               ST_PointFromText(CONCAT('POINT(', v.lng, ' ', v.lat, ')')),
               ST_PointFromText(CONCAT('POINT(', %s, ' ', %s, ')'))
-          ) <= v.service_radius_km * 1000
+          ) <= COALESCE(NULLIF(v.service_radius_km, 0), 5) * 1000
         ORDER BY distance_meters ASC
     """, (lng, lat, product, lng, lat), as_dict=True)
 
@@ -174,7 +175,7 @@ def update_vendor_location(vendor_id, lat, lng, service_radius_km=5, address="")
 
     doc.lat = flt(lat)
     doc.lng = flt(lng)
-    doc.service_radius_km = flt(service_radius_km)
+    doc.service_radius_km = flt(service_radius_km) or 5
     doc.address = address or getattr(doc, "address", "") or ""
     doc.hub_status = "Active"
     doc.last_sync_at = now_datetime()

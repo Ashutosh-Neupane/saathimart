@@ -60,28 +60,17 @@ def _reconcile_vendor(vendor_name):
         if vendor_qty is None:
             continue  # vendor unreachable — skip, not an error
 
-        mismatch = abs(hub_qty - vendor_qty)
-        if mismatch == 0:
-            continue
-
-        tolerance = max(hub_qty * TOLERANCE_PCT / 100, 1)
-
-        if mismatch <= tolerance:
-            # Auto-correct: within tolerance
-            frappe.db.set_value("Vendor Stock", row.name, {
-                "physical_qty": vendor_qty,
-                "available_qty": vendor_qty - flt(row.reserved_qty or 0),
-                "last_updated": now_datetime(),
-            })
+        outcome = correct_or_flag(vendor_name, row.name, product, warehouse, hub_qty, vendor_qty,
+                                   reserved_qty=row.reserved_qty)
+        if outcome == "corrected":
             corrected += 1
-        else:
-            # Flag for review
+        elif outcome == "flagged":
             issues.append({
                 "product": product,
                 "warehouse": warehouse,
                 "hub_qty": hub_qty,
                 "vendor_qty": vendor_qty,
-                "mismatch": mismatch,
+                "mismatch": abs(hub_qty - vendor_qty),
             })
 
     if issues:
@@ -93,6 +82,35 @@ def _reconcile_vendor(vendor_name):
     frappe.logger("reconciliation").info(
         f"Vendor {vendor_name}: {corrected} auto-corrected, {len(issues)} flagged"
     )
+
+
+def correct_or_flag(vendor_name, vendor_stock_name, product, warehouse, hub_qty, vendor_qty, reserved_qty=0):
+    """
+    Shared correction decision — same tolerance rule both the hourly
+    per-product reconciliation and stock_snapshot's full-catalog discrepancy
+    report use: auto-correct Vendor Stock toward the vendor's real qty
+    within TOLERANCE_PCT, otherwise leave it and let the caller flag it for
+    review. Extracted so a snapshot-reported discrepancy gets exactly the
+    same correction the hourly job would eventually give it, instead of
+    only being logged for a human to notice.
+
+    Returns "corrected", "flagged", or "unchanged" (mismatch was 0).
+    """
+    mismatch = abs(flt(hub_qty) - flt(vendor_qty))
+    if mismatch == 0:
+        return "unchanged"
+
+    tolerance = max(flt(hub_qty) * TOLERANCE_PCT / 100, 1)
+
+    if mismatch <= tolerance:
+        frappe.db.set_value("Vendor Stock", vendor_stock_name, {
+            "physical_qty": vendor_qty,
+            "available_qty": flt(vendor_qty) - flt(reserved_qty or 0),
+            "last_updated": now_datetime(),
+        })
+        return "corrected"
+
+    return "flagged"
 
 
 def _get_vendor_stock_qty(vendor_name, product, warehouse="default"):

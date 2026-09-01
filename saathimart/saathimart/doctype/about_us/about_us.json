@@ -1,0 +1,38 @@
+{
+  "name": "About Us",
+  "module": "Saathimart",
+  "doctype": "DocType",
+  "issingle": 1,
+  "track_changes": 1,
+  "fields": [
+    {"fieldname": "title", "fieldtype": "Data", "label": "Title", "default": "About SaathiMart"},
+    {"fieldname": "breadcrumb_label", "fieldtype": "Data", "label": "Breadcrumb Label", "default": "ABOUT US"},
+    {"fieldname": "subtitle", "fieldtype": "Data", "label": "Subtitle"},
+    {"fieldname": "section_hero", "fieldtype": "Section Break", "label": "Hero"},
+    {"fieldname": "hero_title", "fieldtype": "Data", "label": "Hero Title", "default": "Smart Shopping Starts Here"},
+    {"fieldname": "hero_subtitle", "fieldtype": "Small Text", "label": "Hero Subtitle"},
+    {"fieldname": "col_hero", "fieldtype": "Column Break"},
+    {"fieldname": "section_mission", "fieldtype": "Section Break", "label": "Mission"},
+    {"fieldname": "mission_title", "fieldtype": "Data", "label": "Mission Title", "default": "Making everyday shopping effortless"},
+    {"fieldname": "mission_text", "fieldtype": "Text Editor", "label": "Mission Text"},
+    {"fieldname": "section_stats", "fieldtype": "Section Break", "label": "Stats"},
+    {"fieldname": "stats", "fieldtype": "Table", "label": "Stats", "options": "About Stat"},
+    {"fieldname": "section_features", "fieldtype": "Section Break", "label": "Features"},
+    {"fieldname": "features_title", "fieldtype": "Data", "label": "Features Title", "default": "Everything you need, delivered fast"},
+    {"fieldname": "features", "fieldtype": "Table", "label": "Features", "options": "About Feature"},
+    {"fieldname": "section_values", "fieldtype": "Section Break", "label": "Values"},
+    {"fieldname": "values_title", "fieldtype": "Data", "label": "Values Title", "default": "What we stand for"},
+    {"fieldname": "values", "fieldtype": "Table", "label": "Values", "options": "About Value"},
+    {"fieldname": "section_cta", "fieldtype": "Section Break", "label": "CTA"},
+    {"fieldname": "cta_title", "fieldtype": "Data", "label": "CTA Title", "default": "Join the SaathiMart Family"},
+    {"fieldname": "cta_text", "fieldtype": "Small Text", "label": "CTA Text"},
+    {"fieldname": "section_seo", "fieldtype": "Section Break", "label": "SEO"},
+    {"fieldname": "meta_title", "fieldtype": "Data", "label": "Meta Title"},
+    {"fieldname": "meta_description", "fieldtype": "Small Text", "label": "Meta Description"},
+    {"fieldname": "og_image", "fieldtype": "Attach Image", "label": "OG Image"}
+  ],
+  "permissions": [
+    {"role": "SM Admin", "read": 1, "write": 1},
+    {"role": "Website Manager", "read": 1, "write": 1}
+  ]
+}

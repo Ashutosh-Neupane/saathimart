@@ -1313,6 +1313,16 @@ Repo 2 (saathimart-vendor) additions:
 
 ## Docker Deployment — 502 Bad Gateway Fixes
 
+> **Historical record, not current setup.** This section documents debugging
+> of an older architecture that ran hub + 3 vendor sites behind nginx
+> Host-header routing. That `docker-compose.saathimart.yml` and its nginx
+> config no longer exist — `docker/nginx.conf` today only fronts the hub
+> (see `docker/docker-compose.prod.yml`), and the current combined dev stack
+> (root-level `docker-compose.saathimart.yml`, see both apps' READMEs) runs
+> hub + one vendor site on direct ports (8000/8001) with no nginx layer at
+> all. Kept below for the underlying `bench`/gunicorn lessons, which still
+> apply — the specific compose/nginx file paths referenced do not.
+
 ### Root Causes Found and Fixed
 
 1. **`bench serve` binding to `127.0.0.1`** — Frappe's `bench serve` binds to `0.0.0.0` by default, but if the `gunicorn_bind` config is set to `127.0.0.1:8000`, nginx in a separate container can't reach it. Fixed by explicitly setting `bench set-config -g gunicorn_bind "0.0.0.0:8000"` in both init scripts.

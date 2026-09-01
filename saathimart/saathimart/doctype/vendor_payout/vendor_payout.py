@@ -23,20 +23,38 @@ class VendorPayout(Document):
 
     @frappe.whitelist()
     def calculate_payout(self):
-        """Populate orders and totals from delivered Vendor Fulfillments."""
+        """
+        Populate orders and totals from this vendor's outstanding
+        fulfillments in the period — same definition of "outstanding"
+        api/payouts.py:get_outstanding_payout reports (paid order,
+        non-cancelled order/fulfillment, not already claimed by another
+        payout), not narrowed to status='Delivered' — a payout must settle
+        exactly what get_outstanding_payout said was owed, or the two
+        permanently disagree.
+
+        Claims each included fulfillment by stamping its vendor_payout
+        link to this payout's name — without this, calling calculate_payout
+        twice for the same vendor/period double-counts the same
+        fulfillments into two payouts. on_trash below reverses the claim.
+        """
         if not self.vendor or not self.period_start or not self.period_end:
             frappe.throw(_("Vendor, period start, and period end are required"))
 
-        # Find delivered fulfillments in the period
         fulfillments = frappe.db.sql("""
             SELECT vf.name, vf.subtotal, o.name as order_id, o.customer_name,
                    vf.modified as delivered_at
             FROM `tabVendor Fulfillment` vf
             INNER JOIN `tabOrder` o ON vf.parent = o.name
             WHERE vf.vendor = %s
-              AND vf.status = 'Delivered'
-              AND vf.modified BETWEEN %s AND %s
+              AND vf.status != 'Cancelled'
+              AND (vf.vendor_payout IS NULL OR vf.vendor_payout = '')
+              AND o.payment_status = 'Paid'
+              AND o.status != 'Cancelled'
+              AND DATE(vf.modified) BETWEEN %s AND %s
         """, (self.vendor, self.period_start, self.period_end), as_dict=True)
+
+        if not fulfillments:
+            frappe.throw(_("Nothing outstanding to pay {0} for this period").format(self.vendor))
 
         self.orders = []
         self.total_sales = 0
@@ -50,8 +68,18 @@ class VendorPayout(Document):
             self.total_sales = flt(self.total_sales) + flt(f.subtotal)
 
         self.save(ignore_permissions=True)
+
+        for f in fulfillments:
+            frappe.db.set_value("Vendor Fulfillment", f.name, "vendor_payout", self.name)
+
         return {
             "orders_count": len(fulfillments),
             "total_sales": self.total_sales,
             "payout_amount": self.payout_amount,
         }
+
+    def on_trash(self):
+        """Release this payout's fulfillments so they're outstanding again."""
+        frappe.db.set_value(
+            "Vendor Fulfillment", {"vendor_payout": self.name}, "vendor_payout", None
+        )

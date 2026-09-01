@@ -89,9 +89,18 @@ def deep_health_check():
 
 @frappe.whitelist()
 def vendor_health(vendor_name=None):
-    """Check health of a specific vendor's sync connection.
+    """
+    Check health of a specific vendor's sync connection.
 
-    Returns connectivity status, last successful delivery, circuit state.
+    Three separate systems each track their own idea of "is this vendor
+    OK" — circuit breaker (consecutive delivery failures), partial_failure
+    (hourly error budget / defer status), and clock_sync (measured clock
+    skew widening its HMAC timestamp tolerance). Before this, an admin had
+    to know to check all three separately (three different API calls, three
+    different cache-key namespaces) to get the full picture of one vendor.
+    This returns all three together so "unhealthy" always means something
+    concrete and visible right here, not a value hidden in a sibling
+    endpoint.
     """
     if not vendor_name:
         frappe.throw(_("Vendor name required"))
@@ -102,6 +111,8 @@ def vendor_health(vendor_name=None):
         "last_event": None,
         "circuit_state": "closed",
         "recent_errors": 0,
+        "error_budget": {"within_budget": True, "deferred": False},
+        "clock_skew_seconds": 0,
     }
 
     # Last successful delivery
@@ -126,6 +137,26 @@ def vendor_health(vendor_name=None):
     except Exception:
         pass
 
+    # Error budget / defer status (api/partial_failure.py)
+    try:
+        from saathimart.api.partial_failure import check_error_budget
+        within_budget = check_error_budget(vendor_name)
+        result["error_budget"] = {"within_budget": within_budget, "deferred": not within_budget}
+    except Exception:
+        pass
+
+    # Measured clock skew (api/clock_sync.py) — informational; a large
+    # value means this vendor's HMAC timestamp tolerance has widened well
+    # past the 5-minute default, worth a human glancing at even though it
+    # doesn't by itself make the vendor "unhealthy".
+    try:
+        from saathimart.api.clock_sync import get_vendor_clock_skew, MAX_ACCEPTABLE_SKEW
+        skew = get_vendor_clock_skew(vendor_name)
+        result["clock_skew_seconds"] = skew
+        result["clock_skew_acceptable"] = abs(skew) <= MAX_ACCEPTABLE_SKEW
+    except Exception:
+        pass
+
     # Recent errors
     try:
         result["recent_errors"] = frappe.db.count("Webhook Event", {
@@ -136,7 +167,13 @@ def vendor_health(vendor_name=None):
     except Exception:
         pass
 
-    result["status"] = "healthy" if result["circuit_state"].get("state") == "closed" and result["recent_errors"] == 0 else "unhealthy"
+    result["status"] = (
+        "healthy"
+        if result["circuit_state"].get("state") == "closed"
+        and not result["error_budget"]["deferred"]
+        and result["recent_errors"] == 0
+        else "unhealthy"
+    )
 
     return result
 

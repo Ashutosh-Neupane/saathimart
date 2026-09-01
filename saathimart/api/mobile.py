@@ -4,7 +4,7 @@ and offline sync support for mobile apps.
 """
 import frappe
 from frappe import _
-from frappe.utils import cint, cstr
+from frappe.utils import cint, cstr, flt
 import json
 
 

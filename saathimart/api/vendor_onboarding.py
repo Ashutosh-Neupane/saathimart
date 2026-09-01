@@ -44,6 +44,10 @@ def register_vendor(vendor_name, contact_email, contact_phone,
     from frappe.utils.password import set_encrypted_password
     set_encrypted_password("Vendor", vendor.name, api_secret, "api_secret")
     set_encrypted_password("Vendor", vendor.name, webhook_secret, "webhook_secret")
+    # The auto-generated credentials_info snapshot (Vendor.after_insert)
+    # holds the controller's own random secrets, which were just replaced —
+    # regenerate it so the admin copies the real ones.
+    vendor._populate_credentials_info()
     frappe.db.commit()
 
     # Notify admin

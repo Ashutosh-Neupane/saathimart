@@ -1,0 +1,22 @@
+{
+  "name": "Privacy Page",
+  "module": "Saathimart",
+  "doctype": "DocType",
+  "issingle": 1,
+  "track_changes": 1,
+  "fields": [
+    {"fieldname": "title", "fieldtype": "Data", "label": "Title", "reqd": 1, "default": "Privacy Policy"},
+    {"fieldname": "breadcrumb_label", "fieldtype": "Data", "label": "Breadcrumb Label", "default": "PRIVACY POLICY"},
+    {"fieldname": "subtitle", "fieldtype": "Data", "label": "Subtitle"},
+    {"fieldname": "col_break_1", "fieldtype": "Column Break"},
+    {"fieldname": "meta_title", "fieldtype": "Data", "label": "Meta Title"},
+    {"fieldname": "meta_description", "fieldtype": "Small Text", "label": "Meta Description"},
+    {"fieldname": "og_image", "fieldtype": "Attach Image", "label": "OG Image"},
+    {"fieldname": "section_blocks", "fieldtype": "Section Break", "label": "Sections (JSON)"},
+    {"fieldname": "sections", "fieldtype": "Code", "label": "Sections", "options": "JSON"}
+  ],
+  "permissions": [
+    {"role": "SM Admin", "read": 1, "write": 1},
+    {"role": "Website Manager", "read": 1, "write": 1}
+  ]
+}

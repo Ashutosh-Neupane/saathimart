@@ -52,7 +52,7 @@
    "fieldname": "barcode",
    "fieldtype": "Data",
    "label": "Barcode",
-   "description": "Physical barcode on the product \u2014 used for lookup by vendors"
+   "description": "Physical barcode on the product — used for lookup by vendors"
   },
   {
    "fieldname": "sku",
@@ -147,7 +147,7 @@
    "fieldname": "sync_enabled",
    "fieldtype": "Check",
    "label": "Enable Sync to Vendor",
-   "default": "1",
+   "default": "0",
    "description": "When checked, price/stock changes are pushed to the vendor site automatically. Requires barcode to be set."
   },
   {
@@ -183,7 +183,7 @@
    "fieldtype": "Int",
    "label": "Last Event Seq",
    "read_only": 1,
-   "description": "Monotonically increasing sequence of the last processed price.update event \u2014 same pattern as Vendor Stock.last_event_seq"
+   "description": "Monotonically increasing sequence of the last processed price.update event — same pattern as Vendor Stock.last_event_seq"
   }
  ],
  "title_field": "vendor",

@@ -124,7 +124,7 @@ def create_batch_event(vendor_name, batch_payload, compressed=False):
     event = frappe.new_doc("Webhook Event")
     event.event_type = batch_payload["event_type"]
     event.target_vendor = vendor_name
-    event.target_site = frappe.db.get_value("Vendor", vendor_name, "webhook_url") or ""
+    event.target_site = frappe.db.get_value("Vendor", vendor_name, "frappe_site_url") or ""
     event.payload = json.dumps(batch_payload, default=str)
     event.status = "Queued"
     event.priority = 3  # NORMAL
@@ -157,6 +157,7 @@ def unpack_batch_event(batch_payload):
         return [(event_type, batch_payload)]
 
 
+@frappe.whitelist()
 def get_batch_stats():
     """Get batching statistics for monitoring."""
     try:

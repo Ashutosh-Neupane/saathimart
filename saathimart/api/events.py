@@ -97,7 +97,8 @@ def bulk_receive(events=None):
     just handing off and returning.
     """
     guest_rate_limit("events.bulk_receive", limit=100, window_seconds=60)
-    verify_hub_timestamp()
+    vendor_id = frappe.request.headers.get("X-Vendor-ID", "") if frappe.request else ""
+    verify_hub_timestamp(vendor_name=vendor_id or None)
     verify_hub_secret("events.bulk_receive")
     events = events or []
     if not isinstance(events, list):
@@ -151,7 +152,8 @@ def receive(event=None, payload=None):
     of running _handle_inbound inline on a web worker.
     """
     guest_rate_limit("events.receive", limit=1000, window_seconds=60)
-    verify_hub_timestamp()
+    vendor_id = frappe.request.headers.get("X-Vendor-ID", "") if frappe.request else ""
+    verify_hub_timestamp(vendor_name=vendor_id or None)
     verify_hub_secret("events.receive")
     if not event:
         frappe.throw(_("event is required"))
@@ -240,6 +242,13 @@ def _handle_inbound(event, payload):
 
     elif event == "barcode.unregister":
         _apply_barcode_unregister(payload)
+
+    elif event == "stock.snapshot_report":
+        from saathimart.api.stock_snapshot import record_stock_snapshot_report
+        record_stock_snapshot_report(
+            payload.get("vendor") or payload.get("vendor_id"),
+            payload.get("discrepancies") or [],
+        )
 
     frappe.db.commit()
 

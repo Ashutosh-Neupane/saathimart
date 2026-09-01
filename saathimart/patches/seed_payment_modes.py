@@ -1,7 +1,7 @@
 """
 Seeds the Payment Mode registry matching what the storefront checkout sends:
 "eSewa", "Bank Transfer", "COD". Idempotent — updates rather than duplicates
-if a site admin already has these. Ported from saathi_middleware's
+if a site admin already has these. Adapted from the legacy storefront's
 seed_payment_modes patch, minus the ERPNext mode-of-payment mapping (the hub
 does not push to ERPNext).
 
@@ -18,9 +18,9 @@ def execute():
         {"mode_name": "eSewa", "slug": "esewa", "is_enabled": 1, "is_online": 1,
          "gateway": "eSewa", "display_order": 1,
          "description": "Pay from your eSewa wallet."},
-        {"mode_name": "Bank Transfer", "slug": "card", "is_enabled": 1, "is_online": 0,
+        {"mode_name": "Bank Transfer", "slug": "bank-transfer", "is_enabled": 1, "is_online": 0,
          "display_order": 2,
-         "description": "Use Card to complete payment."},
+         "description": "Pay via direct bank transfer."},
         {"mode_name": "COD", "slug": "cash-on-delivery", "is_enabled": 1, "is_online": 0,
          "display_order": 3,
          "description": "Pay our rider while delivering your product."},

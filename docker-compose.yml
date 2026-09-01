@@ -9,7 +9,7 @@ services:
     ports:
       - "${PORT:-8000}:8000"
     environment:
-      FRAPPE_SITE: ${FRAPPE_SITE:-saathimart.local}
+      FRAPPE_SITE: ${FRAPPE_SITE:-saathimart.localhost}
       DB_HOST: mariadb
       DB_PORT: 3306
       DB_ROOT_PASSWORD: ${DB_ROOT_PASSWORD:-root}

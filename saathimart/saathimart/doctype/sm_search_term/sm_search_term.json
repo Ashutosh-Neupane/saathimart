@@ -1,0 +1,82 @@
+{
+ "actions": [],
+ "allow_rename": 0,
+ "autoname": "field:search_key",
+ "creation": "2026-08-22 00:00:00.000000",
+ "doctype": "DocType",
+ "engine": "InnoDB",
+ "field_order": [
+  "search_term",
+  "search_key",
+  "column_break_main",
+  "search_count",
+  "last_result_count",
+  "last_searched_at"
+ ],
+ "fields": [
+  {
+   "fieldname": "search_term",
+   "fieldtype": "Data",
+   "label": "Search Term",
+   "reqd": 1,
+   "in_list_view": 1,
+   "description": "As the shopper typed it — this is what get_top_searches shows."
+  },
+  {
+   "fieldname": "search_key",
+   "fieldtype": "Data",
+   "label": "Search Key",
+   "reqd": 1,
+   "unique": 1,
+   "description": "Lowercased, whitespace-collapsed form. The dedupe key, so 'Fresh  Milk' and 'fresh milk' are one row."
+  },
+  {
+   "fieldname": "column_break_main",
+   "fieldtype": "Column Break"
+  },
+  {
+   "fieldname": "search_count",
+   "fieldtype": "Int",
+   "label": "Search Count",
+   "default": "0",
+   "in_list_view": 1
+  },
+  {
+   "fieldname": "last_result_count",
+   "fieldtype": "Int",
+   "label": "Last Result Count",
+   "in_list_view": 1,
+   "description": "Results the most recent search returned. A popular term sitting at 0 is a catalog gap worth filling."
+  },
+  {
+   "fieldname": "last_searched_at",
+   "fieldtype": "Datetime",
+   "label": "Last Searched At"
+  }
+ ],
+ "index_web_pages_for_search": 0,
+ "links": [],
+ "modified": "2026-08-22 00:00:00.000000",
+ "modified_by": "Administrator",
+ "module": "Saathimart",
+ "name": "SM Search Term",
+ "naming_rule": "By fieldname",
+ "owner": "Administrator",
+ "permissions": [
+  {
+   "create": 1,
+   "delete": 1,
+   "email": 1,
+   "export": 1,
+   "print": 1,
+   "read": 1,
+   "report": 1,
+   "role": "System Manager",
+   "share": 1,
+   "write": 1
+  }
+ ],
+ "sort_field": "search_count",
+ "sort_order": "DESC",
+ "states": []
+}

@@ -14,7 +14,7 @@ import frappe
 from frappe import _
 from frappe.utils import add_to_date, cint, cstr, now, now_datetime
 
-# Password policy, ported from saathi_middleware.api.auth_full. The
+# Password policy used by the storefront. The
 # composition rules mirror the storefront signup form message for message;
 # the zxcvbn grader below is the part the browser cannot run.
 MIN_PASSWORD_LENGTH = 8

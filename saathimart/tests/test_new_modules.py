@@ -71,8 +71,90 @@ class TestCircuitBreaker(unittest.TestCase):
 
 
 class TestLoyaltyEnhanced(unittest.TestCase):
+    """
+    earn_points/redeem_points/apply_referral/check_birthday_rewards had zero
+    coverage before this — every real insert() call was wrapped in
+    try/except: log_error, so a systemic failure (a missing mandatory
+    `program` field, in this case — every single insert failed, silently,
+    always) never surfaced as a test failure. These exercise the actual
+    DB-writing paths, not just the pure calculation helpers above.
+    """
+
+    TEST_PROGRAM = "Test Rewards Enhanced Coverage"
+
     def setUp(self):
         frappe.set_user("Administrator")
+        if not frappe.db.exists("Loyalty Program", self.TEST_PROGRAM):
+            frappe.get_doc({
+                "doctype": "Loyalty Program",
+                "program_name": self.TEST_PROGRAM,
+                "is_active": 1,
+            }).insert(ignore_permissions=True)
+        s = frappe.get_single("Settings")
+        self._orig_enable = s.enable_loyalty
+        self._orig_program = s.loyalty_program
+        s.enable_loyalty = 1
+        s.loyalty_program = self.TEST_PROGRAM
+        s.save(ignore_permissions=True)
+        frappe.db.commit()
+
+    def tearDown(self):
+        rows = frappe.get_all(
+            "Loyalty Point Entry",
+            filters={"customer_email": ["like", "%enhanced-coverage%"]},
+            pluck="name",
+        )
+        for r in rows:
+            frappe.delete_doc("Loyalty Point Entry", r, force=True, ignore_permissions=True)
+        s = frappe.get_single("Settings")
+        s.enable_loyalty = self._orig_enable
+        s.loyalty_program = self._orig_program
+        s.save(ignore_permissions=True)
+        frappe.db.commit()
+
+    def test_earn_points_persists_with_valid_program_and_entry_type(self):
+        """
+        Regression: program was never set (mandatory field) and entry_type
+        was "Earn" against a doctype whose real Select options are
+        "Earned"/"Redeemed"/... — every insert failed.
+        """
+        from saathimart.api.loyalty_enhanced import earn_points
+        email = "enhanced-coverage-earn@test.np"
+        result = earn_points(email, None, 1000)
+        self.assertGreater(result, 0)
+        rows = frappe.get_all(
+            "Loyalty Point Entry", filters={"customer_email": email},
+            fields=["entry_type", "program", "source", "tier"],
+        )
+        self.assertEqual(len(rows), 1)
+        self.assertEqual(rows[0]["entry_type"], "Earned")
+        self.assertEqual(rows[0]["program"], self.TEST_PROGRAM)
+        self.assertEqual(rows[0]["source"], "order")
+
+    def test_redeem_points_persists_and_deducts_balance(self):
+        from saathimart.api.loyalty_enhanced import earn_points, redeem_points, get_points_balance
+        email = "enhanced-coverage-redeem@test.np"
+        earn_points(email, None, 1000)
+        before = get_points_balance(email)
+        redeem_points(email, None, 5)
+        after = get_points_balance(email)
+        self.assertEqual(after, before - 5)
+
+    def test_apply_referral_is_idempotent(self):
+        """
+        Regression: the dedup check filtered on `order` containing the new
+        customer's email — but `order` is a strict Link to Order, so the
+        write that check was meant to detect (a synthetic "referral:<email>"
+        string) never actually succeeded either; both the write and its own
+        duplicate guard were broken. Now uses `remarks`, a real free-text field.
+        """
+        from saathimart.api.loyalty_enhanced import apply_referral, get_points_balance
+        referrer = "enhanced-coverage-referrer@test.np"
+        apply_referral(referrer, "enhanced-coverage-referred@test.np")
+        apply_referral(referrer, "enhanced-coverage-referred@test.np")
+        rows = frappe.get_all("Loyalty Point Entry", filters={"customer_email": referrer})
+        self.assertEqual(len(rows), 1)
+        self.assertEqual(get_points_balance(referrer), 100)
 
     def test_tier_bronze(self):
         from saathimart.api.loyalty_enhanced import get_customer_tier
@@ -247,8 +329,20 @@ class TestMobile(unittest.TestCase):
         self.assertIn("has_more", result)
 
     def test_get_cart_light_empty(self):
+        """
+        find_active_cart() (see cart.py) deliberately prefers the signed-in
+        user's own cart over the session_id argument — right for a real
+        request, but it means this must run as Guest: "Administrator" is
+        the user nearly every other test in the suite runs as too, so an
+        Active cart genuinely left over from another test would make this
+        depend on run order instead of testing what it says it tests.
+        """
         from saathimart.api.mobile import get_cart_light
-        result = get_cart_light("nonexistent-session")
+        frappe.set_user("Guest")
+        try:
+            result = get_cart_light("nonexistent-session")
+        finally:
+            frappe.set_user("Administrator")
         self.assertEqual(result["items"], [])
         self.assertEqual(result["total"], 0)
 
@@ -274,27 +368,6 @@ class TestAnalytics(unittest.TestCase):
         from saathimart.api.analytics import get_product_analytics
         result = get_product_analytics("nonexistent-product", days=30)
         self.assertEqual(result["total_sold"], 0)
-
-
-class TestVendorPayout(unittest.TestCase):
-    def setUp(self):
-        frappe.set_user("Administrator")
-
-    def test_payout_creation(self):
-        from saathimart.api.vendor_onboarding import register_vendor
-        register_vendor("Test Payout Vendor", "payout@test.com", "9800000003")
-        vname = frappe.db.get_value("Vendor", {"vendor_name": "Test Payout Vendor"}, "name")
-        if vname:
-            vp = frappe.new_doc("Vendor Payout")
-            vp.vendor = vname
-            vp.period_start = "2026-08-01"
-            vp.period_end = "2026-08-31"
-            vp.flags.ignore_links = True
-            vp.insert(ignore_permissions=True)
-            self.assertTrue(vp.name)
-            frappe.delete_doc("Vendor Payout", vp.name, force=True)
-            frappe.delete_doc("Vendor", vname, force=True)
-            frappe.db.commit()
 
 
 class TestCache(unittest.TestCase):

@@ -1,5 +1,5 @@
 """
-One error shape for every endpoint, ported from saathi_middleware's
+One error shape for every endpoint, adapted from the legacy storefront's
 api/responses.py (adapted: saathimart endpoints signal failures by raising,
 so the decorator layer is not needed here — see below).
 

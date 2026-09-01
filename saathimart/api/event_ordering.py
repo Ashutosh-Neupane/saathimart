@@ -14,33 +14,23 @@ import frappe
 
 
 def get_next_sequence(vendor_name):
-    """Get the next sequence number for events to this vendor.
-
-    Uses a Redis counter with DB fallback for atomicity.
     """
-    key = f"sm_event_seq:{vendor_name}"
+    Get the next sequence number for events to this vendor.
 
-    try:
-        cache = frappe.cache()
-        current = cache.get_value(key)
-        if current is None:
-            # Initialize from DB
-            last = frappe.db.sql("""
-                SELECT MAX(CAST(SUBSTRING(name, LENGTH(name) - LOCATE('-', REVERSE(name)) + 1) AS UNSIGNED)) as last_seq
-                FROM `tabWebhook Event`
-                WHERE target_vendor = %s AND name LIKE '%%-%%'
-            """, (vendor_name,), as_dict=True)
-            current = (last[0].last_seq or 0) if last and last[0].last_seq else 0
-        next_seq = current + 1
-        cache.set_value(key, next_seq, expires_in_sec=86400)
-        return next_seq
-    except Exception:
-        # Redis down — use DB directly
-        last = frappe.db.sql("""
-            SELECT COUNT(*) as cnt FROM `tabWebhook Event`
-            WHERE target_vendor = %s
-        """, (vendor_name,), as_dict=True)
-        return (last[0].cnt or 0) + 1
+    Delegates to publisher._get_next_vendor_event_seq — the atomic
+    `UPDATE tabVendor SET last_event_seq = last_event_seq + 1` that
+    _enqueue() already uses for every real event. This used to be a
+    separate Redis-counter-with-COUNT(*)-fallback implementation, which
+    had a real bug: the COUNT(*) fallback (used whenever Redis is down)
+    undercounts once dead_letter.archive_old_events() (weekly) has deleted
+    old Webhook Event rows, handing out a sequence number that collides
+    with one already delivered. The Vendor.last_event_seq column doesn't
+    have that problem — it's a running counter, not derived from row
+    counts — so delegating removes the bug and the duplicate logic in one
+    move rather than patching the COUNT(*) query.
+    """
+    from saathimart.events.publisher import _get_next_vendor_event_seq
+    return _get_next_vendor_event_seq(vendor_name)
 
 
 def verify_sequence(vendor_name, expected_seq):
@@ -91,7 +81,14 @@ def mark_processed(vendor_name, seq):
 
 
 def get_held_events(vendor_name):
-    """Get events that are held due to sequence gaps."""
+    """
+    Get events queued for this vendor whose event_seq is ahead of the
+    watermark — i.e. actually held back by _deliver_event's gap check
+    (see events/publisher.py), not just "queued". last_seq used to be
+    computed and then never applied to the filter, so this returned every
+    Queued event for the vendor regardless of ordering, not the held ones
+    it's named for.
+    """
     try:
         last_seq = frappe.cache().get_value(f"sm_last_processed_seq:{vendor_name}") or 0
     except Exception:
@@ -104,8 +101,9 @@ def get_held_events(vendor_name):
         filters={
             "target_vendor": vendor_name,
             "status": "Queued",
+            "event_seq": [">", last_seq],
         },
-        fields=["name", "event_type", "priority", "creation"],
-        order_by="creation asc",
+        fields=["name", "event_type", "priority", "creation", "event_seq"],
+        order_by="event_seq asc",
         limit=20,
     )

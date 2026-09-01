@@ -218,13 +218,19 @@ def _make_vendor_user(email, vendor_name):
 
 
 def _seed_vendor_stock(vendor, product, available=100, reserved=0):
-    from saathimart.api.stock import get_or_create
+    from saathimart.api.stock import get_or_create, _invalidate_stock_cache
     row = get_or_create(vendor, product)
     frappe.db.set_value("Vendor Stock", row.name, {
         "available_qty": available,
         "reserved_qty": reserved,
         "physical_qty": available + reserved,
     })
+    # get_vendor_stock caches for 30s (see api/stock.py). Vendor/product
+    # identities are reused across many tests via _make_vendor/_make_product,
+    # so without this, a read moments before this reseed (another test, a
+    # manual diagnostic call) can serve a stale value for up to 30s after —
+    # intermittent, hard-to-reproduce test flakiness.
+    _invalidate_stock_cache(vendor, product)
     return row.name
 
 
@@ -637,8 +643,9 @@ class TestProductVariants(unittest.TestCase):
 
     def test_add_to_cart_rejects_template_directly(self):
         from saathimart.api.cart import add_to_cart
-        with self.assertRaises(frappe.ValidationError):
-            add_to_cart("variant-cart-session", self.template.name, qty=1)
+        result = add_to_cart("variant-cart-session", self.template.name, qty=1)
+        self.assertFalse(result["ok"])
+        self.assertEqual(result["error_code"], "VALIDATION_ERROR")
 
     def test_add_to_cart_accepts_a_specific_variant(self):
         from saathimart.api.cart import add_to_cart, get_cart
@@ -1101,8 +1108,13 @@ class TestCart(unittest.TestCase):
         vl.insert(ignore_permissions=True)
         _seed_vendor_stock(vendor.name, self.product.name, available=0)
 
-        with self.assertRaises(frappe.ValidationError):
-            add_to_cart(self.SESSION, self.product.name, qty=1, vendor=vendor.name)
+        # add_to_cart is @handle_api_errors-wrapped: frappe.throw() inside it
+        # is caught and turned into {"ok": False, ...} rather than
+        # propagating, so a direct Python call never raises — see
+        # api/responses.py:handle_api_errors.
+        result = add_to_cart(self.SESSION, self.product.name, qty=1, vendor=vendor.name)
+        self.assertFalse(result["ok"])
+        self.assertEqual(result["error_code"], "VALIDATION_ERROR")
 
     def test_add_to_cart_more_than_available_raises(self):
         from saathimart.api.cart import add_to_cart
@@ -1117,8 +1129,9 @@ class TestCart(unittest.TestCase):
         vl.insert(ignore_permissions=True)
         _seed_vendor_stock(vendor.name, self.product.name, available=3)
 
-        with self.assertRaises(frappe.ValidationError):
-            add_to_cart(self.SESSION, self.product.name, qty=4, vendor=vendor.name)
+        result = add_to_cart(self.SESSION, self.product.name, qty=4, vendor=vendor.name)
+        self.assertFalse(result["ok"])
+        self.assertEqual(result["error_code"], "VALIDATION_ERROR")
 
     def test_add_to_cart_allows_backorder_when_flagged(self):
         from saathimart.api.cart import add_to_cart, get_cart
@@ -1171,8 +1184,9 @@ class TestCart(unittest.TestCase):
         _seed_vendor_stock(vendor.name, self.product.name, available=5)
 
         add_to_cart(self.SESSION, self.product.name, qty=3, vendor=vendor.name)
-        with self.assertRaises(frappe.ValidationError):
-            add_to_cart(self.SESSION, self.product.name, qty=3, vendor=vendor.name)
+        result = add_to_cart(self.SESSION, self.product.name, qty=3, vendor=vendor.name)
+        self.assertFalse(result["ok"])
+        self.assertEqual(result["error_code"], "VALIDATION_ERROR")
 
     def test_update_cart_item(self):
         from saathimart.api.cart import add_to_cart, update_cart_item, get_cart
@@ -1226,8 +1240,9 @@ class TestCart(unittest.TestCase):
         add_to_cart(self.SESSION, self.product.name, qty=1, vendor=vendor_b.name)
         self.assertEqual(len(get_cart(self.SESSION)["items"]), 2)
 
-        with self.assertRaises(frappe.ValidationError):
-            update_cart_item(self.SESSION, self.product.name, qty=5)
+        result = update_cart_item(self.SESSION, self.product.name, qty=5)
+        self.assertFalse(result["ok"])
+        self.assertEqual(result["error_code"], "VALIDATION_ERROR")
 
         update_cart_item(self.SESSION, self.product.name, qty=5, vendor=vendor_a.name)
         cart = get_cart(self.SESSION)
@@ -1251,8 +1266,9 @@ class TestCart(unittest.TestCase):
     def test_inactive_product_rejected(self):
         from saathimart.api.cart import add_to_cart
         self.product.db_set("status", "Inactive")
-        with self.assertRaises(frappe.ValidationError):
-            add_to_cart(self.SESSION, self.product.name, qty=1)
+        result = add_to_cart(self.SESSION, self.product.name, qty=1)
+        self.assertFalse(result["ok"])
+        self.assertEqual(result["error_code"], "VALIDATION_ERROR")
         self.product.db_set("status", "Active")
 
 
@@ -1351,13 +1367,14 @@ class TestCheckout(unittest.TestCase):
         from saathimart.api.orders import checkout
         from saathimart.api.cart import clear_cart
         clear_cart(self.SESSION)
-        with self.assertRaises(frappe.ValidationError):
-            checkout(
-                session_id=self.SESSION,
-                customer_name="Test",
-                customer_phone="9800000000",
-                delivery_address="Test",
-            )
+        result = checkout(
+            session_id=self.SESSION,
+            customer_name="Test",
+            customer_phone="9800000000",
+            delivery_address="Test",
+        )
+        self.assertFalse(result["ok"])
+        self.assertEqual(result["error_code"], "VALIDATION_ERROR")
 
     def test_cart_marked_checked_out(self):
         from saathimart.api.orders import checkout
@@ -1415,9 +1432,14 @@ class TestCheckoutVendorRouting(unittest.TestCase):
         from saathimart.api.cart import add_to_cart
         frappe.set_user("Guest")
         add_to_cart(self.SESSION, self.product.name, qty=2, vendor=self.vendor_a.name)
-        frappe.set_user("Administrator")
 
+        # checkout() must run as the same user that filled the cart —
+        # find_active_cart() (see cart.py) deliberately prefers a signed-in
+        # user's own cart over session_id, so switching to Administrator
+        # first can make it find some *other* leftover Administrator-owned
+        # cart from a completely different test instead of this Guest cart.
         result = self._checkout()
+        frappe.set_user("Administrator")
         self.assertEqual(result["vendor"], self.vendor_a.name)
         order = frappe.get_doc("Order", result["order_id"])
         self.assertEqual(order.vendor, self.vendor_a.name)
@@ -1428,9 +1450,8 @@ class TestCheckoutVendorRouting(unittest.TestCase):
         from saathimart.api.stock import get_vendor_stock
         frappe.set_user("Guest")
         add_to_cart(self.SESSION, self.product.name, qty=3, vendor=self.vendor_a.name)
-        frappe.set_user("Administrator")
-
         self._checkout()
+        frappe.set_user("Administrator")
         stock = get_vendor_stock(self.vendor_a.name, self.product.name)
         self.assertEqual(stock["available_qty"], 7)
         self.assertEqual(stock["reserved_qty"], 3)
@@ -1449,8 +1470,9 @@ class TestCheckoutVendorRouting(unittest.TestCase):
         from saathimart.api.cart import add_to_cart
         from saathimart.api.stock import get_vendor_stock
         frappe.set_user("Guest")
-        with self.assertRaises(frappe.ValidationError):
-            add_to_cart(self.SESSION, self.product.name, qty=999, vendor=self.vendor_a.name)
+        result = add_to_cart(self.SESSION, self.product.name, qty=999, vendor=self.vendor_a.name)
+        self.assertFalse(result["ok"])
+        self.assertEqual(result["error_code"], "VALIDATION_ERROR")
         frappe.set_user("Administrator")
         # rejected add must not have touched stock at all
         stock = get_vendor_stock(self.vendor_a.name, self.product.name)
@@ -1471,12 +1493,23 @@ class TestCheckoutVendorRouting(unittest.TestCase):
         add_to_cart(self.SESSION, self.product.name, qty=5, vendor=self.vendor_a.name)
         frappe.set_user("Administrator")
 
-        # Someone else buys out the rest of vendor_a's stock in the meantime
-        frappe.db.set_value("Vendor Stock", f"{self.vendor_a.name}-{self.product.name}",
+        # Someone else buys out the rest of vendor_a's stock in the meantime.
+        # Row name needs the "-default" warehouse suffix every real Vendor
+        # Stock row has (see stock.py:_row_name) — a bare f"{vendor}-{product}"
+        # here targets a name that was never created, silently no-opping.
+        from saathimart.api.stock import _row_name
+        frappe.db.set_value("Vendor Stock", _row_name(self.vendor_a.name, self.product.name),
                              "available_qty", 0)
 
-        with self.assertRaises(frappe.ValidationError):
-            self._checkout()
+        # Back to Guest before checkout: find_active_cart() (cart.py)
+        # prefers a signed-in user's own cart over session_id, so calling
+        # this as Administrator risks finding some other leftover
+        # Administrator-owned cart from a different test instead of this one.
+        frappe.set_user("Guest")
+        result = self._checkout()
+        frappe.set_user("Administrator")
+        self.assertFalse(result["ok"])
+        self.assertEqual(result["error_code"], "VALIDATION_ERROR")
         # failed reservation must not have partially applied
         stock = get_vendor_stock(self.vendor_a.name, self.product.name)
         self.assertEqual(stock["available_qty"], 0)
@@ -1498,9 +1531,8 @@ class TestCheckoutVendorRouting(unittest.TestCase):
         frappe.set_user("Guest")
         add_to_cart(self.SESSION, self.product.name, qty=1, vendor=self.vendor_a.name)
         add_to_cart(self.SESSION, product_b.name, qty=2, vendor=self.vendor_b.name)
-        frappe.set_user("Administrator")
-
         result = self._checkout()
+        frappe.set_user("Administrator")
         order = frappe.get_doc("Order", result["order_id"])
 
         self.assertEqual(len(order.vendor_fulfillments), 2)
@@ -1534,9 +1566,8 @@ class TestCheckoutVendorRouting(unittest.TestCase):
         frappe.set_user("Guest")
         add_to_cart(self.SESSION, self.product.name, qty=1, vendor=self.vendor_a.name)
         add_to_cart(self.SESSION, product_b.name, qty=1, vendor=self.vendor_b.name)
-        frappe.set_user("Administrator")
-
         result = self._checkout()
+        frappe.set_user("Administrator")
 
         user_a = _make_vendor_user("checkout-vendor-a-list@test.np", self.vendor_a.name)
         user_b = _make_vendor_user("checkout-vendor-b-list@test.np", self.vendor_b.name)
@@ -1562,15 +1593,15 @@ class TestCheckoutVendorRouting(unittest.TestCase):
         from saathimart.api.cart import add_to_cart
         frappe.set_user("Guest")
         add_to_cart(self.SESSION, self.product.name, qty=1)
-        frappe.set_user("Administrator")
-
         result = self._checkout()
+        frappe.set_user("Administrator")
         self.assertTrue(result["vendor"])  # some vendor was auto-selected
         order = frappe.get_doc("Order", result["order_id"])
         self.assertEqual(order.items[0].vendor, result["vendor"])
 
+        from saathimart.api.stock import _row_name
         reserved = frappe.db.get_value(
-            "Vendor Stock", f"{result['vendor']}-{self.product.name}", "reserved_qty"
+            "Vendor Stock", _row_name(result['vendor'], self.product.name), "reserved_qty"
         )
         self.assertEqual(reserved, 1)
 
@@ -1581,17 +1612,30 @@ class TestCheckoutVendorRouting(unittest.TestCase):
         line (there's no pooled hub inventory to fall back to)."""
         from saathimart.api.cart import add_to_cart
 
+        # add_to_cart is @handle_api_errors-wrapped (returns {"ok": False,
+        # ...} instead of raising) — this used to assertRaises and fail
+        # before ever reaching the cleanup below, leaking this product and
+        # breaking every subsequent run on a duplicate-key insert. try/finally
+        # now guarantees cleanup regardless of how the assertion goes.
+        if frappe.db.exists("Product", {"product_name": "Orphan No Vendor Product"}):
+            frappe.delete_doc(
+                "Product",
+                frappe.db.get_value("Product", {"product_name": "Orphan No Vendor Product"}, "name"),
+                force=True,
+            )
         orphan = frappe.new_doc("Product")
         orphan.product_name = "Orphan No Vendor Product"
         orphan.status = "Active"
         orphan.insert(ignore_permissions=True)
 
-        frappe.set_user("Guest")
-        with self.assertRaises(frappe.ValidationError):
-            add_to_cart(self.SESSION + "-orphan", orphan.name, qty=1)
-        frappe.set_user("Administrator")
-
-        frappe.delete_doc("Product", orphan.name, ignore_permissions=True)
+        try:
+            frappe.set_user("Guest")
+            result = add_to_cart(self.SESSION + "-orphan", orphan.name, qty=1)
+            self.assertFalse(result["ok"])
+            self.assertEqual(result["error_code"], "VALIDATION_ERROR")
+        finally:
+            frappe.set_user("Administrator")
+            frappe.delete_doc("Product", orphan.name, ignore_permissions=True, force=True)
 
 
 # ── Test: Order status transitions ────────────────────────────────────────────
@@ -1621,8 +1665,9 @@ class TestOrderStatus(unittest.TestCase):
     def test_invalid_transition_raises(self):
         from saathimart.api.orders import update_order_status
         order = self._create_order()
-        with self.assertRaises(frappe.ValidationError):
-            update_order_status(order.name, "Delivered")  # can't skip steps
+        result = update_order_status(order.name, "Delivered")  # can't skip steps
+        self.assertFalse(result["ok"])
+        self.assertEqual(result["error_code"], "VALIDATION_ERROR")
 
     def test_full_happy_path(self):
         from saathimart.api.orders import update_order_status
@@ -2225,8 +2270,10 @@ class TestAuthGuards(unittest.TestCase):
     def test_update_status_requires_admin_or_vendor(self):
         from saathimart.api.orders import update_order_status
         frappe.set_user("Guest")
-        with self.assertRaises(frappe.PermissionError):
-            update_order_status("FAKE-ORDER", "Confirmed")
+        result = update_order_status("FAKE-ORDER", "Confirmed")
+        self.assertFalse(result["ok"])
+        self.assertEqual(result["error_code"], "FORBIDDEN")
+        frappe.set_user("Administrator")
 
     def test_has_app_permission_admin(self):
         from saathimart.api.auth import has_app_permission
@@ -2302,14 +2349,16 @@ class TestCmsApi(unittest.TestCase):
 
     def test_get_page_not_found_raises(self):
         from saathimart.api.cms import get_page
-        with self.assertRaises(frappe.DoesNotExistError):
-            get_page("does-not-exist-anywhere")
+        result = get_page("does-not-exist-anywhere")
+        self.assertFalse(result["ok"])
+        self.assertEqual(result["error_code"], "NOT_FOUND")
 
     def test_get_page_draft_not_returned(self):
         from saathimart.api.cms import get_page
         self._make_page("cms-test-draft-page", status="Draft")
-        with self.assertRaises(frappe.DoesNotExistError):
-            get_page("cms-test-draft-page")
+        result = get_page("cms-test-draft-page")
+        self.assertFalse(result["ok"])
+        self.assertEqual(result["error_code"], "NOT_FOUND")
 
     def test_get_page_cache_busted_on_update(self):
         from saathimart.api.cms import get_page
@@ -2692,19 +2741,22 @@ class TestVariantResolver(unittest.TestCase):
 
     def test_no_match_raises_does_not_exist(self):
         from saathimart.api.products import get_variant
-        with self.assertRaises(frappe.DoesNotExistError):
-            get_variant(self.template.slug, json.dumps({"Color": "Green"}))
+        result = get_variant(self.template.slug, json.dumps({"Color": "Green"}))
+        self.assertFalse(result["ok"])
+        self.assertEqual(result["error_code"], "NOT_FOUND")
 
     def test_non_variant_slug_rejected(self):
         from saathimart.api.products import get_variant
         plain = _make_product("Resolver Plain Product", price=100, prices=[])
-        with self.assertRaises(frappe.ValidationError):
-            get_variant(plain.slug, json.dumps({"Color": "Red"}))
+        result = get_variant(plain.slug, json.dumps({"Color": "Red"}))
+        self.assertFalse(result["ok"])
+        self.assertEqual(result["error_code"], "VALIDATION_ERROR")
 
     def test_invalid_attributes_json_rejected(self):
         from saathimart.api.products import get_variant
-        with self.assertRaises(frappe.ValidationError):
-            get_variant(self.template.slug, "{not json")
+        result = get_variant(self.template.slug, "{not json")
+        self.assertFalse(result["ok"])
+        self.assertEqual(result["error_code"], "VALIDATION_ERROR")
 
     def test_template_card_exposes_options_and_count(self):
         from saathimart.api.products import list_products
@@ -2735,19 +2787,48 @@ class TestVariantResolver(unittest.TestCase):
 
 class TestAdminVariantManagement(unittest.TestCase):
 
+    # Fixed literal names this class's tests create templates/variants
+    # under. None of the individual tests had a delete-if-exists guard
+    # (unlike _make_product elsewhere in this file), so a test that failed
+    # after creating one — or simply after the doctype/field-name bugs
+    # these were originally written against got fixed and the create calls
+    # started succeeding — left it behind to collide with the next run's
+    # duplicate-key insert. Centralized here instead of duplicating the
+    # same guard in all four tests.
+    _FIXTURE_TEMPLATE_NAMES = [
+        "Media Cap", "Delete Sock", "Idempotent Bottle", "Admin Mgmt Mug",
+    ]
+
+    def _cleanup_fixture_templates(self):
+        names = frappe.get_all(
+            "Product",
+            filters={"product_name": ["in", self._FIXTURE_TEMPLATE_NAMES]},
+            pluck="name",
+        )
+        variants = frappe.get_all(
+            "Product", filters={"variant_of": ["in", names or ["__none__"]]}, pluck="name"
+        ) if names else []
+        for n in variants + names:
+            frappe.db.sql("DELETE FROM `tabVendor Listing` WHERE product = %s", n)
+            frappe.db.sql("DELETE FROM `tabVendor Stock` WHERE product = %s", n)
+            frappe.delete_doc("Product", n, force=True, ignore_permissions=True, ignore_missing=True)
+
     def setUp(self):
         frappe.set_user("Administrator")
+        self._cleanup_fixture_templates()
 
     def tearDown(self):
         frappe.set_user("Administrator")
+        self._cleanup_fixture_templates()
 
     def test_requires_sm_admin_role(self):
         from saathimart.api.admin_products import create_template
         frappe.set_user("Guest")
         try:
-            with self.assertRaises(frappe.PermissionError):
-                create_template("Admin Guard Tee",
-                                json.dumps([{"attribute": "Size", "values": ["S"]}]))
+            result = create_template("Admin Guard Tee",
+                            json.dumps([{"attribute": "Size", "values": ["S"]}]))
+            self.assertFalse(result["ok"])
+            self.assertEqual(result["error_code"], "FORBIDDEN")
         finally:
             frappe.set_user("Administrator")
 
@@ -2788,8 +2869,9 @@ class TestAdminVariantManagement(unittest.TestCase):
 
     def test_create_template_rejects_empty_option_groups(self):
         from saathimart.api.admin_products import create_template
-        with self.assertRaises(frappe.ValidationError):
-            create_template("Empty Options Product", json.dumps([{"attribute": "Size", "values": []}]))
+        result = create_template("Empty Options Product", json.dumps([{"attribute": "Size", "values": []}]))
+        self.assertFalse(result["ok"])
+        self.assertEqual(result["error_code"], "VALIDATION_ERROR")
 
     def test_update_variant_media_sets_swatch(self):
         from saathimart.api.admin_products import (

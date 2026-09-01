@@ -30,9 +30,21 @@ MAX_SINGLE_EVENT_QTY = 1000  # guards against a vendor fat-fingering qty_change
 # ── Helpers ──────────────────────────────────────────────────────────────────
 
 def _row_name(vendor, product, warehouse=None):
-    if warehouse:
-        return f"{vendor}-{product}-{warehouse}"
-    return f"{vendor}-{product}"
+    """
+    Regression note: this used to return the bare f"{vendor}-{product}"
+    whenever warehouse was omitted, while get_or_create() below always
+    resolves a missing warehouse to "default" before building the row
+    name (`wh = warehouse or "default"`) — every real Vendor Stock row has
+    always actually been named "{vendor}-{product}-default", never the
+    bare form. Every 2-arg caller of this function (get_vendor_stock,
+    atomic_reserve's error-message lookup) was therefore looking up a
+    document name that no row has ever had — a silent miss, not an
+    exception, so it read back the empty-row default and (for
+    get_vendor_stock) cached that zero for 30 seconds. Same fallback
+    applied here now, so any 2-arg call resolves to the same name
+    get_or_create actually created.
+    """
+    return f"{vendor}-{product}-{warehouse or 'default'}"
 
 
 def _next_event_seq(vendor):
@@ -384,9 +396,10 @@ def confirm_deduction(vendor, product, qty, order_id=None):
         """,
         {"qty": qty, "vendor": vendor, "product": product, "now": now_datetime()},
     )
-    frappe.db.set_value("Vendor Stock", f"{vendor}-{product}", {
-        "physical_qty": flt(frappe.db.get_value("Vendor Stock", f"{vendor}-{product}", "available_qty") or 0)
-                       + flt(frappe.db.get_value("Vendor Stock", f"{vendor}-{product}", "reserved_qty") or 0),
+    row_name = _row_name(vendor, product)
+    frappe.db.set_value("Vendor Stock", row_name, {
+        "physical_qty": flt(frappe.db.get_value("Vendor Stock", row_name, "available_qty") or 0)
+                       + flt(frappe.db.get_value("Vendor Stock", row_name, "reserved_qty") or 0),
     })
     _invalidate_stock_cache(vendor, product)
 
@@ -499,12 +512,11 @@ def sync_vendor_listing_stock():
     Run this periodically (cron) or after stock events.
     """
     rows = frappe.db.sql("""
-        SELECT vl.name, vs.available_qty, vs.reserved_qty, vs.physical_qty, vs.last_updated
+        SELECT vl.name, vs.available_qty, vs.reserved_qty, vs.physical_qty
         FROM `tabVendor Listing` vl
-        LEFT JOIN `tabVendor Stock` vs ON vs.vendor = vl.vendor AND vs.product = vl.product
+        INNER JOIN `tabVendor Stock` vs ON vs.vendor = vl.vendor AND vs.product = vl.product
         WHERE vl.status = 'Active'
-          AND (vs.last_updated IS NOT NULL
-               OR vl.available_qty != IFNULL(vs.available_qty, 0)
+          AND (vl.available_qty != IFNULL(vs.available_qty, 0)
                OR vl.reserved_qty != IFNULL(vs.reserved_qty, 0)
                OR vl.physical_qty != IFNULL(vs.physical_qty, 0))
     """, as_dict=True)
@@ -515,8 +527,7 @@ def sync_vendor_listing_stock():
             "available_qty": flt(r.available_qty or 0),
             "reserved_qty": flt(r.reserved_qty or 0),
             "physical_qty": flt(r.physical_qty or 0),
-            "last_updated": r.last_updated or now_datetime(),
-        })
+        }, update_modified=False)
         updated += 1
 
     return updated

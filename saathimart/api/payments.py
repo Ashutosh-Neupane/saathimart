@@ -76,7 +76,7 @@ def _redirect(url):
 
 # ── Payment Mode registry ─────────────────────────────────────────────────────
 #
-# Ported from saathi_middleware's Saathi Payment Mode. The storefront used to
+# Uses the native Saathi Payment Mode registry. The storefront used to
 # hardcode the checkout method list, so enabling a mode or turning COD off
 # meant a frontend release; now the checkout UI reads it from here and
 # checkout validates what comes back.
@@ -197,7 +197,7 @@ def _initiate_esewa(s, order_id, amount, sandbox):
     # retries after a cancelled/failed attempt for the SAME order. Suffixing
     # with a timestamp makes every attempt unique to eSewa while staying
     # reversible: esewa_success/esewa_failure strip it via rsplit("-", 1)
-    # to recover the real order name (ported from saathi_middleware).
+    # to recover the real order name.
     transaction_uuid = f"{order_id}-{int(now_datetime().timestamp())}"
 
     # Persisted so verify_esewa_status (manual check + the 10-min cron poll)
@@ -396,6 +396,20 @@ def _mark_order_paid(order_id, gateway, reference, transaction_uid, amount):
     """Update SM Order + create SM Payment Log. Idempotent."""
     if frappe.db.get_value("Order", order_id, "payment_status") == "Paid":
         return  # already processed
+
+    # Record the "paid" Order Event Log entry directly — frappe.db.set_value
+    # below bypasses doc_events (on_update never fires), so the timeline
+    # hook wired in hooks.py would be silently skipped for every gateway
+    # payment (eSewa callback, status-poll cron, admin apply).
+    try:
+        from saathimart.api.order_events import record_order_event
+        record_order_event(order_id, "paid", {
+            "amount": amount,
+            "method": gateway,
+            "reference": reference,
+        })
+    except Exception:
+        frappe.log_error(frappe.get_traceback(), f"Order paid event log failed: {order_id}")
 
     frappe.db.set_value("Order", order_id, {
         "payment_status": "Paid",

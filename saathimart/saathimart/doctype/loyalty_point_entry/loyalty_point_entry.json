@@ -13,6 +13,10 @@
   {"fieldname": "order", "fieldtype": "Link", "label": "Order", "options": "Order"},
   {"fieldname": "expiry_date", "fieldtype": "Date", "label": "Expiry Date"},
   {"fieldname": "is_expired", "fieldtype": "Check", "label": "Expired", "default": "0"},
+  {"fieldname": "source", "fieldtype": "Select", "label": "Source",
+   "options": "order\nreferral\nbirthday", "description": "Set by api/loyalty_enhanced.py — what triggered this entry, distinct from entry_type (earn/redeem)."},
+  {"fieldname": "tier", "fieldtype": "Data", "label": "Tier",
+   "description": "Customer's loyalty tier (Bronze/Silver/Gold) at the time this entry was recorded — set by api/loyalty_enhanced.py."},
   {"fieldname": "remarks", "fieldtype": "Small Text", "label": "Remarks"}
  ],
  "permissions": [

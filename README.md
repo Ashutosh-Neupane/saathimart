@@ -222,16 +222,20 @@ docker compose up --build
 Site available at `http://localhost:8000`. `REDIS_QUEUE_PORT` (default
 `6380`) is exposed for local vendor-site testing against this hub.
 
-To run the **full integrated stack** (hub + 3 vendor ERPNext sites + nginx
-routing by `Host` header), use the outer `docker-compose.saathimart.yml` one
-level up, which builds this repo and `saathimart-vendor` together:
+To run the **combined stack** (hub + one vendor ERPNext site, talking to
+each other over HMAC-signed sync), use the outer `docker-compose.saathimart.yml`
+one level up, which builds this repo and `saathimart-vendor` together:
 
 ```bash
-docker compose -f ../docker-compose.saathimart.yml up -d --build
+docker compose -f ../docker-compose.saathimart.yml up --build -d
 ```
 
-- Hub: `http://saathimart.localhost`
-- Vendor sites: `http://vendor1.localhost`, `vendor2.localhost`, `vendor3.localhost`
+- Hub: `http://localhost:8000` (Host: `saathimart.localhost`)
+- Vendor: `http://localhost:8001` (Host: `vendor1.localhost`)
+
+Add more names to that file's `VENDOR_SITES` env var if you need to exercise
+multiple vendor sites at once — there is no nginx Host-header router in
+front of them; each vendor site is reached directly on its own port.
 
 ## Testing
 

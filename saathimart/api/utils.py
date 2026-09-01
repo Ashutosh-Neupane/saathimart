@@ -40,7 +40,19 @@ def rate_limit(key, limit=10, window_seconds=60):
     """
     Rate limit by a cache key (e.g. IP or vendor ID).
     Raises frappe.ValidationError when limit is exceeded.
+
+    No-ops under frappe.flags.in_test: outside a real HTTP request there's
+    no client IP, so guest_rate_limit's caller falls back to a fixed
+    "unknown" key — every guest-facing call across the entire test suite
+    (hundreds of add_to_cart/checkout/etc. calls within the same 60s
+    window) shares that one bucket. Production traffic always has a real
+    IP and is unaffected; this only skips the test run hitting its own
+    limit and silently failing calls that have nothing to do with what's
+    actually being tested.
     """
+    if frappe.flags.in_test:
+        return True
+
     cache_key = f"sm_rate_limit:{key}"
     current = frappe.cache().get_value(cache_key)
     if current is None:
@@ -163,11 +175,21 @@ def verify_hub_secret(endpoint):
     frappe.throw(_("Missing webhook signature"), frappe.AuthenticationError)
 
 
-def verify_hub_timestamp(max_age_seconds=300):
+def verify_hub_timestamp(max_age_seconds=300, vendor_name=None):
     """
     Reject an inbound vendor push whose X-SM-Timestamp is missing or stale
     (replay-attack guard). Same no-op-without-a-request behaviour as
     verify_hub_secret — see its docstring.
+
+    vendor_name, when known (poll/receive/bulk_receive all get it from the
+    X-Vendor-ID header), widens max_age_seconds by that vendor's measured
+    clock skew — see api/clock_sync.py. Without it this falls back to the
+    flat max_age_seconds window, same as before clock_sync existed.
+
+    Also opportunistically re-measures skew from this request's own
+    timestamp, so the tolerance keeps adapting as a vendor's clock drifts —
+    cheap since this only runs once per authenticated request, not on a
+    separate polling cadence.
     """
     if not frappe.request:
         return
@@ -179,8 +201,19 @@ def verify_hub_timestamp(max_age_seconds=300):
         event_time = float(ts)
     except (TypeError, ValueError):
         frappe.throw(_("Invalid timestamp"), frappe.AuthenticationError)
-    if abs(datetime.now(timezone.utc).timestamp() - event_time) > max_age_seconds:
+
+    tolerance = max_age_seconds
+    if vendor_name:
+        from saathimart.api.clock_sync import get_vendor_clock_skew
+        skew = abs(get_vendor_clock_skew(vendor_name))
+        tolerance = max(max_age_seconds, skew + 60)
+
+    if abs(datetime.now(timezone.utc).timestamp() - event_time) > tolerance:
         frappe.throw(_("Request timestamp too old"), frappe.AuthenticationError)
+
+    if vendor_name:
+        from saathimart.api.clock_sync import measure_clock_skew
+        measure_clock_skew(vendor_name, ts)
 
 
 def log_auth_failure(endpoint, reason, payload=None):

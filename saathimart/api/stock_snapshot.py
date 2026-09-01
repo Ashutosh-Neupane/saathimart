@@ -15,25 +15,29 @@ import json
 
 import frappe
 from frappe import _
+from frappe.utils import flt
 
 
 def generate_stock_snapshot(vendor_name):
     """Generate a full stock snapshot for a vendor.
 
     Returns list of {product, stock_qty, warehouse} for all products
-    this vendor carries.
+    this vendor carries. stock_qty here is the hub's own physical_qty —
+    the vendor's real ERPNext Bin stays the source of truth (see
+    reconciliation.py); this snapshot is compared against, never used to
+    overwrite it — see apply_stock_snapshot in saathimart_vendor.
     """
     stock_rows = frappe.get_all(
         "Vendor Stock",
-        filters={"vendor": vendor_name, "stock_qty": [">", 0]},
-        fields=["product", "stock_qty", "warehouse"],
+        filters={"vendor": vendor_name, "physical_qty": [">", 0]},
+        fields=["product", "physical_qty", "warehouse"],
     )
 
     snapshot = []
     for row in stock_rows:
         snapshot.append({
             "product": row.product,
-            "stock_qty": row.stock_qty,
+            "stock_qty": row.physical_qty,
             "warehouse": getattr(row, "warehouse", "default") or "default",
         })
 
@@ -43,13 +47,17 @@ def generate_stock_snapshot(vendor_name):
 def send_stock_snapshot(vendor_name):
     """Send full stock snapshot to a vendor via event.
 
-    This is an authoritative override — vendor replaces its stock state
-    with what the hub says.
+    Comparison only, never an override — the vendor's own ERPNext Bin stays
+    authoritative for its real inventory (matching reconciliation.py's
+    direction: hub corrects itself toward the vendor, not the reverse). The
+    vendor reports back any discrepancies (see receive.py._handle_stock_snapshot
+    on the vendor side) so an admin can investigate what individual
+    stock.* events might have missed.
     """
     snapshot = generate_stock_snapshot(vendor_name)
 
     vendor_doc = frappe.get_doc("Vendor", vendor_name)
-    if not vendor_doc.webhook_url:
+    if not vendor_doc.frappe_site_url:
         return
 
     payload = {
@@ -64,7 +72,7 @@ def send_stock_snapshot(vendor_name):
     event = frappe.new_doc("Webhook Event")
     event.event_type = "stock.snapshot"
     event.target_vendor = vendor_name
-    event.target_site = vendor_doc.webhook_url
+    event.target_site = vendor_doc.frappe_site_url
     event.payload = json.dumps(payload, default=str)
     event.status = "Queued"
     event.priority = 3  # NORMAL
@@ -74,59 +82,58 @@ def send_stock_snapshot(vendor_name):
     return event.name
 
 
-def apply_stock_snapshot(vendor_name, snapshot_data):
-    """Vendor-side: apply a stock snapshot from the hub.
-
-    This overwrites local Bin quantities with what the hub reports.
-    Discrepancies are logged for admin review.
+def record_stock_snapshot_report(vendor_name, discrepancies):
     """
-    discrepancies = []
+    Hub-side receiver for the discrepancy report a vendor sends back after
+    comparing a stock.snapshot against its own real ERPNext Bin quantities
+    (see saathimart_vendor/api/receive.py::_handle_stock_snapshot — the
+    actual comparison happens there, against the vendor's own stock, since
+    that is the authoritative side; the hub never overwrites it).
 
-    for item in snapshot_data:
-        product = item.get("product")
-        expected_qty = item.get("stock_qty", 0)
-        warehouse = item.get("warehouse", "default")
+    Applies the same tolerance-based correct-or-flag decision
+    reconciliation.py's hourly per-product pass uses (see
+    reconciliation.correct_or_flag) — a drift the hourly job hadn't
+    individually reconciled yet gets fixed here immediately instead of
+    only being logged for a human to notice on the next run.
+    """
+    if not discrepancies:
+        return {"ok": True, "discrepancies": 0}
 
-        try:
-            # Get current local stock
-            from saathimart_vendor.utils import get_or_create_stock
-            stock_doc = get_or_create_stock(product, vendor_name)
-            current_qty = stock_doc.get("stock_qty", 0)
+    from saathimart.api.reconciliation import correct_or_flag
 
-            if current_qty != expected_qty:
-                discrepancies.append({
-                    "product": product,
-                    "warehouse": warehouse,
-                    "hub_qty": expected_qty,
-                    "local_qty": current_qty,
-                    "diff": expected_qty - current_qty,
-                })
+    corrected = 0
+    flagged = []
+    for d in discrepancies:
+        product = d.get("product")
+        hub_qty = flt(d.get("hub_qty") or 0)
+        vendor_qty = flt(d.get("local_qty") or 0)
 
-                # Update to hub's quantity
-                stock_doc.stock_qty = expected_qty
-                stock_doc.save(ignore_permissions=True)
+        row = frappe.db.get_value(
+            "Vendor Stock", {"vendor": vendor_name, "product": product},
+            ["name", "warehouse", "reserved_qty"], as_dict=True,
+        )
+        if not row:
+            flagged.append(d)
+            continue
 
-        except Exception as e:
-            frappe.log_error(
-                frappe.get_traceback(),
-                f"Stock snapshot apply failed for {product}",
-            )
+        outcome = correct_or_flag(
+            vendor_name, row.name, product, row.warehouse or "default",
+            hub_qty, vendor_qty, reserved_qty=row.reserved_qty,
+        )
+        if outcome == "corrected":
+            corrected += 1
+        elif outcome == "flagged":
+            flagged.append(d)
 
-    if discrepancies:
+    if corrected:
         frappe.db.commit()
-
-        # Log discrepancies for admin review
+    if flagged:
         frappe.log_error(
             title=f"Stock Snapshot Discrepancies — {vendor_name}",
-            message=json.dumps(discrepancies, indent=2, default=str),
+            message=json.dumps(flagged, indent=2, default=str),
         )
 
-    return {
-        "vendor": vendor_name,
-        "items_checked": len(snapshot_data),
-        "discrepancies": len(discrepancies),
-        "details": discrepancies,
-    }
+    return {"ok": True, "discrepancies": len(discrepancies), "corrected": corrected, "flagged": len(flagged)}
 
 
 def get_stock_drift_report():
@@ -141,15 +148,15 @@ def get_stock_drift_report():
         stock_rows = frappe.get_all(
             "Vendor Stock",
             filters={"vendor": vendor.name},
-            fields=["product", "stock_qty", "warehouse"],
+            fields=["product", "physical_qty", "warehouse"],
         )
 
         vendor_drift = []
         for row in stock_rows:
-            if row.stock_qty > 0:
+            if row.physical_qty > 0:
                 vendor_drift.append({
                     "product": row.product,
-                    "hub_qty": row.stock_qty,
+                    "hub_qty": row.physical_qty,
                     "warehouse": getattr(row, "warehouse", "default"),
                 })
 
@@ -162,3 +169,29 @@ def get_stock_drift_report():
             })
 
     return report
+
+
+def sync_all_stock_snapshots():
+    """Hourly cron: send full stock snapshot to each active vendor."""
+    vendors = frappe.get_all(
+        "Vendor",
+        filters={"status": "Active"},
+        fields=["name", "vendor_name"],
+    )
+
+    sent = 0
+    for vendor in vendors:
+        try:
+            event_name = send_stock_snapshot(vendor.name)
+            if event_name:
+                sent += 1
+        except Exception:
+            frappe.log_error(
+                frappe.get_traceback(),
+                f"Stock snapshot failed for {vendor.name}",
+            )
+
+    if sent:
+        frappe.logger("stock_snapshot").info(
+            f"Sent stock snapshots to {sent}/{len(vendors)} vendors"
+        )

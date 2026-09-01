@@ -20,9 +20,23 @@ class DBCacheFallback:
     Created on first use if it doesn't exist.
     """
     _TABLE = "sm_cache_fallback"
+    _table_checked = False  # class-level: one real existence check per worker process, not per call
 
     def _ensure_table(self):
-        if frappe.db.exists("DocType", "sm_cache_fallback"):
+        # `sm_cache_fallback` is a raw table, not a DocType — checking
+        # frappe.db.exists("DocType", ...) always returns False, so this
+        # used to run CREATE TABLE IF NOT EXISTS on every single cache
+        # call. IF NOT EXISTS made that harmless, just wasteful — one
+        # avoidable query per get/set. frappe.db.table_exists() isn't the
+        # right replacement either — it prepends "tab" (it's meant for real
+        # doctypes), so it would never match a raw table name like this
+        # one. get_tables() returns real table names as-is, no prefixing.
+        # The class-level flag skips even that check after the first
+        # success in this process.
+        if DBCacheFallback._table_checked:
+            return
+        if self._TABLE in frappe.db.get_tables(cached=False):
+            DBCacheFallback._table_checked = True
             return
         frappe.db.sql(f"""
             CREATE TABLE IF NOT EXISTS `{self._TABLE}` (
@@ -33,6 +47,7 @@ class DBCacheFallback:
             ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4
         """)
         frappe.db.commit()
+        DBCacheFallback._table_checked = True
 
     def get_value(self, key, default=None):
         self._ensure_table()

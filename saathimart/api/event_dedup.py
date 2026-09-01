@@ -38,7 +38,7 @@ def is_duplicate(event_type, target_vendor, payload):
         return False
     except Exception:
         # Redis down — fall through to DB-based dedup
-        return _db_is_duplicate(fp)
+        return _db_is_duplicate(event_type, target_vendor, payload)
 
 
 def mark_delivered(event_type, target_vendor, payload):
@@ -51,14 +51,31 @@ def mark_delivered(event_type, target_vendor, payload):
         pass
 
 
-def _db_is_duplicate(fp):
-    """DB-based fallback for dedup when Redis is down."""
+def _db_is_duplicate(event_type, target_vendor, payload):
+    """
+    DB-based fallback for dedup when Redis is down. The fingerprint itself
+    is never stored anywhere (no schema change needed) — instead this
+    re-fingerprints each recent same-type/same-vendor row's own payload and
+    compares, which is exactly what the cache-backed path is a fast index
+    over.
+    """
     try:
-        existing = frappe.db.sql(
-            "SELECT 1 FROM `tabWebhook Event` WHERE name LIKE %s "
-            "AND status IN ('Queued', 'Sent') AND creation >= %s LIMIT 1",
-            (f"%{fp}%", now_datetime()),
+        fp = event_fingerprint(event_type, target_vendor, payload)
+        cutoff = frappe.utils.add_to_date(now_datetime(), seconds=-DEDUP_TTL)
+        candidates = frappe.db.sql(
+            "SELECT payload FROM `tabWebhook Event` WHERE event_type = %s "
+            "AND target_vendor = %s AND status IN ('Queued', 'Sent') "
+            "AND creation >= %s",
+            (event_type, target_vendor, cutoff),
+            as_dict=True,
         )
-        return bool(existing)
+        for row in candidates:
+            try:
+                candidate_payload = json.loads(row.payload or "{}")
+            except (TypeError, ValueError):
+                continue
+            if event_fingerprint(event_type, target_vendor, candidate_payload) == fp:
+                return True
+        return False
     except Exception:
         return False  # fail open — don't block events if dedup check fails

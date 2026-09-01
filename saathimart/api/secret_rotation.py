@@ -27,7 +27,10 @@ import secrets
 
 import frappe
 from frappe import _
+from frappe.utils import add_to_date, now_datetime
 from frappe.utils.password import get_decrypted_password, set_encrypted_password
+
+ROTATION_DUE_DAYS = 90  # alert when a vendor's secret is older than this
 
 
 def _post_to_vendor(vendor_name, method, payload):
@@ -119,5 +122,60 @@ def rotate_vendor_secret(vendor):
         {},
     )
 
+    frappe.db.set_value("Vendor", vendor, "webhook_secret_rotated_at", now_datetime())
+    frappe.db.commit()
+
     frappe.logger("rotation").info(f"rotated webhook secret for {vendor}")
     return {"ok": True, "vendor": vendor}
+
+
+def check_stale_secrets():
+    """
+    Daily cron. Rotation itself (rotate_vendor_secret) has always been
+    fully manual/on-demand — there was no cadence at all, so a secret could
+    sit unrotated indefinitely with nothing ever prompting anyone to act.
+    This doesn't rotate anything automatically (rotation touches a live
+    vendor site and shouldn't happen unattended) — it only surfaces which
+    vendors are overdue, the same way dead_letter_alert surfaces a stuck
+    queue instead of silently accepting it.
+    """
+    vendors = frappe.get_all(
+        "Vendor",
+        filters={"status": "Active"},
+        fields=["name", "vendor_name", "webhook_secret_rotated_at", "creation"],
+    )
+
+    cutoff = add_to_date(now_datetime(), days=-ROTATION_DUE_DAYS)
+    overdue = [
+        v for v in vendors
+        if (v.webhook_secret_rotated_at or v.creation) < cutoff
+    ]
+    if not overdue:
+        return
+
+    lines = [f"{len(overdue)} vendor(s) have a webhook secret older than {ROTATION_DUE_DAYS} days:"]
+    for v in overdue:
+        last = v.webhook_secret_rotated_at or v.creation
+        lines.append(f"  {v.vendor_name} ({v.name}): last rotated {last or 'never'}")
+    body = "\n".join(lines)
+
+    recipients = [
+        r.name for r in frappe.get_all(
+            "Has Role",
+            filters={"role": "System Manager", "parenttype": "User"},
+            pluck="parent",
+            distinct=True,
+        )
+        if frappe.db.get_value("User", r, "enabled")
+    ]
+    if recipients:
+        try:
+            frappe.sendmail(
+                recipients=recipients,
+                subject=f"SaathiMart — {len(overdue)} vendor webhook secret(s) overdue for rotation",
+                message="<pre>{0}</pre>".format(body),
+            )
+        except Exception:
+            pass
+
+    frappe.log_error(body, "Webhook Secret Rotation Overdue")

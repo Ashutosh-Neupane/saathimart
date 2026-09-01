@@ -65,25 +65,39 @@ def create_vendor_payout(vendor, from_date, to_date, payment_reference="", notes
     Record that `vendor` was actually paid for their unsettled, paid
     fulfillments within [from_date, to_date]. Admin-only — this is a record
     of money that has already moved, not a request to pay.
+
+    Regression note: this used to set doc.from_date/doc.to_date and read
+    back doc.gross_sales/doc.fulfillments_count — none of which exist on
+    Vendor Payout (real fields: period_start, period_end, total_sales, the
+    orders child table). Every call failed on the missing-mandatory-field
+    validation for period_start/period_end before it could even reach the
+    fields that don't exist. calculate_payout() (see the doctype controller)
+    already has the real logic to populate totals and claim fulfillments —
+    this just needed to actually call it.
     """
     if "SM Admin" not in frappe.get_roles():
         frappe.throw(_("Not permitted"), frappe.PermissionError)
 
     doc = frappe.new_doc("Vendor Payout")
     doc.vendor = vendor
-    doc.from_date = from_date
-    doc.to_date = to_date
+    doc.period_start = from_date
+    doc.period_end = to_date
     doc.payment_reference = payment_reference or ""
     doc.notes = notes or ""
     doc.insert(ignore_permissions=True)
+    try:
+        doc.calculate_payout()  # populates orders/total_sales, claims fulfillments, throws if nothing outstanding
+    except Exception:
+        frappe.delete_doc("Vendor Payout", doc.name, ignore_permissions=True, force=True)
+        raise
     frappe.db.commit()
 
     return {
         "payout_id": doc.name,
-        "gross_sales": doc.gross_sales,
+        "gross_sales": doc.total_sales,
         "commission_amount": doc.commission_amount,
         "payout_amount": doc.payout_amount,
-        "fulfillments_count": doc.fulfillments_count,
+        "fulfillments_count": len(doc.orders),
     }
 
 
@@ -107,10 +121,10 @@ def list_vendor_payouts(vendor=None, page=1, page_size=20):
     return frappe.get_list(
         "Vendor Payout",
         filters=filters,
-        fields=["name", "vendor", "payout_date", "from_date", "to_date",
-                "gross_sales", "commission_amount", "payout_amount",
-                "fulfillments_count", "payment_reference"],
+        fields=["name", "vendor", "creation", "period_start", "period_end",
+                "total_sales", "commission_amount", "payout_amount",
+                "payment_reference"],
         limit_start=(page - 1) * page_size,
         limit=page_size,
-        order_by="payout_date desc",
+        order_by="creation desc",
     )

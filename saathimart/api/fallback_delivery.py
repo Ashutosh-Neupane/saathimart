@@ -12,6 +12,7 @@ DNS issue, reverse proxy problem), the event eventually reaches them via
 a different channel.
 """
 import json
+from datetime import datetime, timezone
 
 import frappe
 from frappe import _
@@ -23,32 +24,38 @@ def try_primary_delivery(event_doc, vendor_config):
 
     Returns (success: bool, error: str or None).
     """
-    import requests
+    from saathimart.api.connection_pool import pooled_request
+    from saathimart.api.utils import compute_hmac_signature
 
-    url = vendor_config.get("webhook_url")
+    url = vendor_config.get("frappe_site_url")
     if not url:
-        return False, "No webhook URL configured"
+        return False, "No frappe_site_url configured"
 
-    payload = json.dumps({
-        "event_type": event_doc.event_type,
-        "event_id": event_doc.name,
+    body = json.dumps({
+        "event": event_doc.event_type,
         "payload": json.loads(event_doc.payload) if event_doc.payload else {},
-        "timestamp": str(now_datetime()),
     })
 
     try:
-        from saathimart.api.utils import sign_request
-        headers = sign_request(
-            vendor_config.get("webhook_secret", ""),
-            payload.encode(),
-            vendor_name=event_doc.target_vendor,
-        )
-        headers["Content-Type"] = "application/json"
+        ts = str(int(datetime.now(timezone.utc).timestamp()))
+        headers = {
+            "X-SM-Timestamp": ts,
+            "X-SM-Signature": compute_hmac_signature(vendor_config.get("webhook_secret", ""), ts, body),
+            "Content-Type": "application/json",
+        }
 
-        resp = requests.post(url, data=payload, headers=headers, timeout=30)
-        if resp.status_code < 400:
+        status, text, error = pooled_request(
+            "POST",
+            f"{url}/api/method/saathimart_vendor.api.receive.receive_from_hub",
+            headers=headers,
+            body=body,
+            timeout=30,
+        )
+        if error:
+            return False, error
+        if status < 400:
             return True, None
-        return False, f"HTTP {resp.status_code}: {resp.text[:200]}"
+        return False, f"HTTP {status}: {text[:200]}"
     except Exception as e:
         return False, str(e)
 
@@ -56,21 +63,22 @@ def try_primary_delivery(event_doc, vendor_config):
 def try_secondary_delivery(event_doc, vendor_config):
     """Secondary path: make the event available via hub's pull API.
 
-    The vendor can poll `/api/method/saathimart.api.events.get_pending_events`
-    to retrieve events they missed. This works even if the vendor can't
-    receive inbound connections but CAN make outbound ones.
+    The vendor can poll `/api/method/saathimart.api.events.poll` to retrieve
+    events they missed (ordered by event_seq — see events.poll). This works
+    even if the vendor can't receive inbound connections but CAN make
+    outbound ones.
 
     Returns (success: bool, reason: str).
     """
     try:
         # Mark event as available for pull (instead of pushing)
         frappe.db.set_value("Webhook Event", event_doc.name, {
-            "delivery_method": "pull",
+            "delivery_method": "Pull",
             "status": "Queued",  # keep it in queue so vendor can pull
         })
 
         # Also notify vendor admin via email that events are available
-        _notify_vendor_events_available(event_doc, vendor_config)
+        _notify_events_available(event_doc, vendor_config)
 
         return True, "Available for pull delivery"
     except Exception as e:
@@ -85,9 +93,9 @@ def try_tertiary_delivery(event_doc, vendor_config):
 
     Returns (success: bool, reason: str).
     """
-    vendor_admin_email = vendor_config.get("admin_email")
+    vendor_admin_email = vendor_config.get("contact_email")
     if not vendor_admin_email:
-        return False, "No admin email configured"
+        return False, "No contact email configured"
 
     payload = json.loads(event_doc.payload) if event_doc.payload else {}
     subject = f"[SaathiMart] Event: {event_doc.event_type} — {event_doc.name}"
@@ -138,6 +146,7 @@ def deliver_with_fallback(event_doc, vendor_config):
     # Path 3: Email last resort
     success, reason = try_tertiary_delivery(event_doc, vendor_config)
     if success:
+        frappe.db.set_value("Webhook Event", event_doc.name, "delivery_method", "Email")
         return True, "email", None
 
     return False, "all_failed", "All delivery paths exhausted"
@@ -146,7 +155,7 @@ def deliver_with_fallback(event_doc, vendor_config):
 def _notify_events_available(event_doc, vendor_config):
     """Notify vendor that events are available for pull."""
     try:
-        email = vendor_config.get("admin_email")
+        email = vendor_config.get("contact_email")
         if email:
             frappe.sendmail(
                 recipients=[email],

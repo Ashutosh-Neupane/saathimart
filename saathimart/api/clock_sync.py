@@ -11,11 +11,27 @@ The hub periodically pings each vendor's server time and calculates the
 average skew. This skew is added to the tolerance window so HMAC verification
 works even with 30+ seconds of clock difference.
 """
+from datetime import datetime, timezone
+
 import frappe
-from frappe.utils import now_datetime, time_diff_in_seconds
+from frappe.utils import now_datetime
 
 DEFAULT_SKEW_TOLERANCE = 300  # 5 minutes — accounts for NTP drift
 MAX_ACCEPTABLE_SKEW = 600     # 10 minutes — beyond this, alert admin
+
+
+def _parse_timestamp(timestamp_str):
+    """
+    The rest of the app's X-SM-Timestamp headers are Unix epoch seconds
+    (see api/utils.py:verify_hub_timestamp, events/publisher.py:_deliver_event)
+    — not ISO strings. Try epoch first since that's what every real caller
+    sends; fall back to get_datetime for callers that do pass ISO.
+    """
+    from frappe.utils import get_datetime
+    try:
+        return datetime.fromtimestamp(float(timestamp_str), tz=timezone.utc)
+    except (TypeError, ValueError):
+        return get_datetime(timestamp_str)
 
 
 def get_vendor_clock_skew(vendor_name):
@@ -71,22 +87,22 @@ def is_timestamp_valid(timestamp_str, vendor_name=None, tolerance=None):
     """Check if a timestamp is within the acceptable window, accounting for skew.
 
     Args:
-        timestamp_str: ISO timestamp from the request
+        timestamp_str: Unix epoch seconds (as sent in X-SM-Timestamp) — an
+            ISO string also works via the get_datetime fallback in
+            _parse_timestamp, but every real caller in this app sends epoch.
         vendor_name: if provided, applies that vendor's measured skew
         tolerance: override default tolerance (seconds)
     """
-    from frappe.utils import get_datetime
-
     if tolerance is None:
         tolerance = DEFAULT_SKEW_TOLERANCE
 
     try:
-        request_time = get_datetime(timestamp_str)
+        request_time = _parse_timestamp(timestamp_str)
     except Exception:
         return False
 
-    now = now_datetime()
-    diff = abs(time_diff_in_seconds(now, request_time))
+    now = datetime.now(timezone.utc)
+    diff = abs((now - request_time).total_seconds())
 
     # Apply vendor-specific skew tolerance
     if vendor_name:
@@ -96,18 +112,17 @@ def is_timestamp_valid(timestamp_str, vendor_name=None, tolerance=None):
     return diff <= tolerance
 
 
-def measure_clock_skew(vendor_name, vendor_server_time_str):
-    """Calculate clock skew from a vendor's response.
+def measure_clock_skew(vendor_name, vendor_timestamp_str):
+    """Calculate clock skew from a vendor's request.
 
-    Call this when the hub receives a response with X-SM-Timestamp header.
-    The skew = vendor_time - hub_time (in seconds).
+    Call this on an already-authenticated inbound request, using the
+    X-SM-Timestamp header the vendor just sent. skew = vendor_time - hub_time
+    (in seconds); positive means the vendor's clock is ahead.
     """
-    from frappe.utils import get_datetime
-
     try:
-        vendor_time = get_datetime(vendor_server_time_str)
-        hub_time = now_datetime()
-        skew = time_diff_in_seconds(vendor_time, hub_time)
+        vendor_time = _parse_timestamp(vendor_timestamp_str)
+        hub_time = datetime.now(timezone.utc)
+        skew = (vendor_time - hub_time).total_seconds()
         set_vendor_clock_skew(vendor_name, skew)
         return skew
     except Exception:

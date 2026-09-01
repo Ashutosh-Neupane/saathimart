@@ -7,15 +7,20 @@ from frappe import _
 from frappe.utils import cint
 
 
-@frappe.whitelist()
+@frappe.whitelist(allow_guest=True)
 def search_products(query="", page=1, page_size=20, category=None, brand=None,
-                    min_price=None, max_price=None, in_stock=None):
+                    min_price=None, max_price=None, in_stock=None,
+                    lat=None, lng=None):
     """
     Enhanced product search with full-text matching, fuzzy fallback,
     and relevance scoring.
     """
     from saathimart.api.utils import guest_rate_limit
     guest_rate_limit("search", limit=30, window_seconds=60)
+
+    # Resolve location from params or cart fallback (matching saathi_middleware)
+    from saathimart.api.cart import _get_customer_location
+    lat, lng = _get_customer_location(None, lat, lng)
 
     query = (query or "").strip()
     page = cint(page) or 1
@@ -30,17 +35,15 @@ def search_products(query="", page=1, page_size=20, category=None, brand=None,
     params = []
 
     if query:
-        # Try FULLTEXT first, fall back to LIKE
+        # LIKE keeps search usable on sites that have not created the optional
+        # FULLTEXT index yet (including fresh native SaathiMart installs).
         conditions.append("""
-            (MATCH(p.product_name, p.short_description, p.tags) AGAINST(%s IN BOOLEAN MODE)
-             OR p.product_name LIKE %s
+            (p.product_name LIKE %s
              OR p.slug LIKE %s
              OR p.tags LIKE %s)
         """)
-        # BOOLEAN MODE search terms
-        ft_terms = " ".join("+{0}*".format(w) for w in query.split() if w)
         like_term = "%{0}%".format(query)
-        params.extend([ft_terms, like_term, like_term, like_term])
+        params.extend([like_term, like_term, like_term])
 
     if category:
         conditions.append("p.category = %s")
@@ -64,10 +67,30 @@ def search_products(query="", page=1, page_size=20, category=None, brand=None,
                     WHERE vs.product = p.name AND vs.available_qty > 0)
         """)
 
+    if lat is not None and lng is not None:
+        conditions.append("""
+            EXISTS (
+                SELECT 1
+                FROM `tabVendor Listing` vl
+                JOIN `tabVendor` v ON v.name = vl.vendor
+                WHERE vl.product = p.name
+                  AND vl.status = 'Active'
+                  AND v.status = 'Active'
+                  AND v.hub_status != 'Suspended'
+                  AND v.lat IS NOT NULL AND v.lng IS NOT NULL
+                  AND v.lat != 0 AND v.lng != 0
+                  AND ST_Distance_Sphere(
+                      ST_PointFromText(CONCAT('POINT(', v.lng, ' ', v.lat, ')')),
+                      ST_PointFromText(CONCAT('POINT(', %s, ' ', %s, ')'))
+                  ) <= COALESCE(NULLIF(v.service_radius_km, 0), 5) * 1000
+            )
+        """)
+        params.extend([float(lng), float(lat)])
+
     where_clause = " AND ".join(conditions)
 
     # Count total
-    count_sql = "SELECT COUNT(DISTINCT p.name) FROM `tabProduct` p WHERE {0}".format(where_clause)
+    count_sql = "SELECT COUNT(DISTINCT p.name) AS count FROM `tabProduct` p WHERE {0}".format(where_clause)
     total = frappe.db.count("Product", filters={"status": "Active"})
     if query or category or brand:
         total = frappe.db.sql(count_sql, params, as_dict=True)[0].get("count", 0) if params else frappe.db.sql(count_sql.replace("%s", "1"), as_dict=True)[0].get("count", 0)
@@ -84,23 +107,24 @@ def search_products(query="", page=1, page_size=20, category=None, brand=None,
         ORDER BY {order}
         LIMIT %s OFFSET %s
     """.format(
-        relevance="MATCH(p.product_name, p.short_description, p.tags) AGAINST(%s IN BOOLEAN MODE) AS relevance" if query else "0 AS relevance",
+        relevance="0 AS relevance",
         where=where_clause,
         order="relevance DESC, p.product_name ASC" if query else "p.product_name ASC",
     )
 
-    search_params = [ft_terms] if query else []
+    search_params = []
     results = frappe.db.sql(sql, search_params + params + [page_size, offset], as_dict=True)
 
-    # Enrich with pricing
-    from saathimart.api.products import _enrich_listing
+    # Enrich with the best active vendor listing for this location, rather
+    # than whichever listing the database happens to return first.
+    from saathimart.api.products import _resolve_best_listing
     enriched = []
     for r in results:
-        best = frappe.db.get_value(
-            "Vendor Listing",
-            {"product": r.name, "status": "Active"},
-            ["name", "vendor", "price", "compare_price", "available_qty"],
-            as_dict=True,
+        best = _resolve_best_listing(
+            r.name,
+            r.has_variants,
+            customer_lat=lat,
+            customer_lng=lng,
         )
         if best:
             r["price"] = best.price

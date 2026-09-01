@@ -1,7 +1,7 @@
 """
 Cart API — session-based cart for guests, user-keyed cart for logged-in users.
 
-Cart identity (ported from saathi_middleware):
+Cart identity:
   - Guests: the cart keys off a sm_cart_session cookie / explicit session_id.
   - Logged-in users: the cart keys off `user`, so every device and browser
     shares one basket. A pre-login guest cart from this same session is
@@ -53,6 +53,37 @@ def find_active_cart(session_id=None):
         )
 
     return None
+
+
+def _get_customer_location(session_id=None, lat=None, lng=None):
+    """Get customer location from params or fall back to cart.
+
+    Returns (lat, lng) tuple with valid coordinates, or (None, None) if
+    no location is available. Used by all location-based APIs (products,
+    home, search, cart, checkout) to provide consistent fallback behavior.
+
+    Priority:
+    1. Explicit lat/lng parameters (if both provided)
+    2. Cart's stored customer_lat/customer_lng (if cart exists with valid coords)
+    """
+    # Explicit coordinates always win
+    if lat is not None and lng is not None:
+        try:
+            return (float(lat), float(lng))
+        except (TypeError, ValueError):
+            pass
+
+    # Fallback to cart location
+    cart_name = find_active_cart(session_id)
+    if cart_name:
+        cart = frappe.get_doc("Cart", cart_name)
+        if cart.customer_lat and cart.customer_lng:
+            try:
+                return (flt(cart.customer_lat), flt(cart.customer_lng))
+            except (TypeError, ValueError):
+                pass
+
+    return (None, None)
 
 
 def _get_or_create_cart(session_id=None):
@@ -129,29 +160,48 @@ def _get_or_create_cart(session_id=None):
 @frappe.whitelist(allow_guest=True)
 @handle_api_errors
 def set_customer_location(session_id=None, lat=None, lng=None):
-    """
-    Update the customer's delivery location on the cart.
-    Used by the frontend location picker so the backend — not just a client-side
-    cookie — is the single source of truth for vendor selection.
+    """Set or get the customer's delivery location.
+
+    If lat/lng are provided, updates the cart's location.
+    If lat/lng are NOT provided, returns the current stored location (no change).
+
+    This allows the frontend to safely call this API multiple times without
+    losing previously set location data — matching saathi_middleware's behavior.
     """
     guest_rate_limit("cart.set_location", limit=60, window_seconds=60)
     cart = _get_or_create_cart(session_id)
-    cart.customer_lat = flt(lat)
-    cart.customer_lng = flt(lng)
-    cart.save(ignore_permissions=True)
+
+    # Only update if valid coordinates are provided
+    if lat is not None and lng is not None:
+        cart.customer_lat = flt(lat)
+        cart.customer_lng = flt(lng)
+        cart.save(ignore_permissions=True)
+
     return {
         "ok": True,
         "cart_id": cart.name,
-        "customer_lat": flt(cart.customer_lat),
-        "customer_lng": flt(cart.customer_lng),
+        "customer_lat": flt(cart.customer_lat) if cart.customer_lat else None,
+        "customer_lng": flt(cart.customer_lng) if cart.customer_lng else None,
     }
 
 
 def _get_vendor_stock(vendor, product):
-    """Get Vendor Stock row for a vendor+product pair."""
-    name = f"{vendor}-{product}"
+    """
+    Get Vendor Stock row for a vendor+product pair.
+
+    Regression note: this used to build the row name itself as bare
+    f"{vendor}-{product}" — every real row has always been named
+    "{vendor}-{product}-default" (see stock.py:_row_name's docstring for
+    the full story). That meant every add_to_cart/update_cart_item stock
+    check silently saw available_qty=0 regardless of real stock, so any
+    tracked-inventory item without backorder allowed was rejected outright.
+    Now imports the one real naming function instead of re-deriving it —
+    the duplication is exactly how the two drifted out of sync the first
+    time.
+    """
+    from saathimart.api.stock import _row_name
     row = frappe.db.get_value(
-        "Vendor Stock", name,
+        "Vendor Stock", _row_name(vendor, product),
         ["available_qty", "reserved_qty"],
         as_dict=True,
     )
@@ -194,10 +244,7 @@ def add_to_cart(session_id=None, product=None, qty=1, vendor=None, delivery_zone
             frappe.throw(_("Vendor listing not found for this product"))
     else:
         cart = _get_or_create_cart(session_id)
-        if customer_lat is None and cart.customer_lat is not None:
-            customer_lat = flt(cart.customer_lat)
-        if customer_lng is None and cart.customer_lng is not None:
-            customer_lng = flt(cart.customer_lng)
+        customer_lat, customer_lng = _get_customer_location(session_id, customer_lat, customer_lng)
         best = select_best_vendor(
             product, delivery_zone=delivery_zone,
             customer_lat=customer_lat, customer_lng=customer_lng,

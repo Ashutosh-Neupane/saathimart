@@ -119,10 +119,8 @@ def checkout(session_id, customer_name, customer_phone, delivery_address,
     if not cart.items:
         frappe.throw(_("Cart is empty"))
 
-    if customer_lat is None and cart.customer_lat is not None:
-        customer_lat = flt(cart.customer_lat)
-    if customer_lng is None and cart.customer_lng is not None:
-        customer_lng = flt(cart.customer_lng)
+    from saathimart.api.cart import _get_customer_location
+    customer_lat, customer_lng = _get_customer_location(session_id, customer_lat, customer_lng)
 
     email = customer_email or (
         frappe.session.user if frappe.session.user != "Guest" else None
@@ -140,6 +138,12 @@ def checkout(session_id, customer_name, customer_phone, delivery_address,
         if v not in vendor_groups:
             vendor_groups[v] = []
         vendor_groups[v].append(ci)
+
+    # The storefront currently operates as a single-vendor checkout. Keep
+    # the hub's vendor-aware data model intact, but reject a mixed cart rather
+    # than silently creating multiple fulfillment deliveries.
+    if len(vendor_groups) > 1:
+        frappe.throw(_("All items in one order must come from the same vendor"))
 
     order = frappe.new_doc("Order")
     order.customer_name    = customer_name
@@ -432,7 +436,7 @@ def list_orders(status=None, vendor=None, page=1, page_size=20):
 @handle_api_errors
 def track_order(order_id, customer_phone=None):
     """
-    Public order tracking — mobile-gated, ported from saathi_middleware.
+    Public order tracking — mobile-gated.
 
     The customer's phone number acts as a shared secret: a sequential order
     id alone (ORD-2026-00001) must not be enough to see someone else's name,

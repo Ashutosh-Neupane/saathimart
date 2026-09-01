@@ -71,6 +71,9 @@ def get_homepage_data(lat=None, lng=None, radius_km=5):
       lat, lng — customer coordinates; when provided, products are filtered
       to only include those with a vendor within radius_km (default: 5km)
     """
+    # Resolve location from params or cart fallback (matching saathi_middleware)
+    from saathimart.api.cart import _get_customer_location
+    lat, lng = _get_customer_location(None, lat, lng)
     clat = flt(lat) if lat is not None else None
     clng = flt(lng) if lng is not None else None
     max_radius = flt(radius_km) if radius_km is not None else None
@@ -222,7 +225,7 @@ def _get_bestsellers(limit=10, customer_lat=None, customer_lng=None, max_radius=
     # display_compare_price, a cache kept in sync by
     # saathimart.events.publisher.on_vendor_listing_changed whenever any
     # Vendor Listing for a product changes. That's what a plain read here
-    # is against, same idea as saathi_middleware keeping price directly on
+    # is against, same idea as keeping price directly on
     # the row it queries, without giving up Vendor Listing as the real
     # source of truth for checkout. (This function used to select p.price/
     # p.compare_price directly off tabProduct — columns that never

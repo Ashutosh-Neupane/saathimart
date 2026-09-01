@@ -251,6 +251,27 @@ def _get_home_content():
     return result
 
 
+@frappe.whitelist(allow_guest=True)
+def get_home_layout():
+    """Everything editor-owned that the home page needs, in one round trip.
+
+    Combines banners, trust badges, product rails, site config, and homepage
+    settings into a single payload. Reduces homepage API calls from 6-7 to 1.
+
+    This is purely editor-owned content — no product feeds, so it's
+    location-independent and the same for every visitor. The product-specific
+    data (deals, bestsellers, recommended) lives in home.get_homepage_data.
+    """
+    from saathimart.api.responses import raw
+    return {
+        "banners": raw(get_banners)(),
+        "trust_badges": raw(_get_published_trust_badges)(),
+        "product_rails": raw(_get_product_rail_headings)(),
+        "site_config": raw(get_site_config)(),
+        "home_content": raw(get_home_content)(),
+    }
+
+
 def _get_published_slides(doctype, key_field, order_field):
     """Fetch published slides/banners ordered by sort_order, adapt to frontend shape."""
     items = frappe.get_list(
@@ -564,6 +585,81 @@ def _bust_location_cache_on_update(doc, method):
     frappe.cache().delete_key("sm_popular_cities")
     if hasattr(doc, "city") and doc.city:
         frappe.cache().delete_key(f"sm_locations:{doc.city}")
+
+
+# ── Static Pages (dedicated Single DocTypes) ──────────────────────────────────
+
+STATIC_PAGE_DOCTYPE_MAP = {
+    "about": "About Us",
+    "terms": "Terms Page",
+    "privacy": "Privacy Page",
+    "cookies": "Cookies Page",
+    "careers": "Careers Page",
+    "partner": "Partner Page",
+    "rider": "Rider Page",
+}
+
+
+@frappe.whitelist(allow_guest=True)
+@handle_api_errors
+def get_static_page(page_type):
+    """Return content for a dedicated static-page Single DocType.
+
+    ``page_type`` is one of: about, terms, privacy, cookies, careers,
+    partner, rider. Each maps to its own DocType so editors get a focused
+    form instead of a generic page row — mirrors the legacy storefront's
+    get_static_page, but see STATIC_PAGE_DOCTYPE_MAP above for the (renamed,
+    no "Saathi " prefix) doctypes this app actually uses.
+    """
+    if page_type not in STATIC_PAGE_DOCTYPE_MAP:
+        frappe.throw(_("Invalid page type"), frappe.DoesNotExistError)
+
+    doctype = STATIC_PAGE_DOCTYPE_MAP[page_type]
+    cache_key = f"sm_static_page:{page_type}"
+
+    cached = frappe.cache().get_value(cache_key)
+    if cached:
+        return cached
+
+    doc = frappe.get_single(doctype)
+    data = doc.as_dict()
+    # Single DocTypes omit empty fields — ensure all expected keys exist
+    for field in ("title", "breadcrumb_label", "subtitle", "meta_title",
+                  "meta_description", "hero_title", "hero_subtitle",
+                  "mission_title", "mission_text", "features_title",
+                  "values_title", "cta_title", "cta_text"):
+        if field not in data:
+            data[field] = ""
+    # Parse JSON fields (sections, etc.)
+    for field in ("sections",):
+        if data.get(field):
+            try:
+                data[field] = json.loads(data[field])
+            except Exception:
+                data[field] = []
+        else:
+            data[field] = []
+    # Serialize child table fields into plain lists
+    for field in ("stats", "features", "values"):
+        if hasattr(doc, field) and doc.get(field):
+            data[field] = [row.as_dict() for row in doc.get(field)]
+        else:
+            data[field] = []
+
+    frappe.cache().set_value(cache_key, data, expires_in_sec=300)
+    return data
+
+
+def _bust_static_page_cache(doc, method):
+    """Invalidate cache for whichever static page DocType was updated.
+
+    Wired from hooks.py's doc_events, same pattern as every other CMS
+    doctype in this file — the doctype controllers themselves stay bare.
+    """
+    for page_type, doctype in STATIC_PAGE_DOCTYPE_MAP.items():
+        if doc.doctype == doctype:
+            frappe.cache().delete_key(f"sm_static_page:{page_type}")
+            return
 
 
 # ── Contact Submissions ──────────────────────────────────────────────────────

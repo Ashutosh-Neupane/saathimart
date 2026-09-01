@@ -14,7 +14,7 @@ from __future__ import annotations
 
 import frappe
 from frappe import _
-from frappe.utils import flt
+from frappe.utils import flt, cint
 
 
 @frappe.whitelist(allow_guest=True)
@@ -155,14 +155,25 @@ def _count_by_price_range(products):
 
 
 def _count_by_rating():
-    """Return product counts per rating bucket."""
-    rows = frappe.db.sql("""
-        SELECT rating, COUNT(*) as count
-        FROM `tabReview`
-        WHERE status = 'Approved'
-        GROUP BY rating
-    """, as_dict=True)
-    result = {1: 0, 2: 0, 3: 0, 4: 0, 5: 0}
-    for r in rows:
-        result[int(r.rating)] = r.count
-    return [{"rating": k, "label": f"{k} ★ & up", "count": v} for k, v in sorted(result.items()) if v > 0]
+    """Count *products* per "N stars & up" threshold.
+
+    Unlike counting reviews, this answers "how many products have at least
+    4 stars?" — which is what the filter sidebar needs. Products with no
+    reviews are excluded (they have avg_rating=0, which would inflate the
+    1★ & up bucket).
+    """
+    thresholds = [4, 3, 2, 1]
+    selects = [
+        f"SUM(p.avg_rating >= {t}) AS r{t}" for t in thresholds
+    ]
+    row = frappe.db.sql(
+        f"SELECT {', '.join(selects)} FROM `tabProduct` p "
+        f"WHERE p.status = 'Active' AND p.review_count > 0",
+        as_dict=True,
+    )[0]
+
+    return [
+        {"rating": t, "label": f"{t} ★ & up", "count": cint(row[f"r{t}"])}
+        for t in thresholds
+        if cint(row[f"r{t}"]) > 0
+    ]

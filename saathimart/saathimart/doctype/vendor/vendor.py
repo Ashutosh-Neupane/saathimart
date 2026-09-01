@@ -2,20 +2,14 @@ import frappe
 import secrets
 from frappe.model.document import Document
 from frappe.utils import flt, now_datetime
+from frappe.utils.password import set_encrypted_password
 
 
 class Vendor(Document):
     def before_save(self):
-        # Auto-generate webhook secret on first creation
-        if not self.webhook_secret and not self.get("_webhook_secret_generated"):
-            self.set_password("webhook_secret", secrets.token_urlsafe(32))
-            self.flags._webhook_secret_generated = True
-
+        # Auto-generate API key on first creation (plain text, no save needed)
         if not self.api_key:
             self.api_key = secrets.token_urlsafe(16)
-
-        if not self.api_secret:
-            self.set_password("api_secret", secrets.token_urlsafe(32))
 
         if not self.slug:
             self.slug = frappe.scrub(self.vendor_name).replace("_", "-")
@@ -41,13 +35,29 @@ class Vendor(Document):
         frappe.cache().delete_key("sm_vendor_list")
 
     def after_insert(self):
+        # Auto-generate secrets after doc is saved (set_password requires docname)
+        self._generate_secrets_if_missing()
         self._recalculate_stock_totals()
-        # Populate setup instructions for the admin
         self._populate_credentials_info()
 
     def on_trash(self):
         frappe.cache().delete_key(f"sm_vendor:{self.name}")
         frappe.cache().delete_key("sm_vendor_list")
+
+    def _generate_secrets_if_missing(self):
+        """Generate webhook_secret and api_secret if not already set.
+        Must run after_insert (not before_save) because set_encrypted_password
+        requires the doc to already have a name in the DB.
+        """
+        changed = False
+        if not self.webhook_secret:
+            set_encrypted_password("Vendor", self.name, secrets.token_urlsafe(32), "webhook_secret")
+            changed = True
+        if not self.api_secret:
+            set_encrypted_password("Vendor", self.name, secrets.token_urlsafe(32), "api_secret")
+            changed = True
+        if changed:
+            frappe.db.commit()
 
     def _populate_credentials_info(self):
         """Show the admin what to copy to the vendor's Frappe site."""

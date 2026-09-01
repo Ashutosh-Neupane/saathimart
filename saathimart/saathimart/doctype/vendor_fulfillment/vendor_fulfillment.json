@@ -79,5 +79,14 @@
    "in_list_view": 1,
    "description": "Set once this fulfillment's cut has been paid out \u2014 blank means still owed."
   }
+ ],
+ "permissions": [
+  {
+   "role": "SM Admin",
+   "read": 1,
+   "write": 1,
+   "create": 1,
+   "delete": 1
+  }
  ]
 }

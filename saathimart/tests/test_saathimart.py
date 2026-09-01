@@ -2640,8 +2640,8 @@ class TestVendorPayout(unittest.TestCase):
         from saathimart.api.payouts import create_vendor_payout
         self._make_paid_order(subtotal=1000)
         create_vendor_payout(self.vendor.name, add_days(today(), -1), today())
-        with self.assertRaises(frappe.ValidationError):
-            create_vendor_payout(self.vendor.name, add_days(today(), -1), today())
+        result = create_vendor_payout(self.vendor.name, add_days(today(), -1), today())
+        self.assertFalse(result.get("ok", True))
 
     def test_deleting_payout_reopens_the_balance(self):
         from saathimart.api.payouts import get_outstanding_payout, create_vendor_payout
@@ -2674,8 +2674,9 @@ class TestVendorPayout(unittest.TestCase):
 
         frappe.set_user(user.name)
         try:
-            with self.assertRaises(frappe.PermissionError):
-                get_outstanding_payout(other_vendor.name)
+            result = get_outstanding_payout(other_vendor.name)
+            # handle_api_errors catches PermissionError and returns JSON
+            self.assertFalse(result.get("ok", True))
         finally:
             frappe.set_user("Administrator")
 

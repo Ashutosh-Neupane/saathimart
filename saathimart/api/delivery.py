@@ -10,9 +10,11 @@ from __future__ import annotations
 import frappe
 from frappe import _
 from frappe.utils import flt
+from saathimart.api.responses import handle_api_errors
 
 
 @frappe.whitelist(allow_guest=True)
+@handle_api_errors
 def get_delivery_zones():
     """
     Return all active delivery zones with charges and free-delivery thresholds.
@@ -41,6 +43,7 @@ def get_delivery_zones():
 
 
 @frappe.whitelist(allow_guest=True)
+@handle_api_errors
 def estimate_delivery(zone_name, order_total=None):
     """
     Return delivery charge and estimated time for a given zone and order total.
@@ -83,6 +86,7 @@ def free_delivery_threshold(vendor_doc):
 
 
 @frappe.whitelist(allow_guest=True)
+@handle_api_errors
 def get_delivery_summary(zone_name=None, order_total=None):
     """Compact delivery summary: charge, free threshold, and whether it's free.
 

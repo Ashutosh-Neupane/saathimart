@@ -23,6 +23,7 @@ import requests
 
 from saathimart.api.responses import SERVER_ERROR, error_response, handle_api_errors
 from saathimart.api.utils import guest_rate_limit
+from saathimart.api.responses import handle_api_errors
 
 
 # ── Settings helpers ──────────────────────────────────────────────────────────
@@ -162,6 +163,14 @@ def initiate_payment(method, order_id, customer_info=None):
     Initiate online payment for an SM Order.
     Returns gateway payload the frontend uses to redirect.
     """
+    from saathimart.api.utils import check_idempotency, mark_idempotent
+
+    # Idempotency: prevent double-initiation of the same order payment
+    idempotency_key = f"pay_init:{order_id}"
+    is_dup, existing = check_idempotency(idempotency_key, ttl_seconds=300)
+    if is_dup and existing:
+        return existing
+
     s = _settings()
     sandbox = bool(getattr(s, "payment_sandbox_mode", 1))
 
@@ -183,7 +192,9 @@ def initiate_payment(method, order_id, customer_info=None):
     # eSewa is the only integrated online gateway: any online mode routes here.
     if not getattr(s, "enable_esewa", 1):
         frappe.throw(_("eSewa is not enabled."))
-    return _initiate_esewa(s, order_id, amount, sandbox)
+    result = _initiate_esewa(s, order_id, amount, sandbox)
+    mark_idempotent(idempotency_key, result, ttl_seconds=300)
+    return result
 
 
 def _initiate_esewa(s, order_id, amount, sandbox):
@@ -287,6 +298,7 @@ def _verify_esewa_signature(payload):
 # between; SaathiMart is API-only.
 
 @frappe.whitelist(allow_guest=True)
+@handle_api_errors
 def esewa_success(data=None, **kwargs):
     """eSewa redirects here with ?data=<base64>. Decode, verify signature, mark order paid."""
     payload = _decode_esewa_data(data, kwargs)
@@ -324,6 +336,7 @@ def esewa_success(data=None, **kwargs):
 
 
 @frappe.whitelist(allow_guest=True)
+@handle_api_errors
 def esewa_failure(data=None, **kwargs):
     """eSewa redirects here with ?data=<base64> when the shopper cancels or the payment fails."""
     payload = _decode_esewa_data(data, kwargs)

@@ -14,9 +14,11 @@ import time
 
 import frappe
 from frappe import _
+from saathimart.api.responses import handle_api_errors
 
 
 @frappe.whitelist()
+@handle_api_errors
 def health_check():
     """Public health check — returns 200 if hub is alive.
 
@@ -26,6 +28,7 @@ def health_check():
 
 
 @frappe.whitelist()
+@handle_api_errors
 def deep_health_check():
     """Full system health check — authenticated.
 
@@ -88,6 +91,7 @@ def deep_health_check():
 
 
 @frappe.whitelist()
+@handle_api_errors
 def vendor_health(vendor_name=None):
     """
     Check health of a specific vendor's sync connection.
@@ -179,6 +183,7 @@ def vendor_health(vendor_name=None):
 
 
 @frappe.whitelist()
+@handle_api_errors
 def sync_health_dashboard():
     """Admin dashboard data — aggregated sync health across all vendors."""
     vendors = frappe.get_all("Vendor", fields=["name", "vendor_name", "status"])

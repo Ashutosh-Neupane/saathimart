@@ -7,6 +7,7 @@ from __future__ import annotations
 import frappe
 from frappe import _
 from frappe.utils import flt, add_days, today, nowdate
+from saathimart.api.responses import handle_api_errors
 
 
 # ── Balance ───────────────────────────────────────────────────────────────────
@@ -145,6 +146,7 @@ def earn_points_preview(customer_email: str, order_amount: float) -> float:
 
 
 @frappe.whitelist()
+@handle_api_errors
 def get_earn_preview(order_amount=0):
     """Whitelisted endpoint: preview how many loyalty points this order would earn."""
     user = frappe.session.user
@@ -230,6 +232,7 @@ def expire_old_points():
 # ── Public API ────────────────────────────────────────────────────────────────
 
 @frappe.whitelist()
+@handle_api_errors
 def get_loyalty_balance(customer_email=None):
     # Only staff may look up another customer's balance — otherwise any
     # logged-in customer could read anyone else's loyalty balance by passing
@@ -253,6 +256,7 @@ def get_loyalty_balance(customer_email=None):
 
 
 @frappe.whitelist(allow_guest=True)
+@handle_api_errors
 def preview_redemption(points_to_redeem, order_subtotal):
     email = frappe.session.user
     if email == "Guest":

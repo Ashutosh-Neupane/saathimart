@@ -258,6 +258,8 @@ def get_cart(session_id=None):
 @frappe.whitelist(allow_guest=True)
 @handle_api_errors
 def add_to_cart(session_id=None, product=None, qty=1, vendor=None, delivery_zone=None, customer_lat=None, customer_lng=None):
+    from saathimart.api.utils import check_request_size
+    check_request_size()
     guest_rate_limit("cart.add", limit=60, window_seconds=60)
     qty = float(qty)
     if qty <= 0:
@@ -591,6 +593,8 @@ def _release_cart_reservations(cart_name):
 @frappe.whitelist(allow_guest=True)
 @handle_api_errors
 def sync_cart_offline(session_id=None, client_cart=None, sync_token=None):
+    from saathimart.api.utils import check_request_size
+    check_request_size()
     """
     Offline-first cart sync endpoint for mobile apps.
 

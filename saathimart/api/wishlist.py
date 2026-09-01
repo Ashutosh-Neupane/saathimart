@@ -4,9 +4,11 @@ Requires login.
 """
 import frappe
 from frappe import _
+from saathimart.api.responses import handle_api_errors
 
 
 @frappe.whitelist()
+@handle_api_errors
 def get_wishlist():
     """Return list of product slugs in current user's wishlist."""
     if frappe.session.user == "Guest":
@@ -26,6 +28,7 @@ def get_wishlist():
 
 
 @frappe.whitelist()
+@handle_api_errors
 def toggle_wishlist(product_slug):
     """Toggle product in wishlist. Returns updated slug list."""
     if frappe.session.user == "Guest":

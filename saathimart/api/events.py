@@ -10,6 +10,7 @@ from frappe.utils import now_datetime, add_to_date
 
 from saathimart.api.constants import VALID_ORDER_TRANSITIONS
 from saathimart.api.utils import guest_rate_limit, verify_hub_secret, verify_hub_timestamp, safe_enqueue
+from saathimart.api.responses import handle_api_errors
 
 
 def _validate_order_transition(order, new_status):
@@ -26,6 +27,7 @@ def _validate_order_transition(order, new_status):
 
 
 @frappe.whitelist(allow_guest=True)
+@handle_api_errors
 def poll(since=None, limit=50):
     """
     Vendor sites call GET /api/method/saathimart.api.events.poll to catch up
@@ -74,6 +76,7 @@ def poll(since=None, limit=50):
 
 
 @frappe.whitelist(allow_guest=True)
+@handle_api_errors
 def bulk_receive(events=None):
     """
     Bulk inbound webhook from vendor sites. Accepts an array of events and
@@ -143,6 +146,7 @@ def bulk_receive(events=None):
 
 
 @frappe.whitelist(allow_guest=True)
+@handle_api_errors
 def receive(event=None, payload=None):
     """
     Inbound webhook from vendor sites back to central hub.
@@ -588,6 +592,7 @@ def _apply_barcode_unregister(payload):
 
 
 @frappe.whitelist(allow_guest=True)
+@handle_api_errors
 def ping():
     """Health check endpoint for hub monitoring and vendor outbox flush."""
     return {"ok": True, "status": "active"}

@@ -4,10 +4,42 @@
  "doctype": "DocType",
  "istable": 1,
  "fields": [
-  {"fieldname": "description", "fieldtype": "Data", "label": "Description", "in_list_view": 1},
-  {"fieldname": "charge_type", "fieldtype": "Select", "label": "Type",
-   "options": "On Net Total\nOn Previous Row Total\nActual", "default": "On Net Total", "in_list_view": 1},
-  {"fieldname": "rate", "fieldtype": "Float", "label": "Rate", "default": "0", "in_list_view": 1},
-  {"fieldname": "tax_amount", "fieldtype": "Currency", "label": "Tax Amount", "read_only": 1, "in_list_view": 1}
+  {
+   "fieldname": "description",
+   "fieldtype": "Data",
+   "label": "Description",
+   "in_list_view": 1
+  },
+  {
+   "fieldname": "charge_type",
+   "fieldtype": "Select",
+   "label": "Type",
+   "options": "On Net Total\nOn Previous Row Total\nActual",
+   "default": "On Net Total",
+   "in_list_view": 1
+  },
+  {
+   "fieldname": "rate",
+   "fieldtype": "Float",
+   "label": "Rate",
+   "default": "0",
+   "in_list_view": 1
+  },
+  {
+   "fieldname": "tax_amount",
+   "fieldtype": "Currency",
+   "label": "Tax Amount",
+   "read_only": 1,
+   "in_list_view": 1
+  }
+ ],
+ "permissions": [
+  {
+   "role": "SM Admin",
+   "read": 1,
+   "write": 1,
+   "create": 1,
+   "delete": 1
+  }
  ]
 }

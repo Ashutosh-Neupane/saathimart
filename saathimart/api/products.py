@@ -596,6 +596,7 @@ def _serialize_product(doc, _listings_map=None, _stock_map=None, _vendor_locatio
 
 
 @frappe.whitelist(allow_guest=True)
+@handle_api_errors
 def list_products(category=None, vendor=None, search=None, page=1, page_size=20,
                   sort=None, in_stock=None, min_price=None, max_price=None, tags=None,
                   brand=None, delivery_zone=None, lat=None, lng=None, radius_km=5):
@@ -826,6 +827,7 @@ def list_products(category=None, vendor=None, search=None, page=1, page_size=20,
 
 
 @frappe.whitelist(allow_guest=True)
+@handle_api_errors
 def get_product(slug, vendor=None, delivery_zone=None, lat=None, lng=None, radius_km=5):
     """Full product detail with vendor-specific pricing and location."""
     guest_rate_limit("products.get", limit=300, window_seconds=60)
@@ -996,6 +998,7 @@ def get_product(slug, vendor=None, delivery_zone=None, lat=None, lng=None, radiu
 
 
 @frappe.whitelist(allow_guest=True)
+@handle_api_errors
 def list_categories():
     """Return all active categories, optionally filtered by parent."""
     return frappe.get_list(
@@ -1007,6 +1010,7 @@ def list_categories():
 
 
 @frappe.whitelist(allow_guest=True)
+@handle_api_errors
 def list_brands():
     """All active brands with item counts for the filter sidebar."""
     cache_key = "sm_brands_list"
@@ -1114,6 +1118,7 @@ def get_variant(slug, attributes=None, vendor=None, delivery_zone=None,
 
 
 @frappe.whitelist(allow_guest=True)
+@handle_api_errors
 def get_brands():
     """
     All active brands with active-product counts, for the storefront's
@@ -1151,6 +1156,7 @@ def get_brands():
 
 
 @frappe.whitelist(allow_guest=True)
+@handle_api_errors
 def get_category_products(slug, page=1, page_size=20, sort=None, in_stock=None):
     """Convenience endpoint: list products in a category by slug."""
     return list_products(category=slug, page=page, page_size=page_size,
@@ -1158,6 +1164,7 @@ def get_category_products(slug, page=1, page_size=20, sort=None, in_stock=None):
 
 
 @frappe.whitelist(allow_guest=True)
+@handle_api_errors
 def lookup_by_barcode(barcode):
     """Resolve a physical barcode → hub Product via Vendor Listing barcode."""
     guest_rate_limit("products.barcode", limit=100, window_seconds=60)
@@ -1199,6 +1206,7 @@ def lookup_by_barcode(barcode):
 
 
 @frappe.whitelist(allow_guest=True)
+@handle_api_errors
 def create_vendor_listing(product, vendor, price=0, compare_price=0, barcode="", sku="",
                           status="Active", track_inventory=1, allow_backorder=0,
                           available_qty=0, priority=1, estimated_delivery_minutes=20,
@@ -1260,6 +1268,7 @@ def create_vendor_listing(product, vendor, price=0, compare_price=0, barcode="",
 
 
 @frappe.whitelist(allow_guest=True)
+@handle_api_errors
 def get_product_reviews(slug, page=1, page_size=10):
     """Get approved reviews for a product."""
     name = frappe.db.get_value("Product", {"slug": slug, "status": "Active"}, "name")
@@ -1334,6 +1343,7 @@ def get_effective_price(product_doc, price_type="Site Price", qty=1,
 
 
 @frappe.whitelist(allow_guest=True)
+@handle_api_errors
 def select_best_vendor(product_name, delivery_zone=None, customer_lat=None, customer_lng=None):
     """Select the best vendor for a product based on configurable logic."""
     if customer_lat is not None and customer_lng is not None:
@@ -1367,6 +1377,7 @@ def select_best_vendor(product_name, delivery_zone=None, customer_lat=None, cust
 
 
 @frappe.whitelist(allow_guest=True)
+@handle_api_errors
 def get_vendor_listings(product_slug):
     """Return all vendor listings for a product (public product page)."""
     name = frappe.db.get_value("Product", {"slug": product_slug, "status": "Active"}, "name")
@@ -1401,6 +1412,7 @@ def get_vendor_listings(product_slug):
 
 
 @frappe.whitelist(allow_guest=True)
+@handle_api_errors
 def get_vendor_listings_by_location(product_slug, lat=None, lng=None, radius_km=10):
     """All vendors selling a product, sorted by distance from customer.
 

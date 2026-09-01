@@ -13,6 +13,7 @@ import secrets
 import frappe
 from frappe import _
 from frappe.utils import add_to_date, cint, cstr, now, now_datetime
+from saathimart.api.responses import handle_api_errors
 
 # Password policy used by the storefront. The
 # composition rules mirror the storefront signup form message for message;
@@ -211,6 +212,7 @@ def _get_user_token(user):
 
 
 @frappe.whitelist(allow_guest=True)
+@handle_api_errors
 def signup(email, full_name, contact, password, phone=None):
     """Register a new user with OTP verification."""
     _rate_limit(f"signup:{email}", limit=5, window_seconds=600)
@@ -259,6 +261,7 @@ def signup(email, full_name, contact, password, phone=None):
 
 
 @frappe.whitelist(allow_guest=True)
+@handle_api_errors
 def verify_signup_otp(email, otp):
     """Verify signup OTP and activate the user."""
     _rate_limit(f"verify_otp:{email}", limit=10, window_seconds=600)
@@ -279,6 +282,7 @@ def verify_signup_otp(email, otp):
 
 
 @frappe.whitelist(allow_guest=True)
+@handle_api_errors
 def login(usr, pwd, guest_cart_guid=None):
     """Login and optionally merge guest cart."""
     _rate_limit(f"login:{usr}", limit=5, window_seconds=600)
@@ -320,6 +324,7 @@ def login(usr, pwd, guest_cart_guid=None):
 
 
 @frappe.whitelist(allow_guest=True)
+@handle_api_errors
 def forgot_password(email):
     """Send password reset OTP."""
     _rate_limit(f"forgot_password:{email}", limit=5, window_seconds=600)
@@ -344,6 +349,7 @@ def forgot_password(email):
 
 
 @frappe.whitelist(allow_guest=True)
+@handle_api_errors
 def verify_forgot_password_otp(email, otp, new_password):
     """Verify OTP and reset password."""
     _rate_limit(f"reset_password:{email}", limit=5, window_seconds=600)
@@ -365,6 +371,7 @@ def verify_forgot_password_otp(email, otp, new_password):
 
 
 @frappe.whitelist(allow_guest=True)
+@handle_api_errors
 def resend_otp(email, purpose="signup"):
     """Resend verification OTP."""
     _rate_limit(f"resend_otp:{email}:{purpose}", limit=3, window_seconds=300)
@@ -397,6 +404,7 @@ def resend_otp(email, purpose="signup"):
 
 
 @frappe.whitelist()
+@handle_api_errors
 def change_password(old_password, new_password):
     """Change password for logged-in user."""
     from frappe.utils.password import check_password, update_password
@@ -409,6 +417,7 @@ def change_password(old_password, new_password):
 
 
 @frappe.whitelist()
+@handle_api_errors
 def cleanup_expired_verifications():
     """Purge expired OTP rows. Daily cron — Pending Verification is written on
     every signup/reset attempt and deleted only when consumed, so without this

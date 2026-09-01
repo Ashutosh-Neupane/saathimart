@@ -235,3 +235,51 @@ def log_auth_failure(endpoint, reason, payload=None):
         )
     except Exception:
         pass
+
+
+# ── Request Body Size Limit ───────────────────────────────────────────────────
+
+MAX_REQUEST_BODY_BYTES = 1 * 1024 * 1024  # 1 MB
+
+
+def check_request_size():
+    """Reject requests with bodies larger than MAX_REQUEST_BODY_BYTES.
+
+    Call at the top of write-heavy endpoints (add_to_cart, checkout, etc.)
+    to prevent memory exhaustion from malicious payloads.
+    """
+    if not frappe.request:
+        return
+    content_length = frappe.request.headers.get("Content-Length")
+    if content_length and int(content_length) > MAX_REQUEST_BODY_BYTES:
+        frappe.throw(
+            _("Request body too large (max {0} KB)").format(MAX_REQUEST_BODY_BYTES // 1024),
+            frappe.RequestSizeLimitError,
+        )
+
+
+# ── Idempotency Keys ─────────────────────────────────────────────────────────
+
+
+def check_idempotency(key, ttl_seconds=3600):
+    """Check if an idempotency key has already been processed.
+
+    Returns (is_duplicate, existing_result).
+    If not duplicate, marks the key as in-progress.
+    Call mark_idempotent(key, result) after successful processing.
+
+    Prevents double-charging on payment retries and duplicate order creation.
+    """
+    cache_key = f"sm_idempotent:{key}"
+    existing = frappe.cache().get_value(cache_key)
+    if existing is not None:
+        return True, existing
+    # Mark as in-progress (empty dict)
+    frappe.cache().set_value(cache_key, {}, expires_in_sec=ttl_seconds)
+    return False, None
+
+
+def mark_idempotent(key, result, ttl_seconds=3600):
+    """Mark an idempotency key as completed with its result."""
+    cache_key = f"sm_idempotent:{key}"
+    frappe.cache().set_value(cache_key, result or {"ok": True}, expires_in_sec=ttl_seconds)

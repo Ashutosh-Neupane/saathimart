@@ -93,6 +93,8 @@ def checkout(session_id, customer_name, customer_phone, delivery_address,
              payment_method="COD", delivery_zone=None, coupon_code=None,
              loyalty_points=0, notes=None, customer_email=None,
              customer_lat=None, customer_lng=None):
+    from saathimart.api.utils import check_request_size
+    check_request_size()
     """
     Convert an active Cart into a submitted Order.
 

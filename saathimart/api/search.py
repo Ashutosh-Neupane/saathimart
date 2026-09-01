@@ -5,9 +5,11 @@ fuzzy matching for typos, and autocomplete suggestions.
 import frappe
 from frappe import _
 from frappe.utils import cint
+from saathimart.api.responses import handle_api_errors
 
 
 @frappe.whitelist(allow_guest=True)
+@handle_api_errors
 def search_products(query="", page=1, page_size=20, category=None, brand=None,
                     min_price=None, max_price=None, in_stock=None,
                     lat=None, lng=None):
@@ -150,6 +152,7 @@ def search_products(query="", page=1, page_size=20, category=None, brand=None,
 
 
 @frappe.whitelist()
+@handle_api_errors
 def search_suggestions(query="", limit=8):
     """Return autocomplete suggestions for a search query."""
     query = (query or "").strip()
@@ -210,6 +213,7 @@ def normalize_search_key(query):
 
 
 @frappe.whitelist(allow_guest=True)
+@handle_api_errors
 def get_top_searches(limit=10):
     """Most popular search terms — for empty-search-box suggestions.
 

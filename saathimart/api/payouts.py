@@ -10,6 +10,7 @@ amount is only ever counted as owed once.
 import frappe
 from frappe import _
 from frappe.utils import flt
+from saathimart.api.responses import handle_api_errors
 
 
 def _require_vendor_access(vendor):
@@ -27,6 +28,7 @@ def _require_vendor_access(vendor):
 
 
 @frappe.whitelist()
+@handle_api_errors
 def get_outstanding_payout(vendor):
     """
     How much the platform currently owes `vendor` right now — every paid,
@@ -60,6 +62,7 @@ def get_outstanding_payout(vendor):
 
 
 @frappe.whitelist()
+@handle_api_errors
 def create_vendor_payout(vendor, from_date, to_date, payment_reference="", notes=""):
     """
     Record that `vendor` was actually paid for their unsettled, paid
@@ -102,6 +105,7 @@ def create_vendor_payout(vendor, from_date, to_date, payment_reference="", notes
 
 
 @frappe.whitelist()
+@handle_api_errors
 def list_vendor_payouts(vendor=None, page=1, page_size=20):
     filters = {}
     roles = frappe.get_roles()

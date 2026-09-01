@@ -19,6 +19,7 @@ import json
 
 import frappe
 from frappe.utils import now_datetime
+from saathimart.api.responses import handle_api_errors
 
 BATCH_WINDOW_SECONDS = 30
 MAX_BATCH_SIZE = 50  # max events per batch
@@ -158,6 +159,7 @@ def unpack_batch_event(batch_payload):
 
 
 @frappe.whitelist()
+@handle_api_errors
 def get_batch_stats():
     """Get batching statistics for monitoring."""
     try:

@@ -11,9 +11,11 @@ from __future__ import annotations
 import frappe
 from frappe import _
 from frappe.utils import flt, now_datetime
+from saathimart.api.responses import handle_api_errors
 
 
 @frappe.whitelist(allow_guest=True)
+@handle_api_errors
 def list_reviews(product_slug, page=1, page_size=10):
     """List approved reviews for a product, paginated."""
     name = frappe.db.get_value("Product", {"slug": product_slug, "status": "Active"}, "name")
@@ -65,6 +67,7 @@ def _get_rating_breakdown(product_name):
 
 
 @frappe.whitelist()
+@handle_api_errors
 def add_review(product_slug, rating, comment=""):
     """
     Add a product review. Requires login.
@@ -110,6 +113,7 @@ def add_review(product_slug, rating, comment=""):
 
 
 @frappe.whitelist(allow_guest=True)
+@handle_api_errors
 def get_product_rating(product_slug):
     """Quick rating summary for a product (used in product cards)."""
     name = frappe.db.get_value("Product", {"slug": product_slug, "status": "Active"}, "name")

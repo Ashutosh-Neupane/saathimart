@@ -4,6 +4,7 @@ and push notification support for the storefront.
 """
 import frappe
 from frappe import _
+from saathimart.api.responses import handle_api_errors
 
 
 def create_order_status_notification(doc, new_status):
@@ -98,7 +99,6 @@ def get_notification_preferences():
     (notify_order_updates, notify_promotions, notify_delivery_reminders).
     If the fields don't exist yet (migration hasn't run), return defaults.
     """
-    from saathimart.api.responses import handle_api_errors
 
     if frappe.session.user == "Guest":
         return {
@@ -116,9 +116,9 @@ def get_notification_preferences():
 
 
 @frappe.whitelist()
+@handle_api_errors
 def update_notification_preferences(order_updates=None, promotions=None, delivery_reminders=None):
     """Save the current user's notification preference toggles."""
-    from saathimart.api.responses import handle_api_errors
 
     if frappe.session.user == "Guest":
         frappe.throw("Login required", frappe.PermissionError)
@@ -136,10 +136,10 @@ def update_notification_preferences(order_updates=None, promotions=None, deliver
 
 
 @frappe.whitelist()
+@handle_api_errors
 def list_notifications(limit=50, page=1):
     """List in-app notifications for the current user (paginated)."""
     from frappe.utils import cint
-    from saathimart.api.responses import handle_api_errors
 
     user = frappe.session.user
     if user == "Guest":
@@ -167,9 +167,9 @@ def list_notifications(limit=50, page=1):
 
 
 @frappe.whitelist()
+@handle_api_errors
 def mark_notifications_read(names=None, mark_all=False):
     """Mark one or all notifications as read."""
-    from saathimart.api.responses import handle_api_errors
 
     user = frappe.session.user
     if user == "Guest":

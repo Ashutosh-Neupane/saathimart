@@ -5,6 +5,7 @@ import uuid
 
 import frappe
 from frappe import _
+from saathimart.api.responses import handle_api_errors
 
 
 _COOKIE_NAME = "sm_cart_session"
@@ -165,6 +166,7 @@ def extend_bootinfo(bootinfo):
 
 
 @frappe.whitelist()
+@handle_api_errors
 def get_profile():
     """Return the logged-in user's profile data for the frontend."""
     if frappe.session.user == "Guest":
@@ -181,6 +183,7 @@ def get_profile():
 
 
 @frappe.whitelist()
+@handle_api_errors
 def update_profile(full_name=None, phone=None):
     """Update the logged-in user's name and phone."""
     if frappe.session.user == "Guest":

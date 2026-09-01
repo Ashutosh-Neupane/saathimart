@@ -17,6 +17,7 @@ from __future__ import annotations
 
 import frappe
 from frappe.utils import flt, getdate, nowdate
+from saathimart.api.responses import handle_api_errors
 
 
 # ── Lookup ───────────────────────────────────────────────────────────────────
@@ -309,6 +310,7 @@ def expire_memberships():
 # ── Whitelisted ──────────────────────────────────────────────────────────────
 
 @frappe.whitelist()
+@handle_api_errors
 def get_my_membership():
     """Current membership + lifetime savings, for the account page."""
     email = frappe.session.user
@@ -333,6 +335,7 @@ def get_my_membership():
 
 
 @frappe.whitelist(allow_guest=True)
+@handle_api_errors
 def list_plans():
     """Plans for the storefront's membership page."""
     plans = frappe.get_all(

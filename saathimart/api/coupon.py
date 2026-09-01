@@ -9,9 +9,11 @@ Endpoints:
 import frappe
 from frappe import _
 from frappe.utils import flt
+from saathimart.api.responses import handle_api_errors
 
 
 @frappe.whitelist()
+@handle_api_errors
 def list_coupons():
     """List all coupons with usage stats (admin only)."""
     if "SM Admin" not in frappe.get_roles():
@@ -53,6 +55,7 @@ def list_coupons():
 
 
 @frappe.whitelist()
+@handle_api_errors
 def get_coupon_usage(coupon_name):
     """Get detailed usage stats for a specific coupon (admin only)."""
     if "SM Admin" not in frappe.get_roles():
@@ -79,6 +82,7 @@ def get_coupon_usage(coupon_name):
 
 
 @frappe.whitelist(allow_guest=True)
+@handle_api_errors
 def validate_coupon_api(coupon_code, order_subtotal=0, customer_phone=None):
     """Storefront coupon validation — returns reason instead of throwing.
 

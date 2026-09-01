@@ -14,6 +14,7 @@ Scheduled:
 import frappe
 from frappe import _
 from frappe.utils import now_datetime, add_days, cint
+from saathimart.api.responses import handle_api_errors
 
 
 # ── Helpers ───────────────────────────────────────────────────────────────────
@@ -112,6 +113,7 @@ def _get_device_tokens(user):
 # ── Whitelisted Endpoints ─────────────────────────────────────────────────────
 
 @frappe.whitelist()
+@handle_api_errors
 def register_device(fcm_token, platform="android", device_name=None, app_version=None):
     """
     Register or update an FCM device token for the current user.
@@ -170,6 +172,7 @@ def register_device(fcm_token, platform="android", device_name=None, app_version
 
 
 @frappe.whitelist()
+@handle_api_errors
 def unregister_device(fcm_token):
     """Deactivate a device token (e.g. on logout)."""
     user = frappe.session.user
@@ -189,6 +192,7 @@ def unregister_device(fcm_token):
 
 
 @frappe.whitelist()
+@handle_api_errors
 def send_notification(user, title, body, data=None, image=None,
                       collapse_key=None, ttl_seconds=None):
     """
@@ -220,6 +224,7 @@ def send_notification(user, title, body, data=None, image=None,
 
 
 @frappe.whitelist()
+@handle_api_errors
 def send_bulk(users, title, body, data=None, image=None, collapse_key=None):
     """
     Send a push notification to multiple users.
@@ -273,6 +278,7 @@ def send_bulk(users, title, body, data=None, image=None, collapse_key=None):
 
 
 @frappe.whitelist()
+@handle_api_errors
 def get_user_devices(user=None):
     """List registered devices for a user (defaults to current user)."""
     if user is None:
@@ -292,6 +298,7 @@ def get_user_devices(user=None):
 
 
 @frappe.whitelist()
+@handle_api_errors
 def get_notifications(page=1, page_size=20):
     """Get in-app notifications for the current user (paginated)."""
     user = frappe.session.user
@@ -326,6 +333,7 @@ def get_notifications(page=1, page_size=20):
 
 
 @frappe.whitelist()
+@handle_api_errors
 def mark_read(notification_name=None, mark_all=False):
     """Mark one or all notifications as read."""
     user = frappe.session.user

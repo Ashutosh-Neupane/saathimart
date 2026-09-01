@@ -23,6 +23,7 @@ from frappe import _
 from frappe.utils import flt, now_datetime
 
 from saathimart.api.utils import verify_hub_secret
+from saathimart.api.responses import handle_api_errors
 
 MAX_SINGLE_EVENT_QTY = 1000  # guards against a vendor fat-fingering qty_change
 
@@ -209,6 +210,7 @@ def _create_sle(product, qty_change, voucher_type, voucher_no, source_site, vend
 # ── Public API ────────────────────────────────────────────────────────────────
 
 @frappe.whitelist()
+@handle_api_errors
 def get_vendor_stock(vendor, product):
     """
     Called by saathimart-vendor's hourly reconciliation task
@@ -231,6 +233,7 @@ def get_vendor_stock(vendor, product):
 
 
 @frappe.whitelist()
+@handle_api_errors
 def get_vendor_stock_batch(vendor, products):
     """
     Batch stock lookup for multiple products from a single vendor.
@@ -412,6 +415,7 @@ def confirm_deduction(vendor, product, qty, order_id=None):
 
 
 @frappe.whitelist(allow_guest=True)
+@handle_api_errors
 def apply_vendor_stock_event(event, payload):
     """
     Vendor pushes stock.receipt / stock.deduct / stock.adjustment here.
@@ -534,6 +538,7 @@ def sync_vendor_listing_stock():
 
 
 @frappe.whitelist()
+@handle_api_errors
 def reconcile_vendor_stock(vendor, product, expected_qty):
     """
     Vendor-side reconciliation: force-correct Vendor Stock to expected_qty

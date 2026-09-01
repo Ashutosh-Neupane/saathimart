@@ -5,9 +5,11 @@ delivery rate, acceptance speed, stock accuracy, and customer ratings.
 import frappe
 from frappe import _
 from frappe.utils import flt, now_datetime, add_to_date, time_diff_in_seconds
+from saathimart.api.responses import handle_api_errors
 
 
 @frappe.whitelist()
+@handle_api_errors
 def get_vendor_scorecard(vendor_name, days=30):
     """Calculate performance scorecard for a vendor over the last N days."""
     if not vendor_name:
@@ -101,6 +103,7 @@ def get_vendor_scorecard(vendor_name, days=30):
 
 
 @frappe.whitelist()
+@handle_api_errors
 def get_all_vendor_scores(days=30):
     """Get performance scores for all active vendors."""
     vendors = frappe.get_all(

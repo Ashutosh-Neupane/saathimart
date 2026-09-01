@@ -243,8 +243,9 @@ class TestVendorOnboarding(unittest.TestCase):
         from saathimart.api.vendor_onboarding import register_vendor
         # Create one first
         register_vendor("Test Dup Vendor", "dup@test.com", "9800000001")
-        with self.assertRaises(frappe.ValidationError):
-            register_vendor("Test Dup Vendor", "dup2@test.com", "9800000002")
+        result = register_vendor("Test Dup Vendor", "dup2@test.com", "9800000002")
+        # handle_api_errors catches ValidationError and returns JSON
+        self.assertFalse(result.get("ok", True))
         # Cleanup
         name = frappe.db.get_value("Vendor", {"vendor_name": "Test Dup Vendor"}, "name")
         if name:

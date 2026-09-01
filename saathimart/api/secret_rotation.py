@@ -29,6 +29,7 @@ import frappe
 from frappe import _
 from frappe.utils import add_to_date, now_datetime
 from frappe.utils.password import get_decrypted_password, set_encrypted_password
+from saathimart.api.responses import handle_api_errors
 
 ROTATION_DUE_DAYS = 90  # alert when a vendor's secret is older than this
 
@@ -86,6 +87,7 @@ def _post_to_vendor(vendor_name, method, payload):
 
 
 @frappe.whitelist()
+@handle_api_errors
 def rotate_vendor_secret(vendor):
     """
     Rotate a vendor pair's webhook secret with zero downtime.

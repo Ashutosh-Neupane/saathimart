@@ -15,9 +15,11 @@ from __future__ import annotations
 import frappe
 from frappe import _
 from frappe.utils import flt, cint
+from saathimart.api.responses import handle_api_errors
 
 
 @frappe.whitelist(allow_guest=True)
+@handle_api_errors
 def get_filters(category=None, search=None, delivery_zone=None):
     """
     Return all filter options with product counts for the current catalog view.

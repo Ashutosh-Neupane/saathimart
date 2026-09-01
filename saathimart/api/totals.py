@@ -24,6 +24,7 @@ from __future__ import annotations
 
 import frappe
 from frappe.utils import flt, rounded
+from saathimart.api.responses import handle_api_errors
 
 
 def _set(obj, key, value):
@@ -307,6 +308,7 @@ def _round_totals(doc):
 # ── Whitelisted preview endpoint ──────────────────────────────────────────────
 
 @frappe.whitelist(allow_guest=True)
+@handle_api_errors
 def preview_order_totals(items, delivery_zone=None, coupon_code=None,
                           loyalty_points=0, customer_email=None):
     """

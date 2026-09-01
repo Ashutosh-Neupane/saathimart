@@ -18,6 +18,7 @@ from frappe.utils import flt, now_datetime
 
 
 from saathimart.api.utils import guest_rate_limit, verify_hub_secret
+from saathimart.api.responses import handle_api_errors
 
 
 def _bounding_box(lat, lng, radius_km):
@@ -28,6 +29,7 @@ def _bounding_box(lat, lng, radius_km):
 
 
 @frappe.whitelist(allow_guest=True)
+@handle_api_errors
 def resolve_vendors(lat, lng, radius_km=5):
     """
     Return active vendors within radius, sorted by distance.
@@ -83,6 +85,7 @@ def resolve_vendors(lat, lng, radius_km=5):
 
 
 @frappe.whitelist(allow_guest=True)
+@handle_api_errors
 def nearest_vendor_for_product(product, lat, lng, radius_km=5):
     """
     Return vendors that have this product in stock, sorted by distance.
@@ -144,6 +147,7 @@ def _humanize_vendor_id(vendor_id):
 
 
 @frappe.whitelist(allow_guest=True)
+@handle_api_errors
 def update_vendor_location(vendor_id, lat, lng, service_radius_km=5, address=""):
     """
     Called by saathimart-vendor's sync_vendor_location() to push location updates.

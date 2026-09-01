@@ -5,9 +5,11 @@ conversion rates, and business intelligence endpoints.
 import frappe
 from frappe import _
 from frappe.utils import flt, now_datetime, add_to_date, getdate
+from saathimart.api.responses import handle_api_errors
 
 
 @frappe.whitelist()
+@handle_api_errors
 def get_dashboard_summary(days=30):
     """High-level dashboard summary for the last N days."""
     cutoff = add_to_date(now_datetime(), days=-days)
@@ -71,6 +73,7 @@ def get_dashboard_summary(days=30):
 
 
 @frappe.whitelist()
+@handle_api_errors
 def get_vendor_analytics(vendor_name, days=30):
     """Analytics for a specific vendor."""
     cutoff = add_to_date(now_datetime(), days=-days)
@@ -108,6 +111,7 @@ def get_vendor_analytics(vendor_name, days=30):
 
 
 @frappe.whitelist()
+@handle_api_errors
 def get_product_analytics(product_name, days=30):
     """Analytics for a specific product."""
     cutoff = add_to_date(now_datetime(), days=-days)

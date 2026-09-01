@@ -11,6 +11,7 @@ from __future__ import annotations
 
 import frappe
 from frappe.utils import flt
+from saathimart.api.responses import handle_api_errors
 
 
 _cache_key = "sm_settings_doc"
@@ -130,6 +131,7 @@ def get_calendar_mode() -> str:
 
 
 @frappe.whitelist(allow_guest=True)
+@handle_api_errors
 def get_public_settings():
     """
     Guest-safe subset of Settings for the storefront: payment methods,

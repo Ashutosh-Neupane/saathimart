@@ -252,6 +252,7 @@ def _get_home_content():
 
 
 @frappe.whitelist(allow_guest=True)
+@handle_api_errors
 def get_home_layout():
     """Everything editor-owned that the home page needs, in one round trip.
 

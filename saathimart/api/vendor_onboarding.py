@@ -5,9 +5,11 @@ admin approval workflow, and auto-provisioning.
 import frappe
 from frappe import _
 import secrets
+from saathimart.api.responses import handle_api_errors
 
 
 @frappe.whitelist(allow_guest=True)
+@handle_api_errors
 def register_vendor(vendor_name, contact_email, contact_phone,
                     business_type="retail", address=""):
     """
@@ -73,6 +75,7 @@ def register_vendor(vendor_name, contact_email, contact_phone,
 
 
 @frappe.whitelist()
+@handle_api_errors
 def approve_vendor(vendor_name):
     """Admin approves a pending vendor."""
     if not frappe.db.exists("Vendor", vendor_name):
@@ -102,6 +105,7 @@ def approve_vendor(vendor_name):
 
 
 @frappe.whitelist()
+@handle_api_errors
 def reject_vendor(vendor_name, reason=""):
     """Admin rejects a pending vendor."""
     frappe.db.set_value("Vendor", vendor_name, {"status": "Suspended"})
@@ -110,6 +114,7 @@ def reject_vendor(vendor_name, reason=""):
 
 
 @frappe.whitelist(allow_guest=True)
+@handle_api_errors
 def get_onboarding_status(vendor_name):
     """Check onboarding status for a vendor."""
     if not frappe.db.exists("Vendor", vendor_name):

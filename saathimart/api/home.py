@@ -15,6 +15,7 @@ import json
 import frappe
 from frappe import _
 from frappe.utils import today, add_days, nowdate, flt
+from saathimart.api.responses import handle_api_errors
 
 
 def _serialize_product(row):
@@ -62,6 +63,7 @@ def _is_banner_active(banner):
 
 
 @frappe.whitelist(allow_guest=True)
+@handle_api_errors
 def get_homepage_data(lat=None, lng=None, radius_km=5):
     """
     Single-call homepage payload. Frontend calls this once on load.
@@ -92,12 +94,14 @@ def get_homepage_data(lat=None, lng=None, radius_km=5):
 
 
 @frappe.whitelist(allow_guest=True)
+@handle_api_errors
 def get_banners():
     """Public alias — returns active banners ordered by sort_order."""
     return _get_banners()
 
 
 @frappe.whitelist(allow_guest=True)
+@handle_api_errors
 def get_deals(limit=20, lat=None, lng=None, radius_km=5):
     """Products currently on sale (compare_price > price)."""
     return _get_deals(limit=int(limit), customer_lat=flt(lat) if lat is not None else None,
@@ -106,6 +110,7 @@ def get_deals(limit=20, lat=None, lng=None, radius_km=5):
 
 
 @frappe.whitelist(allow_guest=True)
+@handle_api_errors
 def get_bestsellers(limit=10, lat=None, lng=None, radius_km=5):
     """Top-selling products by quantity sold."""
     return _get_bestsellers(limit=int(limit), customer_lat=flt(lat) if lat is not None else None,
@@ -114,6 +119,7 @@ def get_bestsellers(limit=10, lat=None, lng=None, radius_km=5):
 
 
 @frappe.whitelist(allow_guest=True)
+@handle_api_errors
 def get_recommended(limit=12, lat=None, lng=None, radius_km=5):
     """Random active products."""
     return _get_recommended(limit=int(limit), customer_lat=flt(lat) if lat is not None else None,
@@ -122,6 +128,7 @@ def get_recommended(limit=12, lat=None, lng=None, radius_km=5):
 
 
 @frappe.whitelist(allow_guest=True)
+@handle_api_errors
 def get_quick_links():
     """Shortcut category tiles for the home quick-shop grid."""
     return _get_quick_links()

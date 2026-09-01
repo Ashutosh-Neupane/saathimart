@@ -472,7 +472,7 @@ def _get_product_images(product_name):
     media_rows = frappe.get_all(
         "Product Media",
         filters={"parent": product_name},
-        fields=["file", "is_primary", "file_name"],
+        fields=["file", "is_primary", "alt_text"],
         order_by="is_primary desc, idx asc",
     )
 
@@ -499,7 +499,7 @@ def _get_product_images(product_name):
             "width": 600,   # default; frontend should measure on load
             "height": 600,
             "is_primary": bool(m.get("is_primary")),
-            "alt_text": m.get("file_name") or product_name,
+            "alt_text": m.get("alt_text") or product_name,
         })
 
     # Ensure there's at least one entry (from product.thumbnail if no media)

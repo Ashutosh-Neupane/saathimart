@@ -93,10 +93,23 @@ def on_order_created(doc, method):
 
 
 def on_order_paid(doc, method):
-    """Hook: when order payment_status changes to Paid."""
-    if doc.payment_status == "Paid":
-        record_order_event(doc.name, "paid", {
-            "amount": doc.grand_total,
-            "method": doc.payment_method,
-            "reference": doc.payment_reference,
-        })
+    """Hook: fires on every Order update, but only records an event on the
+    Pending->Paid transition — without this guard, wiring it to on_update
+    would insert a duplicate "paid" log row on every later save while
+    payment_status stays Paid."""
+    if doc.payment_status != "Paid":
+        return
+    before_save = doc.get_doc_before_save()
+    if before_save and before_save.payment_status == "Paid":
+        return
+    record_order_event(doc.name, "paid", {
+        "amount": doc.grand_total,
+        "method": doc.payment_method,
+        "reference": doc.payment_reference,
+    })
+    # Push notification: payment confirmed
+    try:
+        from saathimart.api.push_notifications import send_order_notification
+        send_order_notification(doc.user, doc.name, "Payment Received")
+    except Exception:
+        pass  # Don't break order flow if notification fails

@@ -1,0 +1,839 @@
+{
+  "openapi": "3.0.3",
+  "info": {
+    "title": "SaathiMart API",
+    "description": "Central commerce hub API — Blinkit-style, Frappe-native, multi-vendor marketplace.\n\nAll endpoints are accessed via POST to `/api/method/saathimart.api.<module>.<function>`.\n\n## Authentication\n- **Guest**: allow_guest=True endpoints work without login (rate-limited)\n- **Session**: Frappe session cookie for web clients\n- **API Key**: `Authorization: token api_key:api_secret` for server-to-server\n- **HMAC Signature**: `X-SM-Signature` + `X-SM-Timestamp` for vendor webhooks\n\n## Rate Limiting\nGuest endpoints are rate-limited by IP (configurable per endpoint, default 60-300 req/min).\n\n## Error Responses\nAll endpoints return `{\"ok\": false, \"error\": \"...\", \"error_code\": \"...\"}` on failure.",
+    "version": "0.1.0",
+    "contact": {
+      "name": "Trevo Cloud Nepal",
+      "email": "dev@trevo.com.np"
+    }
+  },
+  "servers": [
+    {"url": "https://saathimart.example.com", "description": "Production"},
+    {"url": "http://localhost:8000", "description": "Local dev / Docker"}
+  ],
+  "tags": [
+    {"name": "Products", "description": "Product catalogue, listing, variants, templates"},
+    {"name": "Cart", "description": "Shopping cart management, offline sync"},
+    {"name": "Orders", "description": "Order creation, tracking, history"},
+    {"name": "Payments", "description": "eSewa integration, payment initiation & verification"},
+    {"name": "Auth", "description": "Login, signup, OTP, session management"},
+    {"name": "CMS", "description": "Banners, pages, FAQs, offers, navigation"},
+    {"name": "Home", "description": "Homepage data, rails, deals, bestsellers"},
+    {"name": "Search", "description": "Full-text search, autocomplete, filters"},
+    {"name": "Location", "description": "Delivery zones, customer location, franchise selection"},
+    {"name": "Delivery", "description": "Delivery charges, zone calculation"},
+    {"name": "Addresses", "description": "Customer saved addresses"},
+    {"name": "Reviews", "description": "Product reviews and ratings"},
+    {"name": "Wishlist", "description": "Customer wishlist management"},
+    {"name": "Loyalty", "description": "Loyalty points, tiers, programs"},
+    {"name": "Membership", "description": "Membership plans, benefits, savings"},
+    {"name": "Coupons", "description": "Coupon validation and redemption"},
+    {"name": "Mobile", "description": "Mobile-optimized lightweight endpoints"},
+    {"name": "Push Notifications", "description": "FCM device registration, notification sending"},
+    {"name": "Analytics", "description": "Vendor and hub analytics dashboards"},
+    {"name": "Admin Products", "description": "Admin CRUD for products, variants, vendor listings"},
+    {"name": "Stock", "description": "Vendor stock management, reservations, snapshots"},
+    {"name": "Vendor Management", "description": "Vendor onboarding, performance, payouts"},
+    {"name": "Warehouses", "description": "Multi-warehouse management per vendor"},
+    {"name": "Health", "description": "System health, deep health, sync monitoring"},
+    {"name": "Settings", "description": "SaathiMart settings management"},
+    {"name": "Totals", "description": "Cart/order total calculation"},
+    {"name": "Events", "description": "Webhook event system, delivery, HMAC verification"},
+    {"name": "Secret Rotation", "description": "Webhook secret rotation for vendor security"},
+    {"name": "Filters", "description": "Available filter options for product browsing"},
+    {"name": "Vendors (Public)", "description": "Public vendor info for storefront"},
+    {"name": "Payouts", "description": "Vendor payout management"}
+  ],
+  "paths": {
+    "/api/method/saathimart.api.products.list_products": {
+      "post": {
+        "tags": ["Products"],
+        "summary": "List products with filters and sorting",
+        "description": "Blinkit-style product listing. Supports category, brand, price range, in-stock, tags, and location-aware vendor filtering.",
+        "operationId": "listProducts",
+        "x-whitelist": "allow_guest=true",
+        "parameters": [
+          {"name": "category", "in": "query", "schema": {"type": "string"}, "description": "Category slug or comma-separated slugs"},
+          {"name": "vendor", "in": "query", "schema": {"type": "string"}, "description": "Vendor name to filter by"},
+          {"name": "search", "in": "query", "schema": {"type": "string"}, "description": "Search term (matches name, tags, description)"},
+          {"name": "page", "in": "query", "schema": {"type": "integer", "default": 1}},
+          {"name": "page_size", "in": "query", "schema": {"type": "integer", "default": 20, "maximum": 100}},
+          {"name": "sort", "in": "query", "schema": {"type": "string", "enum": ["price_asc", "price_desc", "newest", "popularity", "rating"]}},
+          {"name": "in_stock", "in": "query", "schema": {"type": "boolean"}},
+          {"name": "min_price", "in": "query", "schema": {"type": "number"}},
+          {"name": "max_price", "in": "query", "schema": {"type": "number"}},
+          {"name": "tags", "in": "query", "schema": {"type": "string"}, "description": "Comma-separated tags"},
+          {"name": "brand", "in": "query", "schema": {"type": "string"}},
+          {"name": "delivery_zone", "in": "query", "schema": {"type": "string"}},
+          {"name": "lat", "in": "query", "schema": {"type": "number"}},
+          {"name": "lng", "in": "query", "schema": {"type": "number"}},
+          {"name": "radius_km", "in": "query", "schema": {"type": "number", "default": 5}}
+        ],
+        "responses": {
+          "200": {
+            "description": "Product list",
+            "content": {"application/json": {"schema": {"type": "object", "properties": {
+              "products": {"type": "array", "items": {"$ref": "#/components/schemas/ProductListItem"}},
+              "total": {"type": "integer"},
+              "page": {"type": "integer"},
+              "page_size": {"type": "integer"},
+              "has_next": {"type": "boolean"}
+            }}}}
+          }
+        }
+      }
+    },
+    "/api/method/saathimart.api.products.get_product": {
+      "post": {
+        "tags": ["Products"],
+        "summary": "Get full product detail",
+        "description": "Returns complete product with vendor listings, variants, reviews, and related products. Supports ETag/If-None-Match for caching.",
+        "operationId": "getProduct",
+        "x-whitelist": "allow_guest=true",
+        "parameters": [
+          {"name": "slug", "in": "query", "required": true, "schema": {"type": "string"}},
+          {"name": "vendor", "in": "query", "schema": {"type": "string"}},
+          {"name": "delivery_zone", "in": "query", "schema": {"type": "string"}},
+          {"name": "lat", "in": "query", "schema": {"type": "number"}},
+          {"name": "lng", "in": "query", "schema": {"type": "number"}},
+          {"name": "radius_km", "in": "query", "schema": {"type": "number", "default": 5}}
+        ],
+        "responses": {
+          "200": {"description": "Product detail", "content": {"application/json": {"schema": {"$ref": "#/components/schemas/ProductDetail"}}},
+          "304": {"description": "Not Modified (ETag match)"}
+          }
+        }
+      }
+    },
+    "/api/method/saathimart.api.products.list_categories": {
+      "post": {
+        "tags": ["Products"],
+        "summary": "List all active categories",
+        "operationId": "listCategories",
+        "x-whitelist": "allow_guest=true",
+        "responses": {"200": {"description": "Category list"}}
+      }
+    },
+    "/api/method/saathimart.api.products.list_brands": {
+      "post": {
+        "tags": ["Products"],
+        "summary": "List all active brands with item counts",
+        "operationId": "listBrands",
+        "x-whitelist": "allow_guest=true",
+        "responses": {"200": {"description": "Brand list with counts"}}
+      }
+    },
+    "/api/method/saathimart.api.products.list_filters": {
+      "post": {
+        "tags": ["Filters"],
+        "summary": "Get available filter options",
+        "operationId": "listFilters",
+        "x-whitelist": "allow_guest=true",
+        "responses": {"200": {"description": "Filter options (categories, brands, price ranges)"}}
+      }
+    },
+    "/api/method/saathimart.api.cart.set_customer_location": {
+      "post": {
+        "tags": ["Cart"],
+        "summary": "Set or get customer delivery location",
+        "description": "Sets customer coordinates on the cart. If called without lat/lng, returns the current stored location (no overwrite).",
+        "operationId": "setCustomerLocation",
+        "x-whitelist": "allow_guest=true",
+        "parameters": [
+          {"name": "session_id", "in": "query", "schema": {"type": "string"}},
+          {"name": "lat", "in": "query", "schema": {"type": "number"}},
+          {"name": "lng", "in": "query", "schema": {"type": "number"}}
+        ],
+        "responses": {"200": {"description": "Location set/retrieved"}}
+      }
+    },
+    "/api/method/saathimart.api.cart.add_to_cart": {
+      "post": {
+        "tags": ["Cart"],
+        "summary": "Add item to cart",
+        "operationId": "addToCart",
+        "x-whitelist": "allow_guest=true",
+        "responses": {"200": {"description": "Item added"}}
+      }
+    },
+    "/api/method/saathimart.api.cart.update_cart_item": {
+      "post": {
+        "tags": ["Cart"],
+        "summary": "Update cart item quantity",
+        "operationId": "updateCartItem",
+        "x-whitelist": "allow_guest=true",
+        "responses": {"200": {"description": "Item updated"}}
+      }
+    },
+    "/api/method/saathimart.api.cart.remove_cart_item": {
+      "post": {
+        "tags": ["Cart"],
+        "summary": "Remove item from cart",
+        "operationId": "removeCartItem",
+        "x-whitelist": "allow_guest=true",
+        "responses": {"200": {"description": "Item removed"}}
+      }
+    },
+    "/api/method/saathimart.api.cart.get_cart": {
+      "post": {
+        "tags": ["Cart"],
+        "summary": "Get current cart with items and totals",
+        "operationId": "getCart",
+        "x-whitelist": "allow_guest=true",
+        "responses": {"200": {"description": "Cart data"}}
+      }
+    },
+    "/api/method/saathimart.api.cart.sync_cart_offline": {
+      "post": {
+        "tags": ["Cart"],
+        "summary": "Offline-first cart sync for mobile apps",
+        "description": "Mobile clients push their local cart state; server merges and returns authoritative state with sync_token.",
+        "operationId": "syncCartOffline",
+        "x-whitelist": "allow_guest=true",
+        "responses": {"200": {"description": "Synced cart with conflicts"}}
+      }
+    },
+    "/api/method/saathimart.api.cart.merge_guest_cart": {
+      "post": {
+        "tags": ["Cart"],
+        "summary": "Merge guest cart into user cart on login",
+        "operationId": "mergeGuestCart",
+        "x-whitelist": "allow_guest=false",
+        "responses": {"200": {"description": "Carts merged"}}
+      }
+    },
+    "/api/method/saathimart.api.orders.checkout": {
+      "post": {
+        "tags": ["Orders"],
+        "summary": "Checkout: convert cart to order",
+        "operationId": "checkout",
+        "x-whitelist": "allow_guest=false",
+        "responses": {"200": {"description": "Order created"}}
+      }
+    },
+    "/api/method/saathimart.api.orders.list_orders": {
+      "post": {
+        "tags": ["Orders"],
+        "summary": "List customer orders",
+        "operationId": "listOrders",
+        "x-whitelist": "allow_guest=false",
+        "responses": {"200": {"description": "Order list"}}
+      }
+    },
+    "/api/method/saathimart.api.orders.get_order": {
+      "post": {
+        "tags": ["Orders"],
+        "summary": "Get single order detail",
+        "operationId": "getOrder",
+        "x-whitelist": "allow_guest=false",
+        "responses": {"200": {"description": "Order detail"}}
+      }
+    },
+    "/api/method/saathimart.api.orders.track_order": {
+      "post": {
+        "tags": ["Orders"],
+        "summary": "Track order status timeline",
+        "operationId": "trackOrder",
+        "x-whitelist": "allow_guest=false",
+        "responses": {"200": {"description": "Status timeline"}}
+      }
+    },
+    "/api/method/saathimart.api.payments.initiate_payment": {
+      "post": {
+        "tags": ["Payments"],
+        "summary": "Initiate eSewa payment for an order",
+        "operationId": "initiatePayment",
+        "x-whitelist": "allow_guest=false",
+        "responses": {"200": {"description": "Payment URL for redirect"}}
+      }
+    },
+    "/api/method/saathimart.api.payments.verify_payment": {
+      "post": {
+        "tags": ["Payments"],
+        "summary": "Verify eSewa payment callback",
+        "operationId": "verifyPayment",
+        "x-whitelist": "allow_guest=true",
+        "responses": {"200": {"description": "Payment verified"}}
+      }
+    },
+    "/api/method/saathimart.api.payments.get_payment_modes": {
+      "post": {
+        "tags": ["Payments"],
+        "summary": "List available payment methods",
+        "operationId": "getPaymentModes",
+        "x-whitelist": "allow_guest=true",
+        "responses": {"200": {"description": "Payment modes"}}
+      }
+    },
+    "/api/method/saathimart.api.auth_full.signup": {
+      "post": {
+        "tags": ["Auth"],
+        "summary": "Register new customer account",
+        "operationId": "signup",
+        "x-whitelist": "allow_guest=true",
+        "responses": {"200": {"description": "Account created"}}
+      }
+    },
+    "/api/method/saathimart.api.auth_full.login": {
+      "post": {
+        "tags": ["Auth"],
+        "summary": "Login with email/password or OTP",
+        "operationId": "login",
+        "x-whitelist": "allow_guest=true",
+        "responses": {"200": {"description": "Session token"}}
+      }
+    },
+    "/api/method/saathimart.api.auth_full.send_otp": {
+      "post": {
+        "tags": ["Auth"],
+        "summary": "Send OTP for phone verification",
+        "operationId": "sendOtp",
+        "x-whitelist": "allow_guest=true",
+        "responses": {"200": {"description": "OTP sent"}}
+      }
+    },
+    "/api/method/saathimart.api.auth_full.verify_otp": {
+      "post": {
+        "tags": ["Auth"],
+        "summary": "Verify OTP code",
+        "operationId": "verifyOtp",
+        "x-whitelist": "allow_guest=true",
+        "responses": {"200": {"description": "OTP verified"}}
+      }
+    },
+    "/api/method/saathimart.api.auth_full.logout": {
+      "post": {
+        "tags": ["Auth"],
+        "summary": "Logout current session",
+        "operationId": "logout",
+        "responses": {"200": {"description": "Logged out"}}
+      }
+    },
+    "/api/method/saathimart.api.cms.get_banners": {
+      "post": {
+        "tags": ["CMS"],
+        "summary": "Get active hero/promo banners",
+        "operationId": "getBanners",
+        "x-whitelist": "allow_guest=true",
+        "responses": {"200": {"description": "Active banners"}}
+      }
+    },
+    "/api/method/saathimart.api.cms.get_site_config": {
+      "post": {
+        "tags": ["CMS"],
+        "summary": "Get site-wide configuration",
+        "operationId": "getSiteConfig",
+        "x-whitelist": "allow_guest=true",
+        "responses": {"200": {"description": "Site config"}}
+      }
+    },
+    "/api/method/saathimart.api.cms.get_faqs": {
+      "post": {
+        "tags": ["CMS"],
+        "summary": "Get FAQ categories and items",
+        "operationId": "getFaqs",
+        "x-whitelist": "allow_guest=true",
+        "responses": {"200": {"description": "FAQ data"}}
+      }
+    },
+    "/api/method/saathimart.api.cms.get_offers": {
+      "post": {
+        "tags": ["CMS"],
+        "summary": "Get active promotional offers",
+        "operationId": "getOffers",
+        "x-whitelist": "allow_guest=true",
+        "responses": {"200": {"description": "Active offers"}}
+      }
+    },
+    "/api/method/saathimart.api.cms.get_popular_locations": {
+      "post": {
+        "tags": ["CMS"],
+        "summary": "Get popular delivery locations",
+        "operationId": "getPopularLocations",
+        "x-whitelist": "allow_guest=true",
+        "responses": {"200": {"description": "Popular locations"}}
+      }
+    },
+    "/api/method/saathimart.api.cms.get_navigation": {
+      "post": {
+        "tags": ["CMS"],
+        "summary": "Get site navigation items",
+        "operationId": "getNavigation",
+        "x-whitelist": "allow_guest=true",
+        "responses": {"200": {"description": "Navigation tree"}}
+      }
+    },
+    "/api/method/saathimart.api.cms.get_static_page": {
+      "post": {
+        "tags": ["CMS"],
+        "summary": "Get a static page (about, terms, privacy, etc.)",
+        "operationId": "getStaticPage",
+        "x-whitelist": "allow_guest=true",
+        "responses": {"200": {"description": "Static page content"}}
+      }
+    },
+    "/api/method/saathimart.api.home.get_homepage_data": {
+      "post": {
+        "tags": ["Home"],
+        "summary": "Get complete homepage payload",
+        "description": "Single-call homepage with banners, categories, deals, bestsellers, recommended, and quick links.",
+        "operationId": "getHomepageData",
+        "x-whitelist": "allow_guest=true",
+        "parameters": [
+          {"name": "lat", "in": "query", "schema": {"type": "number"}},
+          {"name": "lng", "in": "query", "schema": {"type": "number"}},
+          {"name": "radius_km", "in": "query", "schema": {"type": "number", "default": 5}}
+        ],
+        "responses": {"200": {"description": "Homepage data"}}
+      }
+    },
+    "/api/method/saathimart.api.search.search_products": {
+      "post": {
+        "tags": ["Search"],
+        "summary": "Full-text product search with fuzzy matching",
+        "operationId": "searchProducts",
+        "x-whitelist": "allow_guest=true",
+        "responses": {"200": {"description": "Search results with relevance scoring"}}
+      }
+    },
+    "/api/method/saathimart.api.search.get_autocomplete": {
+      "post": {
+        "tags": ["Search"],
+        "summary": "Search autocomplete suggestions",
+        "operationId": "getAutocomplete",
+        "x-whitelist": "allow_guest=true",
+        "responses": {"200": {"description": "Autocomplete suggestions"}}
+      }
+    },
+    "/api/method/saathimart.api.location.get_delivery_zones": {
+      "post": {
+        "tags": ["Location"],
+        "summary": "Get delivery zones for coordinates",
+        "operationId": "getDeliveryZones",
+        "x-whitelist": "allow_guest=true",
+        "responses": {"200": {"description": "Delivery zones within radius"}}
+      }
+    },
+    "/api/method/saathimart.api.location.get_nearest_branch": {
+      "post": {
+        "tags": ["Location"],
+        "summary": "Find nearest vendor/franchise branch",
+        "operationId": "getNearestBranch",
+        "x-whitelist": "allow_guest=true",
+        "responses": {"200": {"description": "Nearest branch info"}}
+      }
+    },
+    "/api/method/saathimart.api.delivery.get_delivery_charge": {
+      "post": {
+        "tags": ["Delivery"],
+        "summary": "Calculate delivery charge for location",
+        "operationId": "getDeliveryCharge",
+        "x-whitelist": "allow_guest=true",
+        "responses": {"200": {"description": "Delivery charge breakdown"}}
+      }
+    },
+    "/api/method/saathimart.api.addresses.list_addresses": {
+      "post": {
+        "tags": ["Addresses"],
+        "summary": "List saved addresses",
+        "operationId": "listAddresses",
+        "responses": {"200": {"description": "Address list"}}
+      }
+    },
+    "/api/method/saathimart.api.addresses.add_address": {
+      "post": {
+        "tags": ["Addresses"],
+        "summary": "Add a new saved address",
+        "operationId": "addAddress",
+        "responses": {"200": {"description": "Address added"}}
+      }
+    },
+    "/api/method/saathimart.api.reviews.get_reviews": {
+      "post": {
+        "tags": ["Reviews"],
+        "summary": "Get product reviews",
+        "operationId": "getReviews",
+        "x-whitelist": "allow_guest=true",
+        "responses": {"200": {"description": "Review list"}}
+      }
+    },
+    "/api/method/saathimart.api.reviews.submit_review": {
+      "post": {
+        "tags": ["Reviews"],
+        "summary": "Submit a product review",
+        "operationId": "submitReview",
+        "responses": {"200": {"description": "Review submitted"}}
+      }
+    },
+    "/api/method/saathimart.api.wishlist.toggle_wishlist": {
+      "post": {
+        "tags": ["Wishlist"],
+        "summary": "Toggle product in wishlist",
+        "operationId": "toggleWishlist",
+        "responses": {"200": {"description": "Wishlist toggled"}}
+      }
+    },
+    "/api/method/saathimart.api.wishlist.get_wishlist": {
+      "post": {
+        "tags": ["Wishlist"],
+        "summary": "Get wishlist items",
+        "operationId": "getWishlist",
+        "responses": {"200": {"description": "Wishlist items"}}
+      }
+    },
+    "/api/method/saathimart.api.loyalty.get_loyalty_balance": {
+      "post": {
+        "tags": ["Loyalty"],
+        "summary": "Get loyalty points balance",
+        "operationId": "getLoyaltyBalance",
+        "responses": {"200": {"description": "Points balance and tier"}}
+      }
+    },
+    "/api/method/saathimart.api.loyalty.get_loyalty_history": {
+      "post": {
+        "tags": ["Loyalty"],
+        "summary": "Get loyalty points transaction history",
+        "operationId": "getLoyaltyHistory",
+        "responses": {"200": {"description": "Transaction history"}}
+      }
+    },
+    "/api/method/saathimart.api.membership.get_membership_status": {
+      "post": {
+        "tags": ["Membership"],
+        "summary": "Get membership status and benefits",
+        "operationId": "getMembershipStatus",
+        "responses": {"200": {"description": "Membership data"}}
+      }
+    },
+    "/api/method/saathimart.api.push_notifications.register_device": {
+      "post": {
+        "tags": ["Push Notifications"],
+        "summary": "Register FCM device token",
+        "operationId": "registerDevice",
+        "responses": {"200": {"description": "Device registered"}}
+      }
+    },
+    "/api/method/saathimart.api.push_notifications.unregister_device": {
+      "post": {
+        "tags": ["Push Notifications"],
+        "summary": "Unregister FCM device token",
+        "operationId": "unregisterDevice",
+        "responses": {"200": {"description": "Device unregistered"}}
+      }
+    },
+    "/api/method/saathimart.api.push_notifications.send_notification": {
+      "post": {
+        "tags": ["Push Notifications"],
+        "summary": "Send push notification to a user (admin)",
+        "operationId": "sendNotification",
+        "responses": {"200": {"description": "Notification sent"}}
+      }
+    },
+    "/api/method/saathimart.api.push_notifications.send_bulk": {
+      "post": {
+        "tags": ["Push Notifications"],
+        "summary": "Send bulk push notifications (admin)",
+        "operationId": "sendBulk",
+        "responses": {"200": {"description": "Notifications sent"}}
+      }
+    },
+    "/api/method/saathimart.api.push_notifications.get_notifications": {
+      "post": {
+        "tags": ["Push Notifications"],
+        "summary": "Get in-app notifications",
+        "operationId": "getNotifications",
+        "responses": {"200": {"description": "Notification list"}}
+      }
+    },
+    "/api/method/saathimart.api.push_notifications.mark_read": {
+      "post": {
+        "tags": ["Push Notifications"],
+        "summary": "Mark notifications as read",
+        "operationId": "markRead",
+        "responses": {"200": {"description": "Notifications marked read"}}
+      }
+    },
+    "/api/method/saathimart.api.analytics.get_vendor_analytics": {
+      "post": {
+        "tags": ["Analytics"],
+        "summary": "Get vendor performance analytics",
+        "operationId": "getVendorAnalytics",
+        "responses": {"200": {"description": "Analytics data"}}
+      }
+    },
+    "/api/method/saathimart.api.analytics.get_hub_analytics": {
+      "post": {
+        "tags": ["Analytics"],
+        "summary": "Get hub-wide analytics",
+        "operationId": "getHubAnalytics",
+        "responses": {"200": {"description": "Hub analytics"}}
+      }
+    },
+    "/api/method/saathimart.api.admin_products.create_product": {
+      "post": {
+        "tags": ["Admin Products"],
+        "summary": "Create a new product",
+        "operationId": "createProduct",
+        "responses": {"200": {"description": "Product created"}}
+      }
+    },
+    "/api/method/saathimart.api.admin_products.update_product": {
+      "post": {
+        "tags": ["Admin Products"],
+        "summary": "Update product details",
+        "operationId": "updateProduct",
+        "responses": {"200": {"description": "Product updated"}}
+      }
+    },
+    "/api/method/saathimart.api.admin_products.create_template": {
+      "post": {
+        "tags": ["Admin Products"],
+        "summary": "Create a product template (variant parent)",
+        "operationId": "createTemplate",
+        "responses": {"200": {"description": "Template created"}}
+      }
+    },
+    "/api/method/saathimart.api.admin_products.create_variants": {
+      "post": {
+        "tags": ["Admin Products"],
+        "summary": "Generate variants for a template (idempotent)",
+        "operationId": "createVariants",
+        "responses": {"200": {"description": "Variants created"}}
+      }
+    },
+    "/api/method/saathimart.api.admin_products.sync_listing_to_vendor": {
+      "post": {
+        "tags": ["Admin Products"],
+        "summary": "Sync a single vendor listing to its vendor",
+        "operationId": "syncListingToVendor",
+        "responses": {"200": {"description": "Listing synced"}}
+      }
+    },
+    "/api/method/saathimart.api.admin_products.bulk_sync_listings": {
+      "post": {
+        "tags": ["Admin Products"],
+        "summary": "Bulk sync all eligible listings to a vendor",
+        "operationId": "bulkSyncListings",
+        "responses": {"200": {"description": "Listings synced"}}
+      }
+    },
+    "/api/method/saathimart.api.stock.get_vendor_stock": {
+      "post": {
+        "tags": ["Stock"],
+        "summary": "Get stock for a product across vendors",
+        "operationId": "getVendorStock",
+        "x-whitelist": "allow_guest=true",
+        "responses": {"200": {"description": "Stock data per vendor"}}
+      }
+    },
+    "/api/method/saathimart.api.stock.update_stock": {
+      "post": {
+        "tags": ["Stock"],
+        "summary": "Update vendor stock (admin/vendor)",
+        "operationId": "updateStock",
+        "responses": {"200": {"description": "Stock updated"}}
+      }
+    },
+    "/api/method/saathimart.api.vendor_onboarding.create_vendor": {
+      "post": {
+        "tags": ["Vendor Management"],
+        "summary": "Create and onboard a new vendor",
+        "operationId": "createVendor",
+        "responses": {"200": {"description": "Vendor created with auto-generated credentials"}}
+      }
+    },
+    "/api/method/saathimart.api.vendor_performance.get_vendor_score": {
+      "post": {
+        "tags": ["Vendor Performance"],
+        "summary": "Get vendor performance scorecard",
+        "operationId": "getVendorScore",
+        "responses": {"200": {"description": "Performance metrics"}}
+      }
+    },
+    "/api/method/saathimart.api.payouts.get_payout_summary": {
+      "post": {
+        "tags": ["Payouts"],
+        "summary": "Get vendor payout summary",
+        "operationId": "getPayoutSummary",
+        "responses": {"200": {"description": "Payout data"}}
+      }
+    },
+    "/api/method/saathimart.api.warehouses.list_warehouses": {
+      "post": {
+        "tags": ["Warehouses"],
+        "summary": "List warehouses for a vendor",
+        "operationId": "listWarehouses",
+        "responses": {"200": {"description": "Warehouse list"}}
+      }
+    },
+    "/api/method/saathimart.api.warehouses.add_warehouse": {
+      "post": {
+        "tags": ["Warehouses"],
+        "summary": "Add a warehouse to a vendor",
+        "operationId": "addWarehouse",
+        "responses": {"200": {"description": "Warehouse added"}}
+      }
+    },
+    "/api/method/saathimart.api.health.health": {
+      "post": {
+        "tags": ["Health"],
+        "summary": "Basic health check (public)",
+        "operationId": "health",
+        "responses": {"200": {"description": "Service alive"}}
+      }
+    },
+    "/api/method/saathimart.api.health.deep_health": {
+      "post": {
+        "tags": ["Health"],
+        "summary": "Deep health: MariaDB, Redis, queue, vendors",
+        "operationId": "deepHealth",
+        "responses": {"200": {"description": "Deep health status"}}
+      }
+    },
+    "/api/method/saathimart.api.health.get_sync_health": {
+      "post": {
+        "tags": ["Health"],
+        "summary": "Webhook sync health dashboard",
+        "operationId": "getSyncHealth",
+        "responses": {"200": {"description": "Sync health metrics"}}
+      }
+    },
+    "/api/method/saathimart.api.health.get_vendor_health": {
+      "post": {
+        "tags": ["Health"],
+        "summary": "Per-vendor health status",
+        "operationId": "getVendorHealth",
+        "responses": {"200": {"description": "Vendor health data"}}
+      }
+    },
+    "/api/method/saathimart.api.events.list_events": {
+      "post": {
+        "tags": ["Events"],
+        "summary": "List webhook events (admin)",
+        "operationId": "listEvents",
+        "responses": {"200": {"description": "Event list"}}
+      }
+    },
+    "/api/method/saathimart.api.events.retry_event": {
+      "post": {
+        "tags": ["Events"],
+        "summary": "Retry a failed webhook event",
+        "operationId": "retryEvent",
+        "responses": {"200": {"description": "Event retried"}}
+      }
+    },
+    "/api/method/saathimart.api.secret_rotation.rotate_secret": {
+      "post": {
+        "tags": ["Secret Rotation"],
+        "summary": "Initiate webhook secret rotation for a vendor",
+        "operationId": "rotateSecret",
+        "responses": {"200": {"description": "Rotation initiated"}}
+      }
+    },
+    "/api/method/saathimart.api.secret_rotation.promote_secret": {
+      "post": {
+        "tags": ["Secret Rotation"],
+        "summary": "Promote old secret to active",
+        "operationId": "promoteSecret",
+        "responses": {"200": {"description": "Secret promoted"}}
+      }
+    }
+  },
+  "components": {
+    "schemas": {
+      "ProductListItem": {
+        "type": "object",
+        "properties": {
+          "name": {"type": "string"},
+          "product_name": {"type": "string"},
+          "slug": {"type": "string"},
+          "price": {"type": "number"},
+          "compare_price": {"type": "number"},
+          "thumbnail": {"type": "string"},
+          "image_thumbnail": {"type": "string", "description": "64px lazy-loading placeholder URL"},
+          "category": {"type": "string"},
+          "vendor": {"type": "string"},
+          "vendor_name": {"type": "string"},
+          "distance_km": {"type": "number"},
+          "stock_qty": {"type": "number"},
+          "track_inventory": {"type": "integer"},
+          "avg_rating": {"type": "number"},
+          "review_count": {"type": "integer"},
+          "brand": {"type": "string"},
+          "has_variants": {"type": "integer"},
+          "variant_count": {"type": "integer"},
+          "is_on_sale": {"type": "boolean"},
+          "discount_pct": {"type": "number"}
+        }
+      },
+      "ProductDetail": {
+        "type": "object",
+        "properties": {
+          "name": {"type": "string"},
+          "product_name": {"type": "string"},
+          "slug": {"type": "string"},
+          "price": {"type": "number"},
+          "compare_price": {"type": "number"},
+          "description": {"type": "string"},
+          "images": {
+            "type": "array",
+            "items": {
+              "type": "object",
+              "properties": {
+                "url": {"type": "string"},
+                "thumbnail": {"type": "string"},
+                "width": {"type": "integer"},
+                "height": {"type": "integer"},
+                "is_primary": {"type": "boolean"}
+              }
+            }
+          },
+          "vendor_listings": {"type": "array"},
+          "variants": {"type": "array"},
+          "variant_of_product": {"type": ["object", "null"]},
+          "options": {"type": "array"},
+          "variant_count": {"type": "integer"},
+          "review_count": {"type": "integer"},
+          "avg_rating": {"type": "number"},
+          "related_products": {"type": "array"},
+          "outside_radius": {"type": "boolean"},
+          "_etag": {"type": "string", "description": "ETag for HTTP caching"}
+        }
+      },
+      "Error": {
+        "type": "object",
+        "properties": {
+          "ok": {"type": "boolean", "enum": [false]},
+          "error": {"type": "string"},
+          "error_code": {"type": "string"}
+        }
+      }
+    },
+    "securitySchemes": {
+      "session": {
+        "type": "apiKey",
+        "in": "cookie",
+        "name": "sid",
+        "description": "Frappe session cookie"
+      },
+      "api_token": {
+        "type": "http",
+        "scheme": "bearer",
+        "bearerFormat": "token api_key:api_secret",
+        "description": "Frappe API key authentication"
+      },
+      "hmac": {
+        "type": "apiKey",
+        "in": "header",
+        "name": "X-SM-Signature",
+        "description": "HMAC-SHA256 signature: HMAC(webhook_secret, timestamp + '.' + body)"
+      }
+    }
+  },
+  "security": [
+    {"session": []},
+    {"api_token": []}
+  ]
+}

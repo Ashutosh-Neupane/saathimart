@@ -18,7 +18,10 @@
    {"fieldname": "section_totals", "fieldtype": "Section Break", "label": "Totals"},
    {"fieldname": "subtotal", "fieldtype": "Currency", "label": "Subtotal", "read_only": 1},
    {"fieldname": "delivery_zone", "fieldtype": "Link", "label": "Delivery Zone", "options": "Delivery Zone"},
-   {"fieldname": "coupon_code", "fieldtype": "Data", "label": "Coupon Code"}
+   {"fieldname": "coupon_code", "fieldtype": "Data", "label": "Coupon Code"},
+   {"fieldname": "section_sync", "fieldtype": "Section Break", "label": "Offline Sync"},
+   {"fieldname": "sync_token", "fieldtype": "Data", "label": "Sync Token", "read_only": 1,
+    "description": "Opaque token for mobile offline cart sync — client sends this back to detect conflicts"}
   ],
   "permissions": [
    {"role": "SM Admin", "read": 1, "write": 1, "create": 1, "delete": 1},

@@ -34,8 +34,14 @@ add_to_apps_screen = [
 # ── Document events ───────────────────────────────────────────────────────────
 doc_events = {
     "Order": {
-        "after_insert": "saathimart.events.publisher.on_order_created",
-        "on_update":    "saathimart.events.publisher.on_order_updated",
+        "after_insert": [
+            "saathimart.events.publisher.on_order_created",
+            "saathimart.api.order_events.on_order_created",
+        ],
+        "on_update": [
+            "saathimart.events.publisher.on_order_updated",
+            "saathimart.api.order_events.on_order_paid",
+        ],
     },
     "Product": {
         "after_insert": "saathimart.events.publisher.on_product_created",
@@ -98,6 +104,27 @@ doc_events = {
     "Website Content": {
         "on_update": "saathimart.api.cms._bust_content_cache",
     },
+    "About Us": {
+        "on_update": "saathimart.api.cms._bust_static_page_cache",
+    },
+    "Terms Page": {
+        "on_update": "saathimart.api.cms._bust_static_page_cache",
+    },
+    "Privacy Page": {
+        "on_update": "saathimart.api.cms._bust_static_page_cache",
+    },
+    "Cookies Page": {
+        "on_update": "saathimart.api.cms._bust_static_page_cache",
+    },
+    "Careers Page": {
+        "on_update": "saathimart.api.cms._bust_static_page_cache",
+    },
+    "Partner Page": {
+        "on_update": "saathimart.api.cms._bust_static_page_cache",
+    },
+    "Rider Page": {
+        "on_update": "saathimart.api.cms._bust_static_page_cache",
+    },
 }
 
 # ── Scheduled tasks ───────────────────────────────────────────────────────────
@@ -106,7 +133,7 @@ scheduler_events = {
         "saathimart.api.loyalty.expire_old_points",
         "saathimart.api.membership.expire_memberships",
         "saathimart.api.archival.archive_old_data",
-        # Purge expired OTP rows (ported from saathi_middleware)
+        # Purge expired OTP rows from the verification store.
         "saathimart.api.auth_full.cleanup_expired_verifications",
         # Digest of dead/stuck webhook events — emailed to System Managers
         "saathimart.events.monitoring.daily_sync_health_report",
@@ -114,6 +141,10 @@ scheduler_events = {
         "saathimart.api.dead_letter.retry_dead_letters",
         # Dead letter alert when threshold exceeded
         "saathimart.api.dead_letter.dead_letter_alert",
+        # Alert (never auto-rotates) when a vendor's webhook secret is overdue
+        "saathimart.api.secret_rotation.check_stale_secrets",
+        # Push notification: clean up stale device tokens (90-day inactivity)
+        "saathimart.api.push_notifications.cleanup_stale_tokens",
     ],
     "hourly": [
         "saathimart.api.cart.expire_abandoned_carts",
@@ -121,6 +152,10 @@ scheduler_events = {
         "saathimart.api.reconciliation.reconcile_stock_hourly",
         # Stock snapshot sync: send full stock state to each vendor
         # (reconciliation checks individual products; snapshot sends everything)
+        "saathimart.api.stock_snapshot.sync_all_stock_snapshots",
+        # Keep Vendor Listing's cached qty fields from drifting away from
+        # the authoritative Vendor Stock table.
+        "saathimart.api.stock.sync_vendor_listing_stock",
     ],
     "weekly": [
         # Archive old dead-letter events older than 30 days
@@ -143,19 +178,68 @@ scheduler_events = {
 }
 
 # ── Fixtures ──────────────────────────────────────────────────────────
+# Exported on every `bench migrate` / `bench export-fixtures` so that
+# configuration data (roles, settings, CMS content) is portable across
+# environments. Only doctypes that hold *configuration* or *content*
+# are listed — transactional data (Cart, Order, Vendor Stock, etc.) is
+# environment-specific and must not be fixtures-exported.
 fixtures = [
+    # ── Roles & Permissions ──
     {"dt": "Role", "filters": [["name", "in", [
         "SM Admin", "SM Vendor", "SM Delivery", "SM Customer", "Website Manager",
     ]]]},
+    # ── Core Settings ──
     {"dt": "Settings"},
     {"dt": "Site Config"},
     {"dt": "Homepage Settings"},
+    # ── Authentication ──
     {"dt": "Pending Verification"},
+    # ── CMS Content ──
     {"dt": "Hero Slide"},
     {"dt": "Seasonal Banner"},
     {"dt": "Trust Badge"},
     {"dt": "Product Rail Heading"},
     {"dt": "Website Content"},
+    # ── Static Pages ──
+    {"dt": "About Us"},
+    {"dt": "Terms Page"},
+    {"dt": "Privacy Page"},
+    {"dt": "Cookies Page"},
+    {"dt": "Careers Page"},
+    {"dt": "Partner Page"},
+    {"dt": "Rider Page"},
+    # ── Catalogue Master Data ──
+    {"dt": "Category"},
+    {"dt": "Brand"},
+    {"dt": "Delivery Zone"},
+    {"dt": "Payment Mode"},
+    # ── CMS Supporting Data ──
+    {"dt": "FAQ Category"},
+    {"dt": "FAQ Item"},
+    {"dt": "Offer"},
+    {"dt": "Popular Location"},
+    {"dt": "Navigation Item"},
+    {"dt": "Banner"},
+    {"dt": "Site Page"},
+    # ── Loyalty & Membership ──
+    {"dt": "Loyalty Program"},
+    {"dt": "Loyalty Tier"},
+    {"dt": "Membership Plan"},
+    {"dt": "Membership Benefit"},
+    # ── Product Schema (for structure, not data) ──
+    {"dt": "Product Specification"},
+    {"dt": "Product Variant Attribute"},
+    {"dt": "Product Media"},
+    {"dt": "Product Price"},
+    # ── Order Child Tables ──
+    {"dt": "Order Item"},
+    {"dt": "Order Tax"},
+    {"dt": "Cart Item"},
+    # ── Vendor Schema ──
+    {"dt": "Vendor Warehouse"},
+    {"dt": "Vendor Barcode Index"},
+    # ── Notification Device ──
+    {"dt": "SM Notification Device"},
 ]
 
 # ── Permissions ───────────────────────────────────────────────────────────────

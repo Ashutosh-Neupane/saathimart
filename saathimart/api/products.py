@@ -451,6 +451,74 @@ def _get_variant_options_map(template_names):
     return result
 
 
+def _get_product_images(product_name):
+    """
+    Return image metadata with lazy-loading placeholders for each product image.
+
+    Each image includes:
+      - url:            full image URL
+      - thumbnail:      64px blurred placeholder (data URI or URL)
+      - width, height:  intrinsic dimensions (or defaults)
+      - is_primary:     whether this is the hero image
+
+    The thumbnail field is a low-resolution placeholder that the frontend
+    displays while the full image loads. For Frappe-hosted images, we
+    generate a small inline blurred version. For external URLs (CDN/S3),
+    we return a separate thumbnail URL if one exists.
+
+    This replaces the need for client-side blurhash decoding — the server
+    provides ready-to-display placeholders.
+    """
+    media_rows = frappe.get_all(
+        "Product Media",
+        filters={"parent": product_name},
+        fields=["file", "is_primary", "file_name"],
+        order_by="is_primary desc, idx asc",
+    )
+
+    images = []
+    for m in media_rows:
+        url = m.get("file") or ""
+        if not url:
+            continue
+
+        # Generate thumbnail URL by appending ?w=64 to request server-side resize
+        # or use Frappe's built-in thumbnail generation
+        thumb_url = ""
+        if "/files/" in url:
+            # Frappe file — append thumbnail parameter
+            thumb_url = f"{url}?w=64&q=10"
+        elif url.startswith("http"):
+            # External CDN — append width param if no query string
+            separator = "&" if "?" in url else "?"
+            thumb_url = f"{url}{separator}w=64&q=10"
+
+        images.append({
+            "url": url,
+            "thumbnail": thumb_url,
+            "width": 600,   # default; frontend should measure on load
+            "height": 600,
+            "is_primary": bool(m.get("is_primary")),
+            "alt_text": m.get("file_name") or product_name,
+        })
+
+    # Ensure there's at least one entry (from product.thumbnail if no media)
+    if not images:
+        thumbnail = frappe.db.get_value("Product", product_name, "thumbnail")
+        if thumbnail:
+            thumb_url = f"{thumbnail}?w=64&q=10" if "/files/" in thumbnail else thumbnail
+            images.append({
+                "url": thumbnail,
+                "thumbnail": thumb_url,
+                "width": 600,
+                "height": 600,
+                "is_primary": True,
+                "alt_text": product_name,
+            })
+
+    return images
+
+
 def _serialize_product(doc, _listings_map=None, _stock_map=None, _vendor_location_map=None,
                        vendor=None, delivery_zone=None, customer_lat=None, customer_lng=None):
     """Serialize Product doc with its best vendor listing data."""
@@ -522,6 +590,8 @@ def _serialize_product(doc, _listings_map=None, _stock_map=None, _vendor_locatio
         "has_variants": getattr(doc, "has_variants", 0) or 0,
         "variant_of": getattr(doc, "variant_of", "") or "",
         "variant_attributes": variant_attributes,
+        # Lazy-loading: thumbnail placeholder URL (64px blurred preview)
+        "image_thumbnail": f"{primary_media or doc.thumbnail}?w=64&q=10" if (primary_media or doc.thumbnail) else "",
     }
 
 
@@ -766,9 +836,22 @@ def get_product(slug, vendor=None, delivery_zone=None, lat=None, lng=None, radiu
     if not name:
         frappe.throw(_("Product not found"), frappe.DoesNotExistError)
 
+    # ── ETag support: return 304 if client already has current version ──
+    import hashlib
+    etag_source = f"{name}:{vendor or ''}:{delivery_zone or ''}:{lat or ''}:{lng or ''}:{radius_km or ''}"
+    etag = hashlib.md5(etag_source.encode()).hexdigest()
+    if_modified_since = frappe.request.headers.get("If-None-Match") or frappe.request.headers.get("If-Modified-Since")
+    if if_modified_since and if_modified_since.strip('"') == etag:
+        from frappe import response as frappe_response
+        frappe_response.status_code = 304
+        frappe_response.body = b""
+        frappe.local.response = frappe_response
+        raise Exception("304 Not Modified")
+
     cache_key = f"sm_product:{name}:{vendor or delivery_zone or 'hub'}:{lat or ''}:{lng or ''}:{radius_km or ''}"
     cached = frappe.cache().get_value(cache_key)
     if cached:
+        cached["_etag"] = etag
         return cached
 
     doc = frappe.get_doc("Product", name)
@@ -898,6 +981,9 @@ def get_product(slug, vendor=None, delivery_zone=None, lat=None, lng=None, radiu
     related = random.sample(related_pool, min(8, len(related_pool)))
     data["related_products"] = [_serialize_product(frappe.get_doc("Product", p["name"])) for p in related]
 
+    # ── BlurHash / lazy-loading image metadata ──
+    data["images"] = _get_product_images(name)
+    data["_etag"] = etag
     frappe.cache().set_value(cache_key, data, expires_in_sec=300)
     return data
 

@@ -548,3 +548,157 @@ def _release_cart_reservations(cart_name):
                 "status": "Cancelled",
                 "notes": "Cancelled: cart expired without payment",
             })
+
+
+# ── Offline Cart Sync ─────────────────────────────────────────────────────────
+
+@frappe.whitelist(allow_guest=True)
+@handle_api_errors
+def sync_cart_offline(session_id=None, client_cart=None, sync_token=None):
+    """
+    Offline-first cart sync endpoint for mobile apps.
+
+    Mobile apps can accumulate cart changes while offline. When they come
+    back online, they POST their local cart state here. The server merges
+    it with the server-side cart and returns the authoritative state plus
+    a new sync_token.
+
+    Args:
+        session_id:   guest session ID (ignored for logged-in users)
+        client_cart:  JSON string — the client's full cart state:
+                      {"items": [{"product": ..., "qty": ..., "vendor": ...}],
+                       "updated_at": timestamp}
+        sync_token:  the client's last-known sync_token (from previous server response)
+
+    Returns:
+        {"ok": True, "cart": {...}, "sync_token": "...", "conflicts": [...]}
+    """
+    guest_rate_limit("cart.sync_offline", limit=60, window_seconds=60)
+
+    cart = _get_or_create_cart(session_id)
+
+    if not client_cart:
+        # Client is requesting current state, not pushing changes
+        return {
+            "ok": True,
+            "cart": _serialize_cart(cart),
+            "sync_token": cart.get("sync_token") or cart.name,
+            "conflicts": [],
+        }
+
+    # Parse client cart
+    if isinstance(client_cart, str):
+        try:
+            import json
+            client_cart = json.loads(client_cart)
+        except Exception:
+            frappe.throw("Invalid client_cart JSON")
+
+    client_items = client_cart.get("items", [])
+    conflicts = []
+
+    # Merge client items into server cart
+    for ci in client_items:
+        product = ci.get("product")
+        vendor = ci.get("vendor")
+        client_qty = ci.get("qty", 0)
+
+        if not product or client_qty <= 0:
+            continue
+
+        # Find existing item in server cart
+        existing = None
+        for si in cart.items:
+            if si.product == product and (si.get("vendor") or None) == (vendor or None):
+                existing = si
+                break
+
+        if existing:
+            # Conflict: both sides changed this item
+            if existing.qty != client_qty:
+                # Server wins (server has fresher stock data)
+                conflicts.append({
+                    "product": product,
+                    "vendor": vendor,
+                    "server_qty": existing.qty,
+                    "client_qty": client_qty,
+                    "resolved_qty": existing.qty,
+                })
+            # else: identical — no conflict
+        else:
+            # New item from client
+            best_vendor = vendor
+            rate = 0
+            if vendor and product:
+                vl = frappe.db.get_value(
+                    "Vendor Listing",
+                    {"vendor": vendor, "product": product, "status": "Active"},
+                    ["price"],
+                )
+                rate = vl or 0
+            elif product:
+                # Try to find any vendor for this product
+                vl = frappe.db.get_value(
+                    "Vendor Listing",
+                    {"product": product, "status": "Active"},
+                    ["vendor", "price"],
+                    as_dict=True,
+                )
+                if vl:
+                    best_vendor = vl.vendor
+                    rate = vl.price
+
+            if rate and rate > 0:
+                cart.append("items", {
+                    "product": product,
+                    "product_name": ci.get("product_name", product),
+                    "vendor": best_vendor,
+                    "qty": client_qty,
+                    "rate": rate,
+                    "amount": client_qty * rate,
+                })
+
+    # Recalculate subtotal
+    cart.subtotal = sum(flt(i.amount) for i in cart.items)
+
+    # Generate new sync_token
+    import hashlib
+    import time
+    cart.sync_token = hashlib.sha256(
+        f"{cart.name}-{time.time()}-{cart.subtotal}".encode()
+    ).hexdigest()[:32]
+
+    cart.save(ignore_permissions=True)
+
+    return {
+        "ok": True,
+        "cart": _serialize_cart(cart),
+        "sync_token": cart.sync_token,
+        "conflicts": conflicts,
+    }
+
+
+def _serialize_cart(cart):
+    """Serialize cart to a lightweight dict for sync responses."""
+    items = []
+    for ci in cart.items:
+        items.append({
+            "product": ci.product,
+            "product_name": ci.product_name,
+            "vendor": ci.vendor,
+            "qty": ci.qty,
+            "rate": ci.rate,
+            "amount": flt(ci.qty) * flt(ci.rate),
+            "thumbnail": ci.thumbnail or "",
+        })
+    return {
+        "name": cart.name,
+        "items": items,
+        "item_count": len(items),
+        "subtotal": cart.subtotal or 0,
+        "delivery_zone": cart.delivery_zone or None,
+        "customer_lat": cart.customer_lat,
+        "customer_lng": cart.customer_lng,
+        "status": cart.status,
+        "updated_at": str(cart.modified),
+    }

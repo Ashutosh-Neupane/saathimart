@@ -347,6 +347,16 @@ def on_order_updated(doc, method):
     """
     payload = {"order_id": doc.name, "status": doc.status, "vendor": doc.vendor}
     _publish_to_redis("order.updated", payload)
+
+    # Push notification on status change
+    before_save = doc.get_doc_before_save()
+    if before_save and before_save.status != doc.status:
+        try:
+            from saathimart.api.push_notifications import send_order_notification
+            send_order_notification(doc.user, doc.name, doc.status)
+        except Exception:
+            pass
+
     if doc.status != "Cancelled":
         return
 
@@ -593,7 +603,15 @@ def _deliver_event(evt, secret, max_retries):
 
         vendor_secret = secret
         if target_vendor:
-            vs = frappe.db.get_value("Vendor", target_vendor, "webhook_secret")
+            # webhook_secret is a Password field — frappe.db.get_value
+            # returns None for those (only __Auth has the ciphertext), so
+            # decrypt explicitly. Without this, every per-vendor event
+            # would silently fall back to the shared Settings secret and
+            # get rejected by the vendor's HMAC check.
+            from frappe.utils.password import get_decrypted_password
+            vs = get_decrypted_password(
+                "Vendor", target_vendor, "webhook_secret", raise_exception=False
+            )
             if vs:
                 vendor_secret = vs
 
@@ -658,10 +676,17 @@ def _deliver_event(evt, secret, max_retries):
         delivered_via_fallback = False
         if target_vendor:
             from saathimart.api.fallback_delivery import deliver_with_fallback
+            from frappe.utils.password import get_decrypted_password
             vendor_doc = frappe.db.get_value(
                 "Vendor", target_vendor,
-                ["frappe_site_url", "webhook_secret", "contact_email"], as_dict=True,
+                ["frappe_site_url", "contact_email"], as_dict=True,
             ) or {}
+            # webhook_secret is a Password field — db.get_value returns
+            # None for it, which fallback_delivery would sign with (""),
+            # so decrypt it explicitly here before handing over.
+            vendor_doc["webhook_secret"] = get_decrypted_password(
+                "Vendor", target_vendor, "webhook_secret", raise_exception=False
+            ) or ""
             ok, method, _err = deliver_with_fallback(evt, vendor_doc)
             delivered_via_fallback = ok
 

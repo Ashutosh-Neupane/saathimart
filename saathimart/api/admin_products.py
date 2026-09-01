@@ -192,6 +192,17 @@ def create_variants(template_slug, combinations, price=0,
             skipped.append(dict(combo))
             continue
 
+        # sig's keys are lowercased on purpose — signature comparison must be
+        # case-insensitive. The persisted attribute name must not be: it used
+        # to write straight from sig, silently lowercasing every attribute
+        # name ("Color" -> "color") in the database. Original casing kept
+        # here, sorted the same way sig is so display order matches.
+        original_cased = {
+            str(k).strip(): str(v).strip()
+            for k, v in combo.items() if str(v).strip()
+        }
+        ordered_attrs = sorted(original_cased.items(), key=lambda kv: kv[0].lower())
+
         label_parts = [f"{v}" for _, v in sorted(sig)]
         try:
             doc = frappe.new_doc("Product")
@@ -212,7 +223,7 @@ def create_variants(template_slug, combinations, price=0,
             doc.thumbnail = template.thumbnail
             doc.tags = template.tags
             doc.track_inventory = 1 if track_inventory else 0
-            for attr, value in sorted(sig):
+            for attr, value in ordered_attrs:
                 doc.append("variant_attributes", {"attribute": attr, "value": value})
             if flt(price):
                 # Hub-level Retail fallback price until a vendor lists this
@@ -286,3 +297,75 @@ def delete_variant(slug):
         doc.save(ignore_permissions=True)
         return {"ok": True, "status": doc.status}
     frappe.throw(_("{0} is not a variant").format(slug))
+
+
+# ── Per-item sync ─────────────────────────────────────────────────────────────
+
+@frappe.whitelist()
+@handle_api_errors
+def sync_listing_to_vendor(listing_name):
+    """Sync a single Vendor Listing to its vendor site.
+
+    If the listing has a barcode and sync_enabled is checked, pushes the
+    product + price + stock to the vendor's Frappe site via the event system.
+    The vendor must have a frappe_site_url configured.
+    """
+    _require_admin()
+    listing = frappe.get_doc("Vendor Listing", listing_name)
+
+    if not listing.sync_enabled:
+        frappe.throw(_("Sync is disabled for this listing"))
+
+    if not listing.barcode:
+        frappe.throw(_("Listing must have a barcode to sync"))
+
+    vendor_url = frappe.db.get_value("Vendor", listing.vendor, "frappe_site_url")
+    if not vendor_url:
+        frappe.throw(_("Vendor {0} has no site URL configured").format(listing.vendor))
+
+    # Publish product.new event to this specific vendor
+    from saathimart.events.publisher import _enqueue
+    product = frappe.get_doc("Product", listing.product)
+    payload = {
+        "product_id": product.name,
+        "barcode": listing.barcode,
+        "product_name": product.product_name,
+        "price": listing.price,
+        "stock_qty": listing.available_qty,
+    }
+    _enqueue("product.new", payload,
+             target_site=vendor_url, target_vendor=listing.vendor,
+             event_id=f"product.new.{product.name}.{listing.vendor}")
+
+    frappe.db.set_value("Vendor Listing", listing.name, {
+        "sync_status": "Synced",
+        "pushed_at": frappe.utils.now_datetime(),
+    }, update_modified=False)
+    frappe.db.commit()
+
+    return {"ok": True, "listing": listing.name, "vendor": listing.vendor}
+
+
+@frappe.whitelist()
+@handle_api_errors
+def bulk_sync_listings(vendor=None, product=None):
+    """Sync all eligible Vendor Listings (sync_enabled=1, barcode present)."""
+    _require_admin()
+    filters = {"sync_enabled": 1, "barcode": ["is", "set"], "status": "Active"}
+    if vendor:
+        filters["vendor"] = vendor
+    if product:
+        filters["product"] = product
+
+    listings = frappe.get_all("Vendor Listing", filters=filters, pluck="name")
+    synced = 0
+    errors = 0
+    for name in listings:
+        try:
+            sync_listing_to_vendor(name)
+            synced += 1
+        except Exception:
+            errors += 1
+            frappe.log_error(f"Failed to sync listing {name}", "Bulk Sync")
+
+    return {"total": len(listings), "synced": synced, "errors": errors}

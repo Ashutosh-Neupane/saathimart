@@ -51,6 +51,27 @@
    "description": "Last event sequence number delivered to this vendor for idempotency"
   },
   {
+   "fieldname": "last_processed_event_seq",
+   "fieldtype": "Int",
+   "label": "Last Processed Event Seq",
+   "read_only": 1,
+   "description": "Highest event_seq successfully delivered to this vendor, in order. Used to hold later-sequenced events until earlier gaps are filled — see api/event_ordering.py."
+  },
+  {
+   "fieldname": "clock_skew_seconds",
+   "fieldtype": "Float",
+   "label": "Clock Skew (seconds)",
+   "read_only": 1,
+   "description": "Measured difference between this vendor's clock and the hub's, from inbound request timestamps. Positive = vendor ahead. Widens the HMAC timestamp tolerance for this vendor — see api/clock_sync.py."
+  },
+  {
+   "fieldname": "error_count",
+   "fieldtype": "Int",
+   "label": "Error Count (DB Fallback)",
+   "read_only": 1,
+   "description": "Delivery error counter used only when Redis is unavailable — see api/partial_failure.py._db_record_error. Not the live error-budget counter (that lives in cache)."
+  },
+  {
    "fieldname": "webhook_secret",
    "fieldtype": "Password",
    "label": "Webhook Secret",
@@ -61,6 +82,25 @@
    "fieldtype": "Password",
    "label": "Previous Webhook Secret",
    "description": "Accepted (never sent) during rotation so the secret can be swapped with zero downtime."
+  },
+  {
+   "fieldname": "webhook_secret_rotated_at",
+   "fieldtype": "Datetime",
+   "label": "Webhook Secret Last Rotated",
+   "read_only": 1,
+   "description": "Set by api/secret_rotation.py:rotate_vendor_secret on success. Blank means never rotated since this field was added — api/secret_rotation.py:check_stale_secrets treats that as due, using the vendor's creation date as the baseline."
+  },
+  {
+   "fieldname": "section_credentials_info",
+   "fieldtype": "Section Break",
+   "label": "Credentials Info"
+  },
+  {
+   "fieldname": "credentials_info",
+   "fieldtype": "Small Text",
+   "label": "Setup Instructions",
+   "read_only": 1,
+   "description": "Auto-generated on creation. Copy these values to the vendor's Frappe site: Site URL, API Key, API Secret, and Webhook Secret."
   },
   {
    "fieldname": "section_contact",

@@ -14,6 +14,9 @@ class Product(Document):
         elif self.media and len(self.media) > 0:
             self.thumbnail = self.media[0].file
 
+        # Compute stock_qty from Vendor Stock (source of truth)
+        self._sync_stock_from_vendors()
+
     def validate(self):
         if self.price and self.price < 0:
             frappe.throw("Price cannot be negative")
@@ -46,7 +49,8 @@ class Product(Document):
             filters={"product": self.name, "status": "Active"},
             fields=["vendor", "price", "compare_price", "track_inventory",
                     "allow_backorder", "available_qty", "reserved_qty",
-                    "sku", "vendor_product_id", "delivery_zone"],
+                    "sku", "vendor_product_id", "delivery_zone",
+                    "barcode", "status"],
         )
 
     @property
@@ -86,6 +90,21 @@ class Product(Document):
     # That silently broke on_product_created's entire barcode-matching
     # path — see saathimart/events/publisher.py — since every hook there
     # reads `doc.sku` on the just-inserted Document, not a raw query.
+
+    def _sync_stock_from_vendors(self):
+        """Compute stock_qty as the sum of all active Vendor Stock rows.
+
+        The Product's stock_qty is a read-only aggregate — the source of truth
+        is Vendor Stock (per vendor+product+warehouse). This method recalculates
+        it on every save so the product page can show a single stock number
+        without querying the stock table.
+        """
+        total = frappe.db.sql("""
+            SELECT COALESCE(SUM(available_qty), 0) AS total
+            FROM `tabVendor Stock`
+            WHERE product = %s
+        """, self.name, as_dict=True)
+        self.stock_qty = flt(total[0].total) if total else 0
 
     @property
     def allow_backorder(self):

@@ -20,7 +20,6 @@ import urllib.parse
 from datetime import datetime, timezone
 
 import frappe
-import requests
 from frappe.utils import now_datetime, add_to_date, flt
 
 from saathimart.api.utils import safe_enqueue
@@ -63,6 +62,15 @@ def _enqueue(event_type, payload, target_site=None, target_vendor=None, event_id
     if existing:
         return
 
+    # Content-based dedup, on top of the event_id check above — catches a
+    # caller that (re)generates a fresh event_id for what is, by payload,
+    # the same event within the last 10 minutes (e.g. a retried caller that
+    # didn't reuse its own idempotency key). See api/event_dedup.py.
+    if target_vendor:
+        from saathimart.api.event_dedup import is_duplicate
+        if is_duplicate(event_type, target_vendor, payload):
+            return
+
     event_seq = None
     if target_vendor:
         event_seq = _get_next_vendor_event_seq(target_vendor)
@@ -74,6 +82,10 @@ def _enqueue(event_type, payload, target_site=None, target_vendor=None, event_id
     doc.target_site = target_site or ""
     doc.target_vendor = target_vendor or ""
     doc.payload = json.dumps(payload, default=str)
+
+    from saathimart.api.event_priority import get_priority
+    doc.priority = get_priority(event_type)
+
     doc.insert(ignore_permissions=True)
 
     if doc.target_site:
@@ -379,7 +391,7 @@ def on_vendor_listing_changed(doc, method):
 
     display_price exists purely to make bulk list/browse reads (homepage
     rails, search results) a plain field read instead of a join or a
-    separate query per section — modelled on how saathi_middleware keeps
+    separate query per section — modelled on the legacy storefront keeping
     price directly on the row it queries. Vendor Listing stays the actual
     source of truth: checkout, the product detail page, and anything
     vendor-specific still resolve price from Vendor Listing directly, this
@@ -414,33 +426,123 @@ def on_vendor_listing_changed(doc, method):
         "display_compare_price": max(compare_prices) if compare_prices else 0,
     }, update_modified=False)
 
+    # ── Auto-sync to vendor when sync_enabled + barcode present ──
+    if method != "on_trash" and getattr(doc, "sync_enabled", 0) and getattr(doc, "barcode", None):
+        vendor_url = frappe.db.get_value("Vendor", doc.vendor, "frappe_site_url")
+        if vendor_url:
+            try:
+                product_doc = frappe.get_doc("Product", product)
+                _enqueue("product.new", {
+                    "product_id": product,
+                    "barcode": doc.barcode,
+                    "product_name": product_doc.product_name,
+                    "price": doc.price,
+                    "stock_qty": doc.available_qty,
+                }, target_site=vendor_url, target_vendor=doc.vendor,
+                   event_id=f"product.new.{product}.{doc.vendor}")
+                frappe.db.set_value("Vendor Listing", doc.name, {
+                    "sync_status": "Synced",
+                    "pushed_at": frappe.utils.now_datetime(),
+                }, update_modified=False)
+            except Exception:
+                frappe.db.set_value("Vendor Listing", doc.name, {
+                    "sync_status": "Failed",
+                }, update_modified=False)
+                frappe.log_error(f"Auto-sync failed for listing {doc.name}", "Vendor Listing Sync")
+
 
 # ── Scheduled: drain queue ────────────────────────────────────────────────────
 
 def drain_event_queue():
-    """Cron every 2 min — deliver Queued webhook events to vendor sites."""
+    """
+    Cron every 2 min — deliver Queued webhook events to vendor sites.
+
+    Ordered CRITICAL-first (see api/event_priority.py) so a flood of
+    stock.update events can't sit ahead of a payment.received in the queue.
+    A vendor over its error budget (api/partial_failure.py) is skipped
+    entirely this pass — one struggling vendor no longer holds up every
+    other vendor's events behind it in the same 50-row batch.
+    """
     settings = frappe.get_single("Settings")
     max_retries = settings.max_webhook_retries or 3
     secret = settings.get_password("webhook_secret", raise_exception=False) or ""
 
-    events = frappe.get_list(
-        "Webhook Event",
-        filters={"status": "Queued", "target_site": ["!=", ""]},
-        fields=["name", "event_type", "target_site", "payload", "retry_count", "target_vendor"],
-        limit=50,
-        order_by="creation asc",
-    )
+    from saathimart.api.event_priority import get_events_by_priority
+    from saathimart.api.partial_failure import check_error_budget
 
-    for evt in events:
+    events = get_events_by_priority(status="Queued", limit=50)
+    to_deliver = _consolidate_batchable(events)
+
+    for evt in to_deliver:
+        if not evt.get("target_site"):
+            continue
+        if evt.get("target_vendor") and not check_error_budget(evt["target_vendor"]):
+            continue
         safe_enqueue(
             "saathimart.events.publisher._deliver_event_async",
-            event_name=evt.name,
+            event_name=evt["name"],
             secret=secret,
             max_retries=max_retries,
             queue="default",
-            job_id=f"deliver-webhook-event-{evt.name}",
+            job_id=f"deliver-webhook-event-{evt['name']}",
             deduplicate=True,
         )
+
+
+def _consolidate_batchable(events):
+    """
+    Fold multiple batchable-type Queued events for the same vendor (see
+    api/event_batch.py:should_batch_event — stock.update, analytics,
+    review.new, product.updated, warehouse.sync) into one events.batch
+    envelope before delivery, so a burst of low-priority events costs one
+    outbound call instead of N. A lone batchable event isn't worth
+    wrapping — delivered as itself.
+
+    Folded originals are marked Skipped (not deleted — kept for audit,
+    same reasoning as everywhere else in this queue) pointing at the batch
+    event that now carries their payload.
+    """
+    from saathimart.api.event_batch import should_batch_event, batch_generic_events, create_batch_event
+
+    by_vendor = {}
+    passthrough = []
+    for evt in events:
+        vendor = evt.get("target_vendor")
+        if vendor and should_batch_event(evt["event_type"]):
+            by_vendor.setdefault(vendor, []).append(evt)
+        else:
+            passthrough.append(evt)
+
+    result = list(passthrough)
+    for vendor, batch_evts in by_vendor.items():
+        if len(batch_evts) < 2:
+            result.extend(batch_evts)
+            continue
+
+        names = [e["name"] for e in batch_evts]
+        rows = frappe.get_all(
+            "Webhook Event", filters={"name": ["in", names]},
+            fields=["name", "event_type", "payload"],
+        )
+        if len(rows) < 2:
+            result.extend(batch_evts)
+            continue
+
+        batch_payload = batch_generic_events(rows)
+        batch_doc = create_batch_event(vendor, batch_payload)
+        frappe.db.sql(
+            "UPDATE `tabWebhook Event` SET status = 'Skipped', "
+            "response = %s WHERE name IN %s",
+            (f"Folded into batch {batch_doc.name}", tuple(names)),
+        )
+        frappe.db.commit()
+        result.append({
+            "name": batch_doc.name,
+            "target_site": batch_doc.target_site,
+            "target_vendor": vendor,
+        })
+
+    return result
 
 
 def _deliver_event_async(event_name, secret, max_retries):
@@ -462,6 +564,32 @@ def _deliver_event(evt, secret, max_retries):
                     message=f"Vendor {target_vendor} circuit is OPEN. Event {evt.name} deferred."
                 )
                 return
+
+            # Error budget: also enforced here (not just drain_event_queue's
+            # pre-filter) so the immediate-delivery path (_schedule_immediate_
+            # delivery, which bypasses drain_event_queue entirely for a fresh
+            # event) respects it too.
+            from saathimart.api.partial_failure import check_error_budget
+            if not check_error_budget(target_vendor):
+                return
+
+            # Outbound rate limit — independent of the circuit breaker
+            # (which only reacts to failures, not raw request volume). Not
+            # a failure: stays Queued, no retry_count bump, no circuit
+            # breaker recording.
+            from saathimart.api.connection_pool import should_throttle
+            if should_throttle(target_vendor):
+                return
+
+            # Ordering: hold this event if an earlier-sequenced one for the
+            # same vendor hasn't been delivered yet, so the vendor never
+            # sees seq 6 before seq 5. Stays Queued — the next drain sweep
+            # retries once the gap fills.
+            evt_seq = getattr(evt, "event_seq", None)
+            if evt_seq:
+                from saathimart.api.event_ordering import verify_sequence
+                if not verify_sequence(target_vendor, evt_seq):
+                    return
 
         vendor_secret = secret
         if target_vendor:
@@ -494,14 +622,18 @@ def _deliver_event(evt, secret, max_retries):
         if host_header:
             headers["Host"] = host_header
 
-        resp = requests.post(
+        from saathimart.api.connection_pool import pooled_request
+        status_code, response_text, pool_error = pooled_request(
+            "POST",
             f"{target_url}/api/method/saathimart_vendor.api.receive.receive_from_hub",
-            data=body,
             headers=headers,
+            body=body,
             timeout=10,
         )
-        status = "Sent" if resp.ok else "Failed"
-        response_text = resp.text[:2000]
+        if pool_error:
+            raise Exception(pool_error)
+        status = "Sent" if status_code < 400 else "Failed"
+        response_text = response_text[:2000]
     except Exception as e:
         status = "Failed"
         response_text = str(e)[:2000]
@@ -517,17 +649,40 @@ def _deliver_event(evt, secret, max_retries):
         })
         if target_vendor:
             from saathimart.api.circuit_breaker import record_delivery_failure
+            from saathimart.api.partial_failure import record_vendor_error
             record_delivery_failure(target_vendor)
+            record_vendor_error(target_vendor, error_type="delivery_failed")
     elif status == "Failed":
-        frappe.db.set_value("Webhook Event", evt.name, {
-            "status": "Dead",
-            "retry_count": retry_count,
-            "response": response_text,
-            "dead_letter_reason": f"Failed after {retry_count} retries. Last error: {response_text[:500]}",
-        })
+        # Last resort before giving up entirely — pull-based or email
+        # delivery (api/fallback_delivery.py) instead of straight to Dead.
+        delivered_via_fallback = False
+        if target_vendor:
+            from saathimart.api.fallback_delivery import deliver_with_fallback
+            vendor_doc = frappe.db.get_value(
+                "Vendor", target_vendor,
+                ["frappe_site_url", "webhook_secret", "contact_email"], as_dict=True,
+            ) or {}
+            ok, method, _err = deliver_with_fallback(evt, vendor_doc)
+            delivered_via_fallback = ok
+
+        if delivered_via_fallback:
+            frappe.db.set_value("Webhook Event", evt.name, {
+                "status": "Sent",
+                "retry_count": retry_count,
+                "response": response_text,
+            })
+        else:
+            frappe.db.set_value("Webhook Event", evt.name, {
+                "status": "Dead",
+                "retry_count": retry_count,
+                "response": response_text,
+                "dead_letter_reason": f"Failed after {retry_count} retries. Last error: {response_text[:500]}",
+            })
         if target_vendor:
             from saathimart.api.circuit_breaker import record_delivery_failure
+            from saathimart.api.partial_failure import record_vendor_error
             record_delivery_failure(target_vendor)
+            record_vendor_error(target_vendor, error_type="delivery_dead")
     else:
         frappe.db.set_value("Webhook Event", evt.name, {
             "status": status,
@@ -537,6 +692,10 @@ def _deliver_event(evt, secret, max_retries):
         if target_vendor:
             from saathimart.api.circuit_breaker import record_delivery_success
             record_delivery_success(target_vendor)
+            evt_seq = getattr(evt, "event_seq", None)
+            if evt_seq:
+                from saathimart.api.event_ordering import mark_processed
+                mark_processed(target_vendor, evt_seq)
     frappe.db.commit()
 
 

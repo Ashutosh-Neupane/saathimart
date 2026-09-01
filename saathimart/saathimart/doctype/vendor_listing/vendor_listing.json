@@ -144,10 +144,26 @@
    "label": "Sync"
   },
   {
-   "fieldname": "last_updated",
-   "fieldtype": "Datetime",
-   "label": "Last Updated",
+   "fieldname": "sync_enabled",
+   "fieldtype": "Check",
+   "label": "Enable Sync to Vendor",
+   "default": "1",
+   "description": "When checked, price/stock changes are pushed to the vendor site automatically. Requires barcode to be set."
+  },
+  {
+   "fieldname": "sync_status",
+   "fieldtype": "Select",
+   "label": "Sync Status",
+   "options": "Pending\nSynced\nFailed",
+   "default": "Pending",
    "read_only": 1
+  },
+  {
+   "fieldname": "pushed_at",
+   "fieldtype": "Datetime",
+   "label": "Pushed At",
+   "read_only": 1,
+   "description": "Last time this listing was synced to the vendor site"
   },
   {
    "fieldname": "last_sync_at",

@@ -1,0 +1,48 @@
+{
+ "name": "Delivery Time Slot",
+ "module": "Saathimart",
+ "doctype": "DocType",
+ "autoname": "format:DTS-.YYYY.-.#####",
+ "naming_rule": "Expression (old style)",
+ "engine": "InnoDB",
+ "description": "Reusable delivery time windows (e.g., 10:00-12:00, 14:00-16:00)",
+ "field_order": [
+  "slot_name",
+  "day_of_week",
+  "start_time",
+  "end_time",
+  "column_break_1",
+  "is_active",
+  "max_orders",
+  "current_orders",
+  "delivery_charge_override",
+  "section_warehouse",
+  "warehouse_scope",
+  "notes"
+ ],
+ "fields": [
+  {"fieldname": "slot_name", "fieldtype": "Data", "label": "Slot Name", "reqd": 1, "unique": 1, "in_list_view": 1, "description": "e.g., 'Morning 10-12'"},
+  {"fieldname": "day_of_week", "fieldtype": "Select", "label": "Day of Week", "options": "Every Day\nMonday\nTuesday\nWednesday\nThursday\nFriday\nSaturday\nSunday", "default": "Every Day", "reqd": 1, "in_list_view": 1},
+  {"fieldname": "start_time", "fieldtype": "Time", "label": "Start Time", "reqd": 1, "in_list_view": 1},
+  {"fieldname": "end_time", "fieldtype": "Time", "label": "End Time", "reqd": 1, "in_list_view": 1},
+  {"fieldname": "column_break_1", "fieldtype": "Column Break"},
+  {"fieldname": "is_active", "fieldtype": "Check", "label": "Is Active", "default": "1"},
+  {"fieldname": "max_orders", "fieldtype": "Int", "label": "Max Orders per Slot", "default": "50", "description": "Capacity limit for this time window"},
+  {"fieldname": "current_orders", "fieldtype": "Int", "label": "Current Orders", "default": "0", "read_only": 1},
+  {"fieldname": "delivery_charge_override", "fieldtype": "Currency", "label": "Delivery Charge Override", "description": "Override default delivery charge for this slot (0 = use default)"},
+  {"fieldname": "section_warehouse", "fieldtype": "Section Break", "label": "Warehouse Scope"},
+  {"fieldname": "warehouse_scope", "fieldtype": "Small Text", "label": "Warehouse Scope", "description": "Comma-separated warehouse names. Empty = all warehouses."},
+  {"fieldname": "notes", "fieldtype": "Small Text", "label": "Notes", "description": "Internal notes about this slot"}
+ ],
+ "title_field": "slot_name",
+ "allow_rename": 0,
+ "index_web_pages_for_search": 0,
+ "actions": [],
+ "links": [],
+ "states": [],
+ "permissions": [
+  {"role": "SM Admin", "read": 1, "write": 1, "create": 1, "delete": 1, "email": 1, "print": 1, "share": 1}
+ ],
+ "sort_field": "start_time",
+ "sort_order": "ASC"
+}

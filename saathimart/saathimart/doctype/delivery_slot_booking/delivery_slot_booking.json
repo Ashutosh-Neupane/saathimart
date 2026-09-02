@@ -1,0 +1,26 @@
+{
+ "name": "Delivery Slot Booking",
+ "module": "Saathimart",
+ "doctype": "DocType",
+ "naming_rule": "Random",
+ "engine": "InnoDB",
+ "description": "Tracks slot bookings for capacity management",
+ "field_order": [
+  "slot",
+  "delivery_date",
+  "order",
+  "status"
+ ],
+ "fields": [
+  {"fieldname": "slot", "fieldtype": "Link", "label": "Time Slot", "options": "Delivery Time Slot", "reqd": 1, "in_list_view": 1},
+  {"fieldname": "delivery_date", "fieldtype": "Date", "label": "Delivery Date", "reqd": 1, "in_list_view": 1},
+  {"fieldname": "order", "fieldtype": "Link", "label": "Order", "options": "Order", "reqd": 1, "in_list_view": 1},
+  {"fieldname": "status", "fieldtype": "Select", "label": "Status", "options": "Booked\nConfirmed\nCancelled", "default": "Booked", "in_list_view": 1}
+ ],
+ "allow_rename": 0,
+ "index_web_pages_for_search": 0,
+ "actions": [],
+ "links": [],
+ "states": [],
+ "permissions": []
+}

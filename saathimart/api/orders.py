@@ -188,8 +188,11 @@ def checkout(session_id, customer_name, customer_phone, delivery_address,
     from saathimart.api.warehouses import find_nearest_warehouse
     for v, items in vendor_groups.items():
         subtotal = sum(flt(i.qty) * flt(i.rate) for i in items)
-        # Route to the nearest warehouse with stock for this vendor
-        nearest_wh = find_nearest_warehouse(v, customer_lat, customer_lng)
+        # Route to the nearest warehouse with stock for the first product
+        # in this vendor's items — ensures we pick a warehouse that can
+        # actually fulfill this order.
+        first_product = items[0].product if items else None
+        nearest_wh = find_nearest_warehouse(v, customer_lat, customer_lng, product=first_product)
         fulfillment = order.append("vendor_fulfillments", {
             "vendor": v,
             "subtotal": subtotal,

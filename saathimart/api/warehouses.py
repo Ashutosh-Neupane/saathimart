@@ -56,8 +56,12 @@ def get_default_warehouse(vendor_name):
     return wh or frappe.db.get_value("Vendor", vendor_name, "default_warehouse")
 
 
-def find_nearest_warehouse(vendor_name, customer_lat, customer_lng):
+def find_nearest_warehouse(vendor_name, customer_lat, customer_lng, product=None):
     """Find the nearest active warehouse with stock for a given vendor.
+
+    When `product` is provided, prefers the nearest warehouse that has
+    available stock for that product. Falls back to nearest-without-stock
+    when all warehouses are out of stock.
 
     Returns dict with warehouse_name, distance_km, available_qty or None.
     """
@@ -72,14 +76,44 @@ def find_nearest_warehouse(vendor_name, customer_lat, customer_lng):
         dw = get_default_warehouse(vendor_name)
         return {"warehouse_name": dw, "distance_km": None} if dw else None
 
-    best = None
+    # If product is provided, preload per-warehouse stock for this vendor+product
+    stock_by_wh = {}
+    if product:
+        rows = frappe.get_all(
+            "Vendor Stock",
+            filters={"vendor": vendor_name, "product": product},
+            fields=["warehouse", "available_qty"],
+        )
+        for r in rows:
+            wh_name = r.warehouse or get_default_warehouse(vendor_name) or ""
+            stock_by_wh[wh_name] = flt(r.available_qty or 0)
+
+    # Score each warehouse: distance is primary, stock availability is bonus
+    best_with_stock = None
+    best_any = None
     for wh in warehouses:
         if not wh.lat or not wh.lng:
             continue
         dist = _haversine_km(customer_lat, customer_lng, wh.lat, wh.lng)
-        if best is None or dist < best["distance_km"]:
-            best = {"warehouse_name": wh.warehouse_name, "distance_km": round(dist, 2),
-                    "erpnext_warehouse": wh.erpnext_warehouse, "priority": wh.priority}
+        wh_name = wh.warehouse_name
+        has_stock = stock_by_wh.get(wh_name, 0) > 0 if product else True
+
+        entry = {
+            "warehouse_name": wh_name,
+            "distance_km": round(dist, 2),
+            "erpnext_warehouse": wh.erpnext_warehouse,
+            "priority": wh.priority,
+            "available_qty": stock_by_wh.get(wh_name, 0) if product else None,
+        }
+
+        if best_any is None or dist < best_any["distance_km"]:
+            best_any = entry
+
+        if has_stock and (best_with_stock is None or dist < best_with_stock["distance_km"]):
+            best_with_stock = entry
+
+    # Prefer nearest warehouse with stock; fall back to nearest overall
+    best = best_with_stock or best_any
 
     # Fall back to default if no warehouse with coordinates found
     if not best:
@@ -133,8 +167,11 @@ def get_stock_by_warehouse(product):
 
 @frappe.whitelist(allow_guest=True)
 @handle_api_errors
-def select_nearest_warehouse(vendor, customer_lat=None, customer_lng=None):
+def select_nearest_warehouse(vendor, customer_lat=None, customer_lng=None, product=None):
     """Pick the best warehouse for an order to this vendor.
+
+    When `product` is given, prefers the nearest warehouse that has
+    available stock for that product.
 
     Returns {warehouse_name, distance_km, available_total} or None.
     """
@@ -142,4 +179,4 @@ def select_nearest_warehouse(vendor, customer_lat=None, customer_lng=None):
         frappe.throw(_("vendor is required"))
     customer_lat = flt(customer_lat) if customer_lat else None
     customer_lng = flt(customer_lng) if customer_lng else None
-    return find_nearest_warehouse(vendor, customer_lat, customer_lng)
+    return find_nearest_warehouse(vendor, customer_lat, customer_lng, product=product)

@@ -905,6 +905,16 @@ def get_product(slug, vendor=None, delivery_zone=None, lat=None, lng=None, radiu
     data["vendor_context"] = vendor or data.get("vendor")
     data["outside_radius"] = outside_radius
 
+    # Per-warehouse stock breakdown for the best vendor
+    if vendor and data.get("vendor"):
+        from saathimart.api.warehouses import get_stock_by_warehouse, find_nearest_warehouse
+        data["warehouse_stock"] = get_stock_by_warehouse(name)
+        nearest = find_nearest_warehouse(data["vendor"], clat, clng)
+        data["nearest_warehouse"] = nearest
+    else:
+        data["warehouse_stock"] = {}
+        data["nearest_warehouse"] = None
+
     # Add all vendor listings
     listings = frappe.get_list(
         "Vendor Listing",

@@ -21,28 +21,28 @@ from frappe.utils import flt, today, add_days, now_datetime
 
 def seed_all():
     """Create all demo data."""
-    print("🌱 Seeding demo data...")
-    
+    print("Seeding demo data...")
+
     vendors = seed_vendors()
-    print(f"  ✅ Created {len(vendors)} vendors")
-    
+    print(f"  Created {len(vendors)} vendors")
+
     categories = seed_categories()
-    print(f"  ✅ Created {len(categories)} categories")
-    
+    print(f"  Created {len(categories)} categories")
+
     products = seed_products(categories)
-    print(f"  ✅ Created {len(products)} products")
-    
+    print(f"  Created {len(products)} products")
+
     orders = seed_orders(vendors, products)
-    print(f"  ✅ Created {len(orders)} orders")
-    
-    print("🎉 Seeding complete!")
+    print(f"  Created {len(orders)} orders")
+
+    print("Seeding complete!")
     return {"vendors": len(vendors), "products": len(products), "orders": len(orders)}
 
 
 def seed_vendors():
     """Create 5 demo vendors with warehouses."""
     vendors = []
-    
+
     vendor_data = [
         {"name": "vendor-kathmandu", "vendor_name": "Kathmandu Fresh Mart", "lat": 27.7172, "lng": 85.3240},
         {"name": "vendor-pokhara", "vendor_name": "Pokhara Grocery Hub", "lat": 28.2096, "lng": 83.9856},
@@ -50,14 +50,13 @@ def seed_vendors():
         {"name": "vendor-lalitpur", "vendor_name": "Lalitpur Organic Store", "lat": 27.6644, "lng": 85.3188},
         {"name": "vendor-bhaktapur", "vendor_name": "Bhaktapur Local Market", "lat": 27.6710, "lng": 85.4298},
     ]
-    
+
     for vdata in vendor_data:
         if frappe.db.exists("Vendor", vdata["name"]):
             vendors.append(vdata["name"])
             continue
-        
+
         vendor = frappe.new_doc("Vendor")
-        vendor.name = vdata["name"]
         vendor.vendor_name = vdata["vendor_name"]
         vendor.status = "Active"
         vendor.lat = vdata["lat"]
@@ -66,18 +65,18 @@ def seed_vendors():
         vendor.contact_email = f"demo@{vdata['name'].replace('vendor-', '')}.com"
         vendor.contact_phone = f"98{random.randint(10000000, 99999999)}"
         vendor.insert(ignore_permissions=True)
-        
-        # Create default warehouse
-        wh = frappe.new_doc("Vendor Warehouse")
-        wh.vendor = vendor.name
-        wh.warehouse_name = f"{vdata['vendor_name']} - Main"
-        wh.is_default = 1
-        wh.lat = vdata["lat"]
-        wh.lng = vdata["lng"]
-        wh.insert(ignore_permissions=True)
-        
+
+        # Create default warehouse as child table entry
+        vendor.append("warehouses", {
+            "warehouse_name": f"{vdata['vendor_name']} - Main",
+            "is_default": 1,
+            "lat": vdata["lat"],
+            "lng": vdata["lng"],
+        })
+        vendor.save(ignore_permissions=True)
+
         vendors.append(vendor.name)
-    
+
     frappe.db.commit()
     return vendors
 
@@ -85,7 +84,7 @@ def seed_vendors():
 def seed_categories():
     """Create demo categories."""
     categories = []
-    
+
     cat_data = [
         {"name": "cat-dairy", "category_name": "Dairy & Bakery", "slug": "dairy-bakery"},
         {"name": "cat-fruit", "category_name": "Fruits & Vegetables", "slug": "fruits-vegetables"},
@@ -93,20 +92,19 @@ def seed_categories():
         {"name": "cat-personal", "category_name": "Personal Care", "slug": "personal-care"},
         {"name": "cat-household", "category_name": "Household Essentials", "slug": "household-essentials"},
     ]
-    
+
     for cdata in cat_data:
         if frappe.db.exists("Category", cdata["name"]):
             categories.append(cdata["name"])
             continue
-        
+
         cat = frappe.new_doc("Category")
-        cat.name = cdata["name"]
         cat.category_name = cdata["category_name"]
         cat.slug = cdata["slug"]
         cat.is_active = 1
         cat.insert(ignore_permissions=True)
         categories.append(cat.name)
-    
+
     frappe.db.commit()
     return categories
 
@@ -114,7 +112,7 @@ def seed_categories():
 def seed_products(categories):
     """Create 20 demo products."""
     products = []
-    
+
     product_data = [
         # Dairy & Bakery
         {"name": "prod-milk-1l", "product_name": "Fresh Milk 1L", "category": "cat-dairy", "price": 85, "sku": "MLK-001"},
@@ -142,16 +140,15 @@ def seed_products(categories):
         {"name": "prod-floor-cleaner-lizol", "product_name": "Lizol 500ml", "category": "cat-household", "price": 120, "sku": "FLC-001"},
         {"name": "prod-paper-tissue", "product_name": "Paper Napkins (100)", "category": "cat-household", "price": 55, "sku": "PPR-001"},
     ]
-    
+
     vendors = frappe.get_all("Vendor", filters={"status": "Active"}, pluck="name")
-    
+
     for pdata in product_data:
         if frappe.db.exists("Product", pdata["name"]):
             products.append(pdata["name"])
             continue
-        
+
         product = frappe.new_doc("Product")
-        product.name = pdata["name"]
         product.product_name = pdata["product_name"]
         product.slug = pdata["name"].replace("prod-", "")
         product.category = pdata["category"]
@@ -160,15 +157,15 @@ def seed_products(categories):
         product.sku = pdata["sku"]
         product.short_description = f"Fresh {pdata['product_name']} from local vendors"
         product.insert(ignore_permissions=True)
-        
+
         # Create vendor listings for 2-3 random vendors
         num_vendors = random.randint(2, min(3, len(vendors)))
         selected_vendors = random.sample(vendors, num_vendors)
-        
+
         for i, vendor in enumerate(selected_vendors):
             # Price varies slightly by vendor
             vendor_price = pdata["price"] * random.uniform(0.9, 1.1)
-            
+
             vl = frappe.new_doc("Vendor Listing")
             vl.product = product.name
             vl.vendor = vendor
@@ -179,7 +176,7 @@ def seed_products(categories):
             vl.status = "Active"
             vl.priority = 10 - i  # First vendor gets higher priority
             vl.insert(ignore_permissions=True)
-            
+
             # Create vendor stock
             vs = frappe.new_doc("Vendor Stock")
             vs.product = product.name
@@ -188,9 +185,9 @@ def seed_products(categories):
             vs.available_qty = vl.available_qty
             vs.reserved_qty = 0
             vs.insert(ignore_permissions=True)
-        
+
         products.append(product.name)
-    
+
     frappe.db.commit()
     return products
 
@@ -198,28 +195,28 @@ def seed_products(categories):
 def seed_orders(vendors, products, count=50):
     """Create sample orders."""
     orders = []
-    
+
     customer_names = [
         "Ram Shrestha", "Sita Gurung", "Hari Thapa", "Gita Magar",
         "Krishna Tamang", "Laxmi Rai", "Shyam Poudel", "Sarita Karki",
         "Bishnu Adhikari", "Anita Bhandari", "Rajeshwor Singh", "Mina Koirala",
     ]
-    
+
     statuses = ["Pending", "Confirmed", "Preparing", "Out for Delivery", "Delivered"]
     payment_methods = ["COD", "eSewa"]
-    
+
     for i in range(count):
         # Random customer
         customer_name = random.choice(customer_names)
         customer_phone = f"98{random.randint(10000000, 99999999)}"
-        
+
         # Random products (1-5 items)
         num_items = random.randint(1, 5)
         selected_products = random.sample(products, min(num_items, len(products)))
-        
+
         # Pick a vendor for this order
         vendor = random.choice(vendors)
-        
+
         # Create order
         order = frappe.new_doc("Order")
         order.customer_name = customer_name
@@ -232,60 +229,61 @@ def seed_orders(vendors, products, count=50):
         order.payment_status = "Paid" if order.status in ["Delivered", "Preparing"] else "Unpaid"
         order.vendor = vendor
         order.notes = f"Demo order #{i+1}"
-        
+
         # Add items
         grand_total = 0
         for prod_name in selected_products:
-            product = frappe.get_doc("Product", prod_name)
+            product_doc = frappe.get_doc("Product", prod_name)
             # Get price from vendor listing
             vl = frappe.db.get_value(
                 "Vendor Listing",
                 {"product": prod_name, "vendor": vendor, "status": "Active"},
                 ["price"],
             )
-            price = flt(vl) if vl else flt(product.price)
+            price = flt(vl) if vl else flt(product_doc.price)
             qty = random.randint(1, 3)
             amount = price * qty
             grand_total += amount
-            
+
             order.append("items", {
                 "product": prod_name,
-                "product_name": product.product_name,
+                "product_name": product_doc.product_name,
                 "qty": qty,
                 "rate": price,
                 "amount": amount,
                 "vendor": vendor,
             })
-        
+
         order.grand_total = grand_total
-        
+
         # Set creation date to last 7 days for realistic trends
         days_ago = random.randint(0, 6)
         order.insert(ignore_permissions=True)
-        
+
         # Update creation date
         creation_date = add_days(now_datetime(), -days_ago)
         frappe.db.set_value("Order", order.name, "creation", creation_date)
-        
+
         orders.append(order.name)
-    
+
     frappe.db.commit()
     return orders
 
 
 def clear_all():
     """Clear all demo data (use with caution!)."""
-    print("⚠️  Clearing all demo data...")
-    
+    print("Clearing all demo data...")
+
     # Delete in reverse order of dependencies
     frappe.db.sql("DELETE FROM `tabOrder Item` WHERE parent LIKE 'ORD-%'")
     frappe.db.sql("DELETE FROM `tabOrder` WHERE name LIKE 'ORD-%'")
     frappe.db.sql("DELETE FROM `tabVendor Stock` WHERE product LIKE 'prod-%'")
     frappe.db.sql("DELETE FROM `tabVendor Listing` WHERE product LIKE 'prod-%'")
     frappe.db.sql("DELETE FROM `tabProduct` WHERE name LIKE 'prod-%'")
-    frappe.db.sql("DELETE FROM `tabVendor Warehouse` WHERE vendor LIKE 'vendor-%'")
+    # Vendor Warehouse is a child table — use parent column, not vendor
+    frappe.db.sql("DELETE FROM `tabVendor Warehouse` WHERE parent LIKE 'vendor-%'")
     frappe.db.sql("DELETE FROM `tabVendor` WHERE name LIKE 'vendor-%'")
     frappe.db.sql("DELETE FROM `tabCategory` WHERE name LIKE 'cat-%'")
-    
+
     frappe.db.commit()
-    print("✅ All demo data cleared")
+    print("All demo data cleared")

@@ -151,7 +151,7 @@ def list_notifications(limit=50, page=1):
 
     total = frappe.db.count("SM Notification", {"user": user})
     notifications = frappe.db.sql(
-        """SELECT name, kind, title, message, read, created_at
+        """SELECT name, kind, title, message, `read`, created_at
            FROM `tabSM Notification`
            WHERE user = %s
            ORDER BY created_at DESC
@@ -177,7 +177,7 @@ def mark_notifications_read(names=None, mark_all=False):
 
     if mark_all:
         frappe.db.sql(
-            "UPDATE `tabSM Notification` SET read=1 WHERE user=%s AND read=0",
+            "UPDATE `tabSM Notification` SET `read`=1 WHERE user=%s AND `read`=0",
             user,
         )
         frappe.db.commit()
@@ -189,7 +189,7 @@ def mark_notifications_read(names=None, mark_all=False):
         for name in names:
             doc = frappe.get_doc("SM Notification", name)
             if doc.user == user:
-                doc.read = 1
+                doc.set("read", 1)
                 doc.save(ignore_permissions=True)
         frappe.db.commit()
     return {"ok": True}

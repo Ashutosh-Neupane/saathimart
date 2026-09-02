@@ -311,7 +311,7 @@ def get_notifications(page=1, page_size=20):
 
     total = frappe.db.count("SM Notification", {"user": user})
     notifications = frappe.db.sql(
-        """SELECT name, kind, title, message, read, created_at
+        """SELECT name, kind, title, message, `read`, created_at
            FROM `tabSM Notification`
            WHERE user = %s
            ORDER BY created_at DESC
@@ -342,7 +342,7 @@ def mark_read(notification_name=None, mark_all=False):
 
     if mark_all:
         frappe.db.sql(
-            "UPDATE `tabSM Notification` SET read=1 WHERE user=%s AND read=0",
+            "UPDATE `tabSM Notification` SET `read`=1 WHERE user=%s AND `read`=0",
             user,
         )
         frappe.db.commit()
@@ -352,7 +352,7 @@ def mark_read(notification_name=None, mark_all=False):
         doc = frappe.get_doc("SM Notification", notification_name)
         if doc.user != user:
             frappe.throw(_("Not your notification"), frappe.PermissionError)
-        doc.read = 1
+        doc.set("read", 1)
         doc.save(ignore_permissions=True)
         return {"ok": True}
 

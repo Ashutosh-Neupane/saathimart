@@ -8,11 +8,16 @@ app_version = "0.1.0"
 
 required_apps = ["frappe"]
 
-# ── Error envelope ────────────────────────────────────────────────────────────
-# Rewrites framework-level failures on /api/method/saathimart.* routes into
-# the canonical {"ok": False, "error", "error_code"} body — see api/responses.py.
+# ── Request tracking & error envelope ──────────────────────────────────────────
+# before_request: Add X-Request-ID for log correlation
+# after_request: Add rate limit headers and normalize errors
+before_request = [
+    "saathimart.api.request_tracking.add_request_id",
+]
 after_request = [
+    "saathimart.api.request_tracking.add_rate_limit_headers",
     "saathimart.api.responses.normalize_error_response",
+    "saathimart.api.cache_headers.apply_cache_headers",
 ]
 
 # ── Desk tile ─────────────────────────────────────────────────────────────────
@@ -54,6 +59,9 @@ doc_events = {
     "SM Product Review": {
         "on_update": "saathimart.doctype.sm_product_review.sm_product_review._recompute_product_rating",
         "on_trash": "saathimart.doctype.sm_product_review.sm_product_review._recompute_product_rating",
+    },
+    "SM Audit Log": {
+        "after_insert": "saathimart.api.audit.log_audit_entry",
     },
     "Vendor Listing": {
         "after_insert": "saathimart.events.publisher.on_vendor_listing_changed",
@@ -149,6 +157,8 @@ scheduler_events = {
         "saathimart.api.secret_rotation.check_stale_secrets",
         # Push notification: clean up stale device tokens (90-day inactivity)
         "saathimart.api.push_notifications.cleanup_stale_tokens",
+        # SSE: clean up stale connections (10-minute timeout)
+        "saathimart.api.sse.cleanup_stale_connections",
     ],
     "hourly": [
         "saathimart.api.cart.expire_abandoned_carts",
@@ -168,6 +178,8 @@ scheduler_events = {
     "cron": {
         "*/2 * * * *": [
             "saathimart.events.publisher.drain_event_queue",
+            # SSE: clean up stale connections every 2 minutes
+            "saathimart.api.sse.cleanup_stale_connections",
         ],
         "*/10 * * * *": [
             "saathimart.api.payments.poll_pending_esewa_orders",
@@ -207,6 +219,8 @@ fixtures = [
     {"dt": "Website Content"},
     {"dt": "SM Product Review"},
     {"dt": "SM Search Term"},
+    {"dt": "SM Audit Log"},
+    {"dt": "SM Feature Flag"},
     # ── Static Pages ──
     {"dt": "About Us"},
     {"dt": "Terms Page"},
@@ -247,6 +261,8 @@ fixtures = [
     {"dt": "Vendor Barcode Index"},
     # ── Notification Device ──
     {"dt": "SM Notification Device"},
+    # ── Export & Reporting ──
+    {"dt": "SM Feature Flag"},
 ]
 
 # ── Permissions ───────────────────────────────────────────────────────────────

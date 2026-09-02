@@ -42,15 +42,23 @@ doc_events = {
         "after_insert": [
             "saathimart.events.publisher.on_order_created",
             "saathimart.api.order_events.on_order_created",
+            "saathimart.api.audit.log_order_update",
         ],
         "on_update": [
             "saathimart.events.publisher.on_order_updated",
             "saathimart.api.order_events.on_order_paid",
+            "saathimart.api.audit.log_order_update",
         ],
     },
     "Product": {
-        "after_insert": "saathimart.events.publisher.on_product_created",
-        "on_update":    "saathimart.events.publisher.on_product_updated",
+        "after_insert": [
+            "saathimart.events.publisher.on_product_created",
+            "saathimart.api.audit.log_product_update",
+        ],
+        "on_update": [
+            "saathimart.events.publisher.on_product_updated",
+            "saathimart.api.audit.log_product_update",
+        ],
         "on_trash":     "saathimart.events.publisher.on_product_deleted",
     },
     "Review": {

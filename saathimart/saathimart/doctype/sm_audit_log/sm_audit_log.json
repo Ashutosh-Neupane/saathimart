@@ -1,0 +1,48 @@
+{
+ "name": "SM Audit Log",
+ "module": "Saathimart",
+ "doctype": "DocType",
+ "autoname": "AUDIT-.YYYY.-.#####",
+ "naming_rule": "Expression (old style)",
+ "engine": "InnoDB",
+ "description": "Audit log for tracking changes to important data",
+ "field_order": [
+  "ref_doctype",
+  "docname",
+  "action",
+  "user",
+  "changes",
+  "old_value",
+  "new_value",
+  "column_break_1",
+  "status",
+  "processed_at",
+  "error_message"
+ ],
+ "fields": [
+  {"fieldname": "ref_doctype", "fieldtype": "Link", "label": "DocType", "options": "DocType", "reqd": 1, "in_list_view": 1},
+  {"fieldname": "docname", "fieldtype": "Data", "label": "Document Name", "in_list_view": 1},
+  {"fieldname": "action", "fieldtype": "Select", "label": "Action", "options": "Create\nUpdate\nDelete\nApprove\nReject", "reqd": 1, "in_list_view": 1},
+  {"fieldname": "user", "fieldtype": "Link", "label": "User", "options": "User", "in_list_view": 1},
+  {"fieldname": "changes", "fieldtype": "Text", "label": "Changes", "description": "JSON of changed fields"},
+  {"fieldname": "old_value", "fieldtype": "Text", "label": "Old Value", "description": "JSON of old values"},
+  {"fieldname": "new_value", "fieldtype": "Text", "label": "New Value", "description": "JSON of new values"},
+  {"fieldname": "column_break_1", "fieldtype": "Column Break"},
+  {"fieldname": "status", "fieldtype": "Select", "label": "Status", "options": "Pending\nProcessed\nFailed", "default": "Pending"},
+  {"fieldname": "processed_at", "fieldtype": "Datetime", "label": "Processed At"},
+  {"fieldname": "error_message", "fieldtype": "Text", "label": "Error Message"}
+ ],
+ "title_field": "ref_doctype",
+ "allow_rename": 0,
+ "index_web_pages_for_search": 0,
+ "actions": [],
+ "links": [],
+ "states": [],
+ "permissions": [
+  {"role": "SM Admin", "read": 1, "write": 1, "create": 1, "delete": 1, "email": 1, "print": 1, "share": 1},
+  {"role": "System Manager", "read": 1, "write": 1, "create": 1, "delete": 1}
+ ],
+ "sort_field": "creation",
+ "sort_order": "DESC",
+ "read_only": 1
+}

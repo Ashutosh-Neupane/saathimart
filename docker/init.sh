@@ -49,14 +49,17 @@ bench set-config -g gunicorn_bind  "0.0.0.0:8000"
 bench set-config -g db_host        "${DB_HOST:-mariadb}"
 
 # ── Link saathimart app ───────────────────────────────────────────────────────
+# Volume mount: ..:/home/frappe/saathimart-src (repo root, read-only)
+# App source lives at: /home/frappe/saathimart-src/saathimart/
+APP_SRC="/home/frappe/saathimart-src/saathimart"
 if [ ! -d "$BENCH/apps/saathimart" ]; then
-  ln -s /home/frappe/saathimart "$BENCH/apps/saathimart"
+  ln -s "$APP_SRC" "$BENCH/apps/saathimart"
   echo "saathimart" >> "$BENCH/apps/apps.txt"
 fi
 
 # Register on Python path (editable install)
 if ! "$BENCH/env/bin/python" -c "import saathimart" >/dev/null 2>&1; then
-  "$BENCH/env/bin/pip" install --quiet --no-deps -e "$BENCH/apps/saathimart"
+  "$BENCH/env/bin/pip" install --quiet --no-deps -e "$APP_SRC"
 fi
 
 # Register in sites/apps.txt (frappe.get_all_apps reads this)

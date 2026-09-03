@@ -22,16 +22,16 @@ services:
       THREADS: ${THREADS:-4}
       WORKER_TIMEOUT: ${WORKER_TIMEOUT:-120}
     volumes:
-      - ./saathimart:/home/frappe/saathimart   # live-reload in dev
+      - ..:/home/frappe/saathimart-src   # repo root (live-reload in dev)
       - bench_data:/home/frappe/bench
     deploy:
       resources:
         limits:
-          cpus: '1.5'
-          memory: 1200M
+          cpus: '2.0'
+          memory: 2048M
         reservations:
           cpus: '0.5'
-          memory: 400M
+          memory: 512M
     depends_on:
       mariadb:
         condition: service_healthy

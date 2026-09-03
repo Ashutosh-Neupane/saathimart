@@ -1,18 +1,81 @@
 {
-  "name": "SM Notification",
-  "module": "Saathimart",
-  "doctype": "DocType",
-  "fields": [
-    {"fieldname": "user", "fieldtype": "Link", "label": "User", "options": "User", "reqd": 1, "in_list_view": 1},
-    {"fieldname": "kind", "fieldtype": "Select", "label": "Kind", "reqd": 1,
-     "options": "order\npromotion\nsystem", "in_list_view": 1},
-    {"fieldname": "title", "fieldtype": "Data", "label": "Title", "reqd": 1},
-    {"fieldname": "message", "fieldtype": "Small Text", "label": "Message", "reqd": 1},
-    {"fieldname": "read", "fieldtype": "Check", "label": "Read", "default": "0"},
-    {"fieldname": "created_at", "fieldtype": "Datetime", "label": "Created At", "reqd": 1}
-  ],
-  "permissions": [
-    {"role": "SM Admin", "read": 1, "write": 1, "create": 1, "delete": 1},
-    {"role": "SM Customer", "read": 1, "write": 1, "create": 1, "delete": 1}
-  ]
+ "name": "SM Notification",
+ "module": "Saathimart",
+ "doctype": "DocType",
+ "fields": [
+  {
+   "fieldname": "user",
+   "fieldtype": "Link",
+   "label": "User",
+   "options": "User",
+   "reqd": 1,
+   "in_list_view": 1
+  },
+  {
+   "fieldname": "kind",
+   "fieldtype": "Select",
+   "label": "Kind",
+   "reqd": 1,
+   "options": "order\npromotion\nsystem",
+   "in_list_view": 1
+  },
+  {
+   "fieldname": "title",
+   "fieldtype": "Data",
+   "label": "Title",
+   "reqd": 1
+  },
+  {
+   "fieldname": "message",
+   "fieldtype": "Small Text",
+   "label": "Message",
+   "reqd": 1
+  },
+  {
+   "fieldname": "read",
+   "fieldtype": "Check",
+   "label": "Read",
+   "default": "0"
+  },
+  {
+   "fieldname": "created_at",
+   "fieldtype": "Datetime",
+   "label": "Created At",
+   "reqd": 1
+  }
+ ],
+ "permissions": [
+  {
+   "role": "SM Admin",
+   "read": 1,
+   "write": 1,
+   "create": 1,
+   "delete": 1
+  },
+  {
+   "role": "SM Customer",
+   "read": 1,
+   "write": 1,
+   "create": 1,
+   "delete": 1
+  }
+ ],
+ "engine": "InnoDB",
+ "allow_rename": 0,
+ "index_web_pages_for_search": 0,
+ "actions": [],
+ "links": [],
+ "states": [],
+ "naming_rule": "Expression (old style)",
+ "field_order": [
+  "user",
+  "kind",
+  "title",
+  "message",
+  "read",
+  "created_at"
+ ],
+ "sort_field": "modified",
+ "sort_order": "DESC",
+ "track_changes": 0
 }

@@ -59,13 +59,22 @@
    "default": "1"
   }
  ],
- "permissions": [
-  {
-   "role": "SM Admin",
-   "read": 1,
-   "write": 1,
-   "create": 1,
-   "delete": 1
-  }
+ "permissions": [],
+ "engine": "InnoDB",
+ "allow_rename": 0,
+ "index_web_pages_for_search": 0,
+ "actions": [],
+ "links": [],
+ "states": [],
+ "naming_rule": "Random",
+ "field_order": [
+  "price_type",
+  "vendor",
+  "price",
+  "min_qty",
+  "delivery_zone",
+  "valid_from",
+  "valid_to",
+  "is_active"
  ]
 }

@@ -4,24 +4,121 @@
  "doctype": "DocType",
  "autoname": "hash",
  "fields": [
-  {"fieldname": "user", "fieldtype": "Link", "label": "User", "options": "User", "reqd": 1, "in_list_view": 1},
-  {"fieldname": "label", "fieldtype": "Select", "label": "Label",
-   "options": "Home\nWork\nOther", "default": "Home", "in_list_view": 1},
-  {"fieldname": "is_default", "fieldtype": "Check", "label": "Default Address", "default": "0"},
-  {"fieldname": "col_break_1", "fieldtype": "Column Break"},
-  {"fieldname": "full_name", "fieldtype": "Data", "label": "Full Name", "reqd": 1},
-  {"fieldname": "phone", "fieldtype": "Data", "label": "Phone", "reqd": 1},
-  {"fieldname": "section_location", "fieldtype": "Section Break", "label": "Location"},
-  {"fieldname": "city", "fieldtype": "Data", "label": "City / Area", "reqd": 1},
-  {"fieldname": "street_address", "fieldtype": "Small Text", "label": "Street Address", "reqd": 1},
-  {"fieldname": "landmark", "fieldtype": "Data", "label": "Landmark"},
-  {"fieldname": "col_break_2", "fieldtype": "Column Break"},
-  {"fieldname": "lat", "fieldtype": "Float", "label": "Latitude"},
-  {"fieldname": "lng", "fieldtype": "Float", "label": "Longitude"}
+  {
+   "fieldname": "user",
+   "fieldtype": "Link",
+   "label": "User",
+   "options": "User",
+   "reqd": 1,
+   "in_list_view": 1
+  },
+  {
+   "fieldname": "label",
+   "fieldtype": "Select",
+   "label": "Label",
+   "options": "Home\nWork\nOther",
+   "default": "Home",
+   "in_list_view": 1
+  },
+  {
+   "fieldname": "is_default",
+   "fieldtype": "Check",
+   "label": "Default Address",
+   "default": "0"
+  },
+  {
+   "fieldname": "col_break_1",
+   "fieldtype": "Column Break"
+  },
+  {
+   "fieldname": "full_name",
+   "fieldtype": "Data",
+   "label": "Full Name",
+   "reqd": 1
+  },
+  {
+   "fieldname": "phone",
+   "fieldtype": "Data",
+   "label": "Phone",
+   "reqd": 1
+  },
+  {
+   "fieldname": "section_location",
+   "fieldtype": "Section Break",
+   "label": "Location"
+  },
+  {
+   "fieldname": "city",
+   "fieldtype": "Data",
+   "label": "City / Area",
+   "reqd": 1
+  },
+  {
+   "fieldname": "street_address",
+   "fieldtype": "Small Text",
+   "label": "Street Address",
+   "reqd": 1
+  },
+  {
+   "fieldname": "landmark",
+   "fieldtype": "Data",
+   "label": "Landmark"
+  },
+  {
+   "fieldname": "col_break_2",
+   "fieldtype": "Column Break"
+  },
+  {
+   "fieldname": "lat",
+   "fieldtype": "Float",
+   "label": "Latitude"
+  },
+  {
+   "fieldname": "lng",
+   "fieldtype": "Float",
+   "label": "Longitude"
+  }
  ],
  "search_fields": "full_name,phone,city",
  "permissions": [
-  {"role": "SM Admin", "read": 1, "write": 1, "create": 1, "delete": 1},
-  {"role": "SM Customer", "read": 1, "write": 1, "create": 1, "delete": 1}
- ]
+  {
+   "role": "SM Admin",
+   "read": 1,
+   "write": 1,
+   "create": 1,
+   "delete": 1
+  },
+  {
+   "role": "SM Customer",
+   "read": 1,
+   "write": 1,
+   "create": 1,
+   "delete": 1
+  }
+ ],
+ "engine": "InnoDB",
+ "allow_rename": 0,
+ "index_web_pages_for_search": 0,
+ "actions": [],
+ "links": [],
+ "states": [],
+ "naming_rule": "Random",
+ "field_order": [
+  "user",
+  "label",
+  "is_default",
+  "col_break_1",
+  "full_name",
+  "phone",
+  "section_location",
+  "city",
+  "street_address",
+  "landmark",
+  "col_break_2",
+  "lat",
+  "lng"
+ ],
+ "sort_field": "modified",
+ "sort_order": "DESC",
+ "track_changes": 0
 }

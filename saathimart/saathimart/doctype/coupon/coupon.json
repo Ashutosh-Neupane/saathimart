@@ -4,29 +4,142 @@
  "doctype": "DocType",
  "autoname": "field:coupon_code",
  "fields": [
-  {"fieldname": "coupon_code", "fieldtype": "Data", "label": "Coupon Code", "reqd": 1, "unique": 1, "in_list_view": 1},
-  {"fieldname": "coupon_type", "fieldtype": "Select", "label": "Type",
-   "options": "Percentage\nFixed Amount\nFree Delivery", "default": "Percentage", "in_list_view": 1},
-  {"fieldname": "is_active", "fieldtype": "Check", "label": "Is Active", "default": "1", "in_list_view": 1},
-  {"fieldname": "col_break_1", "fieldtype": "Column Break"},
-  {"fieldname": "discount_percentage", "fieldtype": "Float", "label": "Discount %",
-   "depends_on": "eval:doc.coupon_type=='Percentage'"},
-  {"fieldname": "discount_amount", "fieldtype": "Currency", "label": "Discount Amount",
-   "depends_on": "eval:doc.coupon_type=='Fixed Amount'"},
-  {"fieldname": "section_limits", "fieldtype": "Section Break", "label": "Limits"},
-  {"fieldname": "min_order_amount", "fieldtype": "Currency", "label": "Min Order Amount", "default": "0"},
-  {"fieldname": "max_discount_amount", "fieldtype": "Currency", "label": "Max Discount Amount"},
-  {"fieldname": "col_break_2", "fieldtype": "Column Break"},
-  {"fieldname": "max_uses", "fieldtype": "Int", "label": "Max Uses (0 = unlimited)", "default": "0"},
-  {"fieldname": "used_count", "fieldtype": "Int", "label": "Used Count", "read_only": 1, "default": "0"},
-  {"fieldname": "max_uses_per_user", "fieldtype": "Int", "label": "Max Uses Per User", "default": "1"},
-  {"fieldname": "section_validity", "fieldtype": "Section Break", "label": "Validity"},
-  {"fieldname": "valid_from", "fieldtype": "Date", "label": "Valid From"},
-  {"fieldname": "valid_to", "fieldtype": "Date", "label": "Valid To"},
-  {"fieldname": "applicable_vendors", "fieldtype": "Small Text", "label": "Applicable Vendors (comma separated, blank = all)"}
+  {
+   "fieldname": "coupon_code",
+   "fieldtype": "Data",
+   "label": "Coupon Code",
+   "reqd": 1,
+   "unique": 1,
+   "in_list_view": 1
+  },
+  {
+   "fieldname": "coupon_type",
+   "fieldtype": "Select",
+   "label": "Type",
+   "options": "Percentage\nFixed Amount\nFree Delivery",
+   "default": "Percentage",
+   "in_list_view": 1
+  },
+  {
+   "fieldname": "is_active",
+   "fieldtype": "Check",
+   "label": "Is Active",
+   "default": "1",
+   "in_list_view": 1
+  },
+  {
+   "fieldname": "col_break_1",
+   "fieldtype": "Column Break"
+  },
+  {
+   "fieldname": "discount_percentage",
+   "fieldtype": "Float",
+   "label": "Discount %",
+   "depends_on": "eval:doc.coupon_type=='Percentage'"
+  },
+  {
+   "fieldname": "discount_amount",
+   "fieldtype": "Currency",
+   "label": "Discount Amount",
+   "depends_on": "eval:doc.coupon_type=='Fixed Amount'"
+  },
+  {
+   "fieldname": "section_limits",
+   "fieldtype": "Section Break",
+   "label": "Limits"
+  },
+  {
+   "fieldname": "min_order_amount",
+   "fieldtype": "Currency",
+   "label": "Min Order Amount",
+   "default": "0"
+  },
+  {
+   "fieldname": "max_discount_amount",
+   "fieldtype": "Currency",
+   "label": "Max Discount Amount"
+  },
+  {
+   "fieldname": "col_break_2",
+   "fieldtype": "Column Break"
+  },
+  {
+   "fieldname": "max_uses",
+   "fieldtype": "Int",
+   "label": "Max Uses (0 = unlimited)",
+   "default": "0"
+  },
+  {
+   "fieldname": "used_count",
+   "fieldtype": "Int",
+   "label": "Used Count",
+   "read_only": 1,
+   "default": "0"
+  },
+  {
+   "fieldname": "max_uses_per_user",
+   "fieldtype": "Int",
+   "label": "Max Uses Per User",
+   "default": "1"
+  },
+  {
+   "fieldname": "section_validity",
+   "fieldtype": "Section Break",
+   "label": "Validity"
+  },
+  {
+   "fieldname": "valid_from",
+   "fieldtype": "Date",
+   "label": "Valid From"
+  },
+  {
+   "fieldname": "valid_to",
+   "fieldtype": "Date",
+   "label": "Valid To"
+  },
+  {
+   "fieldname": "applicable_vendors",
+   "fieldtype": "Small Text",
+   "label": "Applicable Vendors (comma separated, blank = all)"
+  }
  ],
  "title_field": "coupon_code",
  "permissions": [
-  {"role": "SM Admin", "read": 1, "write": 1, "create": 1, "delete": 1}
- ]
+  {
+   "role": "SM Admin",
+   "read": 1,
+   "write": 1,
+   "create": 1,
+   "delete": 1
+  }
+ ],
+ "engine": "InnoDB",
+ "allow_rename": 0,
+ "index_web_pages_for_search": 0,
+ "actions": [],
+ "links": [],
+ "states": [],
+ "naming_rule": "Expression (old style)",
+ "field_order": [
+  "coupon_code",
+  "coupon_type",
+  "is_active",
+  "col_break_1",
+  "discount_percentage",
+  "discount_amount",
+  "section_limits",
+  "min_order_amount",
+  "max_discount_amount",
+  "col_break_2",
+  "max_uses",
+  "used_count",
+  "max_uses_per_user",
+  "section_validity",
+  "valid_from",
+  "valid_to",
+  "applicable_vendors"
+ ],
+ "sort_field": "modified",
+ "sort_order": "DESC",
+ "track_changes": 0
 }

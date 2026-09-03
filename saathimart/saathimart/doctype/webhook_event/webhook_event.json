@@ -1,33 +1,148 @@
 {
-  "name": "Webhook Event",
-  "module": "Saathimart",
-  "doctype": "DocType",
-  "autoname": "SM-EVT-.YYYY.-.#####",
-   "fields": [
-    {"fieldname": "event_type", "fieldtype": "Data", "label": "Event Type", "reqd": 1, "in_list_view": 1},
-    {"fieldname": "event_id", "fieldtype": "Data", "label": "Event ID", "reqd": 1, "unique": 1},
-    {"fieldname": "event_seq", "fieldtype": "Int", "label": "Event Seq",
-     "description": "Monotonically increasing sequence per target vendor"},
-    {"fieldname": "target_site", "fieldtype": "Data", "label": "Target Site", "in_list_view": 1},
-    {"fieldname": "target_vendor", "fieldtype": "Data", "label": "Target Vendor", "in_list_view": 1},
-   {"fieldname": "status", "fieldtype": "Select", "label": "Status",
-    "options": "Queued\nSent\nFailed\nDead\nSkipped", "default": "Queued", "in_list_view": 1},
-   {"fieldname": "priority", "fieldtype": "Int", "label": "Priority", "default": "3", "in_list_view": 1,
-    "description": "1=Critical, 2=High, 3=Normal, 4=Low. Lower delivers first — see api/event_priority.py."},
-   {"fieldname": "col_break_1", "fieldtype": "Column Break"},
-   {"fieldname": "retry_count", "fieldtype": "Int", "label": "Retry Count", "default": "0"},
-   {"fieldname": "next_retry_at", "fieldtype": "Datetime", "label": "Next Retry At"},
-   {"fieldname": "dead_letter_reason", "fieldtype": "Small Text", "label": "Dead Letter Reason", "read_only": 1},
-   {"fieldname": "delivery_method", "fieldtype": "Select", "label": "Delivery Method",
-    "options": "Push\nPull\nEmail", "default": "Push", "read_only": 1,
-    "description": "How this event actually reached (or is waiting to reach) the vendor — see api/fallback_delivery.py."},
-   {"fieldname": "compressed", "fieldtype": "Check", "label": "Compressed", "default": "0",
-    "description": "Payload is gzip-compressed batch content — see api/event_batch.py."},
-   {"fieldname": "section_payload", "fieldtype": "Section Break", "label": "Payload"},
-   {"fieldname": "payload", "fieldtype": "Code", "label": "Payload (JSON)", "options": "JSON"},
-   {"fieldname": "response", "fieldtype": "Code", "label": "Response", "options": "JSON", "read_only": 1}
-  ],
-  "permissions": [
-   {"role": "SM Admin", "read": 1, "write": 1, "create": 1, "delete": 1}
-  ]
+ "name": "Webhook Event",
+ "module": "Saathimart",
+ "doctype": "DocType",
+ "autoname": "SM-EVT-.YYYY.-.#####",
+ "fields": [
+  {
+   "fieldname": "event_type",
+   "fieldtype": "Data",
+   "label": "Event Type",
+   "reqd": 1,
+   "in_list_view": 1
+  },
+  {
+   "fieldname": "event_id",
+   "fieldtype": "Data",
+   "label": "Event ID",
+   "reqd": 1,
+   "unique": 1
+  },
+  {
+   "fieldname": "event_seq",
+   "fieldtype": "Int",
+   "label": "Event Seq",
+   "description": "Monotonically increasing sequence per target vendor"
+  },
+  {
+   "fieldname": "target_site",
+   "fieldtype": "Data",
+   "label": "Target Site",
+   "in_list_view": 1
+  },
+  {
+   "fieldname": "target_vendor",
+   "fieldtype": "Data",
+   "label": "Target Vendor",
+   "in_list_view": 1
+  },
+  {
+   "fieldname": "status",
+   "fieldtype": "Select",
+   "label": "Status",
+   "options": "Queued\nSent\nFailed\nDead\nSkipped",
+   "default": "Queued",
+   "in_list_view": 1
+  },
+  {
+   "fieldname": "priority",
+   "fieldtype": "Int",
+   "label": "Priority",
+   "default": "3",
+   "in_list_view": 1,
+   "description": "1=Critical, 2=High, 3=Normal, 4=Low. Lower delivers first — see api/event_priority.py."
+  },
+  {
+   "fieldname": "col_break_1",
+   "fieldtype": "Column Break"
+  },
+  {
+   "fieldname": "retry_count",
+   "fieldtype": "Int",
+   "label": "Retry Count",
+   "default": "0"
+  },
+  {
+   "fieldname": "next_retry_at",
+   "fieldtype": "Datetime",
+   "label": "Next Retry At"
+  },
+  {
+   "fieldname": "dead_letter_reason",
+   "fieldtype": "Small Text",
+   "label": "Dead Letter Reason",
+   "read_only": 1
+  },
+  {
+   "fieldname": "delivery_method",
+   "fieldtype": "Select",
+   "label": "Delivery Method",
+   "options": "Push\nPull\nEmail",
+   "default": "Push",
+   "read_only": 1,
+   "description": "How this event actually reached (or is waiting to reach) the vendor — see api/fallback_delivery.py."
+  },
+  {
+   "fieldname": "compressed",
+   "fieldtype": "Check",
+   "label": "Compressed",
+   "default": "0",
+   "description": "Payload is gzip-compressed batch content — see api/event_batch.py."
+  },
+  {
+   "fieldname": "section_payload",
+   "fieldtype": "Section Break",
+   "label": "Payload"
+  },
+  {
+   "fieldname": "payload",
+   "fieldtype": "Code",
+   "label": "Payload (JSON)",
+   "options": "JSON"
+  },
+  {
+   "fieldname": "response",
+   "fieldtype": "Code",
+   "label": "Response",
+   "options": "JSON",
+   "read_only": 1
+  }
+ ],
+ "permissions": [
+  {
+   "role": "SM Admin",
+   "read": 1,
+   "write": 1,
+   "create": 1,
+   "delete": 1
+  }
+ ],
+ "engine": "InnoDB",
+ "allow_rename": 0,
+ "index_web_pages_for_search": 0,
+ "actions": [],
+ "links": [],
+ "states": [],
+ "naming_rule": "Expression (old style)",
+ "field_order": [
+  "event_type",
+  "event_id",
+  "event_seq",
+  "target_site",
+  "target_vendor",
+  "status",
+  "priority",
+  "col_break_1",
+  "retry_count",
+  "next_retry_at",
+  "dead_letter_reason",
+  "delivery_method",
+  "compressed",
+  "section_payload",
+  "payload",
+  "response"
+ ],
+ "sort_field": "modified",
+ "sort_order": "DESC",
+ "track_changes": 0
 }

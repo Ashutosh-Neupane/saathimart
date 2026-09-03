@@ -46,13 +46,21 @@
    "label": "Height (px)"
   }
  ],
- "permissions": [
-  {
-   "role": "SM Admin",
-   "read": 1,
-   "write": 1,
-   "create": 1,
-   "delete": 1
-  }
+ "permissions": [],
+ "engine": "InnoDB",
+ "allow_rename": 0,
+ "index_web_pages_for_search": 0,
+ "actions": [],
+ "links": [],
+ "states": [],
+ "naming_rule": "Random",
+ "field_order": [
+  "file",
+  "file_type",
+  "alt_text",
+  "is_primary",
+  "sort_order",
+  "width",
+  "height"
  ]
 }

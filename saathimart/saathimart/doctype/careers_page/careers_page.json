@@ -1,22 +1,89 @@
 {
-  "name": "Careers Page",
-  "module": "Saathimart",
-  "doctype": "DocType",
-  "issingle": 1,
-  "track_changes": 1,
-  "fields": [
-    {"fieldname": "title", "fieldtype": "Data", "label": "Title", "reqd": 1, "default": "Careers at SaathiMart"},
-    {"fieldname": "breadcrumb_label", "fieldtype": "Data", "label": "Breadcrumb Label", "default": "CAREERS"},
-    {"fieldname": "subtitle", "fieldtype": "Data", "label": "Subtitle"},
-    {"fieldname": "col_break_1", "fieldtype": "Column Break"},
-    {"fieldname": "meta_title", "fieldtype": "Data", "label": "Meta Title"},
-    {"fieldname": "meta_description", "fieldtype": "Small Text", "label": "Meta Description"},
-    {"fieldname": "og_image", "fieldtype": "Attach Image", "label": "OG Image"},
-    {"fieldname": "section_blocks", "fieldtype": "Section Break", "label": "Sections (JSON)"},
-    {"fieldname": "sections", "fieldtype": "Code", "label": "Sections", "options": "JSON"}
-  ],
-  "permissions": [
-    {"role": "SM Admin", "read": 1, "write": 1},
-    {"role": "Website Manager", "read": 1, "write": 1}
-  ]
+ "name": "Careers Page",
+ "module": "Saathimart",
+ "doctype": "DocType",
+ "issingle": 1,
+ "track_changes": 1,
+ "fields": [
+  {
+   "fieldname": "title",
+   "fieldtype": "Data",
+   "label": "Title",
+   "reqd": 1,
+   "default": "Careers at SaathiMart"
+  },
+  {
+   "fieldname": "breadcrumb_label",
+   "fieldtype": "Data",
+   "label": "Breadcrumb Label",
+   "default": "CAREERS"
+  },
+  {
+   "fieldname": "subtitle",
+   "fieldtype": "Data",
+   "label": "Subtitle"
+  },
+  {
+   "fieldname": "col_break_1",
+   "fieldtype": "Column Break"
+  },
+  {
+   "fieldname": "meta_title",
+   "fieldtype": "Data",
+   "label": "Meta Title"
+  },
+  {
+   "fieldname": "meta_description",
+   "fieldtype": "Small Text",
+   "label": "Meta Description"
+  },
+  {
+   "fieldname": "og_image",
+   "fieldtype": "Attach Image",
+   "label": "OG Image"
+  },
+  {
+   "fieldname": "section_blocks",
+   "fieldtype": "Section Break",
+   "label": "Sections (JSON)"
+  },
+  {
+   "fieldname": "sections",
+   "fieldtype": "Code",
+   "label": "Sections",
+   "options": "JSON"
+  }
+ ],
+ "permissions": [
+  {
+   "role": "SM Admin",
+   "read": 1,
+   "write": 1
+  },
+  {
+   "role": "Website Manager",
+   "read": 1,
+   "write": 1
+  }
+ ],
+ "engine": "InnoDB",
+ "allow_rename": 0,
+ "index_web_pages_for_search": 0,
+ "actions": [],
+ "links": [],
+ "states": [],
+ "naming_rule": "Expression (old style)",
+ "field_order": [
+  "title",
+  "breadcrumb_label",
+  "subtitle",
+  "col_break_1",
+  "meta_title",
+  "meta_description",
+  "og_image",
+  "section_blocks",
+  "sections"
+ ],
+ "sort_field": "modified",
+ "sort_order": "DESC"
 }

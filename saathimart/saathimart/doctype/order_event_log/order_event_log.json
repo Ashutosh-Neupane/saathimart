@@ -1,20 +1,77 @@
 {
-  "name": "Order Event Log",
-  "module": "Saathimart",
-  "doctype": "DocType",
-  "autoname": "hash",
-  "fields": [
-    {"fieldname": "order_id", "fieldtype": "Link", "label": "Order", "options": "Order", "reqd": 1, "in_list_view": 1, "index": 1},
-    {"fieldname": "event_type", "fieldtype": "Data", "label": "Event Type", "reqd": 1, "in_list_view": 1},
-    {"fieldname": "actor", "fieldtype": "Data", "label": "Actor", "in_list_view": 1},
-    {"fieldname": "col_break_1", "fieldtype": "Column Break"},
-    {"fieldname": "timestamp", "fieldtype": "Datetime", "label": "Timestamp", "reqd": 1, "in_list_view": 1},
-    {"fieldname": "data", "fieldtype": "Code", "label": "Event Data", "options": "JSON"}
-  ],
-  "permissions": [
-    {"role": "SM Admin", "read": 1, "write": 1, "create": 1},
-    {"role": "SM Vendor", "read": 1}
-  ],
-  "sort_field": "timestamp",
-  "sort_order": "DESC"
+ "name": "Order Event Log",
+ "module": "Saathimart",
+ "doctype": "DocType",
+ "autoname": "hash",
+ "fields": [
+  {
+   "fieldname": "order_id",
+   "fieldtype": "Link",
+   "label": "Order",
+   "options": "Order",
+   "reqd": 1,
+   "in_list_view": 1,
+   "index": 1
+  },
+  {
+   "fieldname": "event_type",
+   "fieldtype": "Data",
+   "label": "Event Type",
+   "reqd": 1,
+   "in_list_view": 1
+  },
+  {
+   "fieldname": "actor",
+   "fieldtype": "Data",
+   "label": "Actor",
+   "in_list_view": 1
+  },
+  {
+   "fieldname": "col_break_1",
+   "fieldtype": "Column Break"
+  },
+  {
+   "fieldname": "timestamp",
+   "fieldtype": "Datetime",
+   "label": "Timestamp",
+   "reqd": 1,
+   "in_list_view": 1
+  },
+  {
+   "fieldname": "data",
+   "fieldtype": "Code",
+   "label": "Event Data",
+   "options": "JSON"
+  }
+ ],
+ "permissions": [
+  {
+   "role": "SM Admin",
+   "read": 1,
+   "write": 1,
+   "create": 1
+  },
+  {
+   "role": "SM Vendor",
+   "read": 1
+  }
+ ],
+ "sort_field": "timestamp",
+ "sort_order": "DESC",
+ "engine": "InnoDB",
+ "allow_rename": 0,
+ "index_web_pages_for_search": 0,
+ "actions": [],
+ "links": [],
+ "states": [],
+ "naming_rule": "Random",
+ "field_order": [
+  "order_id",
+  "event_type",
+  "actor",
+  "col_break_1",
+  "timestamp",
+  "data"
+ ],
+ "track_changes": 0
 }

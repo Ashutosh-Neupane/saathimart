@@ -1,39 +1,136 @@
 {
-  "name": "Payment Mode",
-  "module": "Saathimart",
-  "doctype": "DocType",
-  "autoname": "field:mode_name",
-  "naming_rule": "By fieldname",
-  "fields": [
-    {"fieldname": "mode_name", "fieldtype": "Data", "label": "Mode Name", "reqd": 1, "unique": 1, "in_list_view": 1,
-     "description": "e.g. Cash on Delivery, eSewa, Bank Transfer"},
-    {"fieldname": "slug", "fieldtype": "Data", "label": "Slug", "reqd": 1, "unique": 1, "in_list_view": 1,
-     "description": "Stable id the storefront uses in form values and analytics, e.g. 'cash-on-delivery'. Separate from Mode Name so renaming the display name cannot invalidate a shopper's in-flight checkout selection."},
-    {"fieldname": "is_enabled", "fieldtype": "Check", "label": "Is Enabled", "default": "1", "in_list_view": 1},
-    {"fieldname": "is_online", "fieldtype": "Check", "label": "Is Online", "default": "0",
-     "description": "Unchecked for COD/manual modes. Checked for modes that need a gateway redirect/callback before the order can be confirmed."},
-    {"fieldname": "column_break_main", "fieldtype": "Column Break"},
-    {"fieldname": "display_order", "fieldtype": "Int", "label": "Display Order", "default": "0"},
-    {"fieldname": "gateway", "fieldtype": "Select", "label": "Gateway",
-     "options": "\neSewa",
-     "depends_on": "is_online",
-     "description": "Which gateway handles this mode when Is Online is checked. eSewa is currently the only integrated gateway."},
-    {"fieldname": "section_break_display", "fieldtype": "Section Break", "label": "Storefront Display"},
-    {"fieldname": "description", "fieldtype": "Data", "label": "Description",
-     "description": "One line shown under the method name at checkout, e.g. 'Pay our rider while delivering your product.'"},
-    {"fieldname": "logo", "fieldtype": "Attach Image", "label": "Logo",
-     "description": "Leave empty to use the storefront's bundled artwork for this slug. Upload as a public file - a private one 403s for guests mid-checkout."},
-    {"fieldname": "section_break_gateway", "fieldtype": "Section Break", "label": "Gateway Config", "collapsible": 1},
-    {"fieldname": "gateway_config", "fieldtype": "Code", "options": "JSON", "label": "Gateway Config (JSON)",
-     "description": "Reserved for future per-mode gateway options. Credentials stay in SaathiMart Settings."}
-  ],
-  "title_field": "mode_name",
-  "sort_field": "display_order",
-  "sort_order": "ASC",
-  "index_web_pages_for_search": 0,
-  "permissions": [
-    {"role": "SM Admin", "read": 1, "write": 1, "create": 1, "delete": 1},
-    {"role": "Website Manager", "read": 1, "write": 1, "create": 1, "delete": 1},
-    {"role": "System Manager", "read": 1, "write": 1, "create": 1, "delete": 1}
-  ]
+ "name": "Payment Mode",
+ "module": "Saathimart",
+ "doctype": "DocType",
+ "autoname": "field:mode_name",
+ "naming_rule": "By fieldname",
+ "fields": [
+  {
+   "fieldname": "mode_name",
+   "fieldtype": "Data",
+   "label": "Mode Name",
+   "reqd": 1,
+   "unique": 1,
+   "in_list_view": 1,
+   "description": "e.g. Cash on Delivery, eSewa, Bank Transfer"
+  },
+  {
+   "fieldname": "slug",
+   "fieldtype": "Data",
+   "label": "Slug",
+   "reqd": 1,
+   "unique": 1,
+   "in_list_view": 1,
+   "description": "Stable id the storefront uses in form values and analytics, e.g. 'cash-on-delivery'. Separate from Mode Name so renaming the display name cannot invalidate a shopper's in-flight checkout selection."
+  },
+  {
+   "fieldname": "is_enabled",
+   "fieldtype": "Check",
+   "label": "Is Enabled",
+   "default": "1",
+   "in_list_view": 1
+  },
+  {
+   "fieldname": "is_online",
+   "fieldtype": "Check",
+   "label": "Is Online",
+   "default": "0",
+   "description": "Unchecked for COD/manual modes. Checked for modes that need a gateway redirect/callback before the order can be confirmed."
+  },
+  {
+   "fieldname": "column_break_main",
+   "fieldtype": "Column Break"
+  },
+  {
+   "fieldname": "display_order",
+   "fieldtype": "Int",
+   "label": "Display Order",
+   "default": "0"
+  },
+  {
+   "fieldname": "gateway",
+   "fieldtype": "Select",
+   "label": "Gateway",
+   "options": "\neSewa",
+   "depends_on": "is_online",
+   "description": "Which gateway handles this mode when Is Online is checked. eSewa is currently the only integrated gateway."
+  },
+  {
+   "fieldname": "section_break_display",
+   "fieldtype": "Section Break",
+   "label": "Storefront Display"
+  },
+  {
+   "fieldname": "description",
+   "fieldtype": "Data",
+   "label": "Description",
+   "description": "One line shown under the method name at checkout, e.g. 'Pay our rider while delivering your product.'"
+  },
+  {
+   "fieldname": "logo",
+   "fieldtype": "Attach Image",
+   "label": "Logo",
+   "description": "Leave empty to use the storefront's bundled artwork for this slug. Upload as a public file - a private one 403s for guests mid-checkout."
+  },
+  {
+   "fieldname": "section_break_gateway",
+   "fieldtype": "Section Break",
+   "label": "Gateway Config",
+   "collapsible": 1
+  },
+  {
+   "fieldname": "gateway_config",
+   "fieldtype": "Code",
+   "options": "JSON",
+   "label": "Gateway Config (JSON)",
+   "description": "Reserved for future per-mode gateway options. Credentials stay in SaathiMart Settings."
+  }
+ ],
+ "title_field": "mode_name",
+ "sort_field": "display_order",
+ "sort_order": "ASC",
+ "index_web_pages_for_search": 0,
+ "permissions": [
+  {
+   "role": "SM Admin",
+   "read": 1,
+   "write": 1,
+   "create": 1,
+   "delete": 1
+  },
+  {
+   "role": "Website Manager",
+   "read": 1,
+   "write": 1,
+   "create": 1,
+   "delete": 1
+  },
+  {
+   "role": "System Manager",
+   "read": 1,
+   "write": 1,
+   "create": 1,
+   "delete": 1
+  }
+ ],
+ "engine": "InnoDB",
+ "allow_rename": 0,
+ "actions": [],
+ "links": [],
+ "states": [],
+ "field_order": [
+  "mode_name",
+  "slug",
+  "is_enabled",
+  "is_online",
+  "column_break_main",
+  "display_order",
+  "gateway",
+  "section_break_display",
+  "description",
+  "logo",
+  "section_break_gateway",
+  "gateway_config"
+ ],
+ "track_changes": 0
 }

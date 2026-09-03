@@ -4,18 +4,76 @@
  "doctype": "DocType",
  "autoname": "SM-MSE-.YYYY.-.#####",
  "fields": [
-  {"fieldname": "customer_email", "fieldtype": "Data", "label": "Customer Email", "options": "Email",
-   "reqd": 1, "in_list_view": 1, "search_index": 1},
-  {"fieldname": "membership", "fieldtype": "Link", "label": "Membership", "options": "Customer Membership",
-   "reqd": 1, "in_list_view": 1, "search_index": 1},
-  {"fieldname": "order", "fieldtype": "Link", "label": "Order", "options": "Order", "in_list_view": 1,
-   "search_index": 1},
-  {"fieldname": "col_break_1", "fieldtype": "Column Break"},
-  {"fieldname": "benefit_label", "fieldtype": "Data", "label": "Benefit Applied", "in_list_view": 1,
-   "description": "Frozen text — editing the plan later must not rewrite what past orders say they gave"},
-  {"fieldname": "amount_saved", "fieldtype": "Currency", "label": "Amount Saved", "reqd": 1, "in_list_view": 1}
+  {
+   "fieldname": "customer_email",
+   "fieldtype": "Data",
+   "label": "Customer Email",
+   "options": "Email",
+   "reqd": 1,
+   "in_list_view": 1,
+   "search_index": 1
+  },
+  {
+   "fieldname": "membership",
+   "fieldtype": "Link",
+   "label": "Membership",
+   "options": "Customer Membership",
+   "reqd": 1,
+   "in_list_view": 1,
+   "search_index": 1
+  },
+  {
+   "fieldname": "order",
+   "fieldtype": "Link",
+   "label": "Order",
+   "options": "Order",
+   "in_list_view": 1,
+   "search_index": 1
+  },
+  {
+   "fieldname": "col_break_1",
+   "fieldtype": "Column Break"
+  },
+  {
+   "fieldname": "benefit_label",
+   "fieldtype": "Data",
+   "label": "Benefit Applied",
+   "in_list_view": 1,
+   "description": "Frozen text — editing the plan later must not rewrite what past orders say they gave"
+  },
+  {
+   "fieldname": "amount_saved",
+   "fieldtype": "Currency",
+   "label": "Amount Saved",
+   "reqd": 1,
+   "in_list_view": 1
+  }
  ],
  "permissions": [
-  {"role": "SM Admin", "read": 1, "write": 1, "create": 1, "delete": 1}
- ]
+  {
+   "role": "SM Admin",
+   "read": 1,
+   "write": 1,
+   "create": 1,
+   "delete": 1
+  }
+ ],
+ "engine": "InnoDB",
+ "allow_rename": 0,
+ "index_web_pages_for_search": 0,
+ "actions": [],
+ "links": [],
+ "states": [],
+ "naming_rule": "Expression (old style)",
+ "field_order": [
+  "customer_email",
+  "membership",
+  "order",
+  "col_break_1",
+  "benefit_label",
+  "amount_saved"
+ ],
+ "sort_field": "modified",
+ "sort_order": "DESC",
+ "track_changes": 0
 }

@@ -18,7 +18,7 @@
    "read_only": 1,
    "fetch_from": "vendor.vendor_name",
    "in_list_view": 1,
-   "description": "Vendor.name is an autoname hash, not the vendor's business name \u2014 this fetched column is what actually shows in the fulfillments grid instead of the unreadable id."
+   "description": "Vendor.name is an autoname hash, not the vendor's business name — this fetched column is what actually shows in the fulfillments grid instead of the unreadable id."
   },
   {
    "fieldname": "vendor_order_id",
@@ -77,16 +77,28 @@
    "options": "Vendor Payout",
    "read_only": 1,
    "in_list_view": 1,
-   "description": "Set once this fulfillment's cut has been paid out \u2014 blank means still owed."
+   "description": "Set once this fulfillment's cut has been paid out — blank means still owed."
   }
  ],
- "permissions": [
-  {
-   "role": "SM Admin",
-   "read": 1,
-   "write": 1,
-   "create": 1,
-   "delete": 1
-  }
+ "permissions": [],
+ "engine": "InnoDB",
+ "allow_rename": 0,
+ "index_web_pages_for_search": 0,
+ "actions": [],
+ "links": [],
+ "states": [],
+ "naming_rule": "Random",
+ "field_order": [
+  "vendor",
+  "vendor_name",
+  "vendor_order_id",
+  "status",
+  "subtotal",
+  "delivery_charge",
+  "warehouse",
+  "warehouse_distance_km",
+  "items_count",
+  "notes",
+  "vendor_payout"
  ]
 }

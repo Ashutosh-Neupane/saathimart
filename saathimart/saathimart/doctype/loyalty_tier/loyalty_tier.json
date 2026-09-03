@@ -32,13 +32,18 @@
    "label": "Badge Color"
   }
  ],
- "permissions": [
-  {
-   "role": "SM Admin",
-   "read": 1,
-   "write": 1,
-   "create": 1,
-   "delete": 1
-  }
+ "permissions": [],
+ "engine": "InnoDB",
+ "allow_rename": 0,
+ "index_web_pages_for_search": 0,
+ "actions": [],
+ "links": [],
+ "states": [],
+ "naming_rule": "Random",
+ "field_order": [
+  "tier_name",
+  "min_points",
+  "multiplier",
+  "badge_color"
  ]
 }

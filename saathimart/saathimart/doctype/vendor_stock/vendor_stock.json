@@ -46,7 +46,7 @@
    "label": "Available Qty",
    "default": "0",
    "in_list_view": 1,
-   "description": "What customers can buy right now \u2014 decremented on checkout reservation"
+   "description": "What customers can buy right now — decremented on checkout reservation"
   },
   {
    "fieldname": "reserved_qty",
@@ -60,7 +60,7 @@
    "fieldtype": "Float",
    "label": "Physical Qty",
    "default": "0",
-   "description": "available_qty + reserved_qty \u2014 actual warehouse quantity"
+   "description": "available_qty + reserved_qty — actual warehouse quantity"
   },
   {
    "fieldname": "col_break_2",
@@ -120,5 +120,31 @@
    "role": "SM Vendor",
    "read": 1
   }
- ]
+ ],
+ "engine": "InnoDB",
+ "allow_rename": 0,
+ "index_web_pages_for_search": 0,
+ "actions": [],
+ "links": [],
+ "states": [],
+ "naming_rule": "Expression (old style)",
+ "field_order": [
+  "vendor",
+  "product",
+  "warehouse",
+  "is_default_warehouse",
+  "col_break_1",
+  "available_qty",
+  "reserved_qty",
+  "physical_qty",
+  "col_break_2",
+  "last_known_qty",
+  "section_sync",
+  "last_updated",
+  "last_sync_at",
+  "last_event_id",
+  "last_event_seq"
+ ],
+ "sort_field": "modified",
+ "sort_order": "DESC"
 }

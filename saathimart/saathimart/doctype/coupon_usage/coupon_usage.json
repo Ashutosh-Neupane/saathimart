@@ -4,17 +4,80 @@
  "doctype": "DocType",
  "autoname": "field:order",
  "fields": [
-  {"fieldname": "coupon", "fieldtype": "Link", "label": "Coupon", "options": "Coupon", "reqd": 1, "in_list_view": 1, "search_index": 1},
-  {"fieldname": "order", "fieldtype": "Link", "label": "Order", "options": "Order", "reqd": 1, "unique": 1, "in_list_view": 1,
-   "description": "Also the docname — one usage row per order, so a retried checkout can never double-count a redemption"},
-  {"fieldname": "col_break_1", "fieldtype": "Column Break"},
-  {"fieldname": "customer_phone", "fieldtype": "Data", "label": "Customer Phone", "in_list_view": 1, "search_index": 1,
-   "description": "The per-customer limit key. Phone, not email, because guests check out with a phone number and no account — keying on email would let a guest bypass max_uses_per_user entirely."},
-  {"fieldname": "customer_email", "fieldtype": "Data", "label": "Customer Email", "options": "Email"},
-  {"fieldname": "discount_amount", "fieldtype": "Currency", "label": "Discount Amount"},
-  {"fieldname": "used_at", "fieldtype": "Datetime", "label": "Used At"}
+  {
+   "fieldname": "coupon",
+   "fieldtype": "Link",
+   "label": "Coupon",
+   "options": "Coupon",
+   "reqd": 1,
+   "in_list_view": 1,
+   "search_index": 1
+  },
+  {
+   "fieldname": "order",
+   "fieldtype": "Link",
+   "label": "Order",
+   "options": "Order",
+   "reqd": 1,
+   "unique": 1,
+   "in_list_view": 1,
+   "description": "Also the docname — one usage row per order, so a retried checkout can never double-count a redemption"
+  },
+  {
+   "fieldname": "col_break_1",
+   "fieldtype": "Column Break"
+  },
+  {
+   "fieldname": "customer_phone",
+   "fieldtype": "Data",
+   "label": "Customer Phone",
+   "in_list_view": 1,
+   "search_index": 1,
+   "description": "The per-customer limit key. Phone, not email, because guests check out with a phone number and no account — keying on email would let a guest bypass max_uses_per_user entirely."
+  },
+  {
+   "fieldname": "customer_email",
+   "fieldtype": "Data",
+   "label": "Customer Email",
+   "options": "Email"
+  },
+  {
+   "fieldname": "discount_amount",
+   "fieldtype": "Currency",
+   "label": "Discount Amount"
+  },
+  {
+   "fieldname": "used_at",
+   "fieldtype": "Datetime",
+   "label": "Used At"
+  }
  ],
  "permissions": [
-  {"role": "SM Admin", "read": 1, "write": 1, "create": 1, "delete": 1}
- ]
+  {
+   "role": "SM Admin",
+   "read": 1,
+   "write": 1,
+   "create": 1,
+   "delete": 1
+  }
+ ],
+ "engine": "InnoDB",
+ "allow_rename": 0,
+ "index_web_pages_for_search": 0,
+ "actions": [],
+ "links": [],
+ "states": [],
+ "naming_rule": "Expression (old style)",
+ "field_order": [
+  "coupon",
+  "order",
+  "col_break_1",
+  "customer_phone",
+  "customer_email",
+  "discount_amount",
+  "used_at"
+ ],
+ "sort_field": "modified",
+ "sort_order": "DESC",
+ "track_changes": 0
 }

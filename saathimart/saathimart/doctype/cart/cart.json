@@ -1,30 +1,141 @@
 {
-  "name": "Cart",
-  "module": "Saathimart",
-  "doctype": "DocType",
-  "autoname": "SM-CART-.YYYY.-.#####",
-  "fields": [
-   {"fieldname": "session_id", "fieldtype": "Data", "label": "Session ID", "unique": 1},
-   {"fieldname": "user", "fieldtype": "Link", "label": "User", "options": "User"},
-   {"fieldname": "source_site", "fieldtype": "Data", "label": "Source Site"},
-   {"fieldname": "col_break_1", "fieldtype": "Column Break"},
-   {"fieldname": "status", "fieldtype": "Select", "label": "Status",
-    "options": "Active\nCheckedOut\nAbandoned\nExpired", "default": "Active"},
-   {"fieldname": "expires_at", "fieldtype": "Datetime", "label": "Expires At"},
-   {"fieldname": "customer_lat", "fieldtype": "Float", "label": "Customer Latitude", "precision": 9},
-   {"fieldname": "customer_lng", "fieldtype": "Float", "label": "Customer Longitude", "precision": 9},
-   {"fieldname": "section_items", "fieldtype": "Section Break", "label": "Items"},
-   {"fieldname": "items", "fieldtype": "Table", "label": "Items", "options": "Cart Item"},
-   {"fieldname": "section_totals", "fieldtype": "Section Break", "label": "Totals"},
-   {"fieldname": "subtotal", "fieldtype": "Currency", "label": "Subtotal", "read_only": 1},
-   {"fieldname": "delivery_zone", "fieldtype": "Link", "label": "Delivery Zone", "options": "Delivery Zone"},
-   {"fieldname": "coupon_code", "fieldtype": "Data", "label": "Coupon Code"},
-   {"fieldname": "section_sync", "fieldtype": "Section Break", "label": "Offline Sync"},
-   {"fieldname": "sync_token", "fieldtype": "Data", "label": "Sync Token", "read_only": 1,
-    "description": "Opaque token for mobile offline cart sync — client sends this back to detect conflicts"}
-  ],
-  "permissions": [
-   {"role": "SM Admin", "read": 1, "write": 1, "create": 1, "delete": 1},
-   {"role": "Guest", "read": 1, "write": 1, "create": 1}
-  ]
+ "name": "Cart",
+ "module": "Saathimart",
+ "doctype": "DocType",
+ "autoname": "SM-CART-.YYYY.-.#####",
+ "fields": [
+  {
+   "fieldname": "session_id",
+   "fieldtype": "Data",
+   "label": "Session ID",
+   "unique": 1
+  },
+  {
+   "fieldname": "user",
+   "fieldtype": "Link",
+   "label": "User",
+   "options": "User"
+  },
+  {
+   "fieldname": "source_site",
+   "fieldtype": "Data",
+   "label": "Source Site"
+  },
+  {
+   "fieldname": "col_break_1",
+   "fieldtype": "Column Break"
+  },
+  {
+   "fieldname": "status",
+   "fieldtype": "Select",
+   "label": "Status",
+   "options": "Active\nCheckedOut\nAbandoned\nExpired",
+   "default": "Active"
+  },
+  {
+   "fieldname": "expires_at",
+   "fieldtype": "Datetime",
+   "label": "Expires At"
+  },
+  {
+   "fieldname": "customer_lat",
+   "fieldtype": "Float",
+   "label": "Customer Latitude",
+   "precision": 9
+  },
+  {
+   "fieldname": "customer_lng",
+   "fieldtype": "Float",
+   "label": "Customer Longitude",
+   "precision": 9
+  },
+  {
+   "fieldname": "section_items",
+   "fieldtype": "Section Break",
+   "label": "Items"
+  },
+  {
+   "fieldname": "items",
+   "fieldtype": "Table",
+   "label": "Items",
+   "options": "Cart Item"
+  },
+  {
+   "fieldname": "section_totals",
+   "fieldtype": "Section Break",
+   "label": "Totals"
+  },
+  {
+   "fieldname": "subtotal",
+   "fieldtype": "Currency",
+   "label": "Subtotal",
+   "read_only": 1
+  },
+  {
+   "fieldname": "delivery_zone",
+   "fieldtype": "Link",
+   "label": "Delivery Zone",
+   "options": "Delivery Zone"
+  },
+  {
+   "fieldname": "coupon_code",
+   "fieldtype": "Data",
+   "label": "Coupon Code"
+  },
+  {
+   "fieldname": "section_sync",
+   "fieldtype": "Section Break",
+   "label": "Offline Sync"
+  },
+  {
+   "fieldname": "sync_token",
+   "fieldtype": "Data",
+   "label": "Sync Token",
+   "read_only": 1,
+   "description": "Opaque token for mobile offline cart sync — client sends this back to detect conflicts"
+  }
+ ],
+ "permissions": [
+  {
+   "role": "SM Admin",
+   "read": 1,
+   "write": 1,
+   "create": 1,
+   "delete": 1
+  },
+  {
+   "role": "Guest",
+   "read": 1,
+   "write": 1,
+   "create": 1
+  }
+ ],
+ "engine": "InnoDB",
+ "allow_rename": 0,
+ "index_web_pages_for_search": 0,
+ "actions": [],
+ "links": [],
+ "states": [],
+ "naming_rule": "Expression (old style)",
+ "field_order": [
+  "session_id",
+  "user",
+  "source_site",
+  "col_break_1",
+  "status",
+  "expires_at",
+  "customer_lat",
+  "customer_lng",
+  "section_items",
+  "items",
+  "section_totals",
+  "subtotal",
+  "delivery_zone",
+  "coupon_code",
+  "section_sync",
+  "sync_token"
+ ],
+ "sort_field": "modified",
+ "sort_order": "DESC",
+ "track_changes": 0
 }

@@ -1,21 +1,92 @@
 {
-  "name": "SM Notification Device",
-  "module": "Saathimart",
-  "doctype": "DocType",
-  "fields": [
-    {"fieldname": "user", "fieldtype": "Link", "label": "User", "options": "User", "reqd": 1, "in_list_view": 1},
-    {"fieldname": "fcm_token", "fieldtype": "Small Text", "label": "FCM Token", "reqd": 1, "in_list_view": 1},
-    {"fieldname": "platform", "fieldtype": "Select", "label": "Platform", "options": "android\nios\nweb", "default": "android", "in_list_view": 1},
-    {"fieldname": "col_break_1", "fieldtype": "Column Break"},
-    {"fieldname": "device_name", "fieldtype": "Data", "label": "Device Name"},
-    {"fieldname": "app_version", "fieldtype": "Data", "label": "App Version"},
-    {"fieldname": "is_active", "fieldtype": "Check", "label": "Active", "default": 1},
-    {"fieldname": "last_seen", "fieldtype": "Datetime", "label": "Last Seen"}
-  ],
-  "permissions": [
-    {"role": "SM Admin", "read": 1, "write": 1, "create": 1, "delete": 1},
-    {"role": "SM Customer", "read": 1, "write": 1, "create": 1}
-  ],
-  "title_field": "device_name",
-  "search_fields": "user,device_name"
+ "name": "SM Notification Device",
+ "module": "Saathimart",
+ "doctype": "DocType",
+ "fields": [
+  {
+   "fieldname": "user",
+   "fieldtype": "Link",
+   "label": "User",
+   "options": "User",
+   "reqd": 1,
+   "in_list_view": 1
+  },
+  {
+   "fieldname": "fcm_token",
+   "fieldtype": "Small Text",
+   "label": "FCM Token",
+   "reqd": 1,
+   "in_list_view": 1
+  },
+  {
+   "fieldname": "platform",
+   "fieldtype": "Select",
+   "label": "Platform",
+   "options": "android\nios\nweb",
+   "default": "android",
+   "in_list_view": 1
+  },
+  {
+   "fieldname": "col_break_1",
+   "fieldtype": "Column Break"
+  },
+  {
+   "fieldname": "device_name",
+   "fieldtype": "Data",
+   "label": "Device Name"
+  },
+  {
+   "fieldname": "app_version",
+   "fieldtype": "Data",
+   "label": "App Version"
+  },
+  {
+   "fieldname": "is_active",
+   "fieldtype": "Check",
+   "label": "Active",
+   "default": 1
+  },
+  {
+   "fieldname": "last_seen",
+   "fieldtype": "Datetime",
+   "label": "Last Seen"
+  }
+ ],
+ "permissions": [
+  {
+   "role": "SM Admin",
+   "read": 1,
+   "write": 1,
+   "create": 1,
+   "delete": 1
+  },
+  {
+   "role": "SM Customer",
+   "read": 1,
+   "write": 1,
+   "create": 1
+  }
+ ],
+ "title_field": "device_name",
+ "search_fields": "user,device_name",
+ "engine": "InnoDB",
+ "allow_rename": 0,
+ "index_web_pages_for_search": 0,
+ "actions": [],
+ "links": [],
+ "states": [],
+ "naming_rule": "Expression (old style)",
+ "field_order": [
+  "user",
+  "fcm_token",
+  "platform",
+  "col_break_1",
+  "device_name",
+  "app_version",
+  "is_active",
+  "last_seen"
+ ],
+ "sort_field": "modified",
+ "sort_order": "DESC",
+ "track_changes": 0
 }

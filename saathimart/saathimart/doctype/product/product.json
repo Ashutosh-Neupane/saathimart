@@ -1,56 +1,275 @@
 {
-  "name": "Product",
-  "module": "Saathimart",
-  "doctype": "DocType",
-  "autoname": "field:product_name",
-  "is_submittable": 0,
-  "track_changes": 1,
-  "fields": [
-    {"fieldname": "product_name", "fieldtype": "Data", "label": "Product Name", "reqd": 1, "in_list_view": 1},
-    {"fieldname": "slug", "fieldtype": "Data", "label": "Slug", "unique": 1},
-    {"fieldname": "category", "fieldtype": "Link", "label": "Category", "options": "Category", "in_list_view": 1},
-    {"fieldname": "brand", "fieldtype": "Link", "label": "Brand", "options": "Brand",
-     "description": "Brand master entry (like Category). Free-text values are migrated to Brand docs by the migrate_free_text_brands patch."},
-    {"fieldname": "col_break_1", "fieldtype": "Column Break"},
-    {"fieldname": "status", "fieldtype": "Select", "label": "Status", "options": "Draft\nActive\nInactive\nOut of Stock", "default": "Draft", "in_list_view": 1},
-    {"fieldname": "section_general", "fieldtype": "Section Break", "label": "General"},
-    {"fieldname": "short_description", "fieldtype": "Small Text", "label": "Short Description"},
-    {"fieldname": "description", "fieldtype": "Text Editor", "label": "Description"},
-    {"fieldname": "specifications", "fieldtype": "Table", "label": "Specifications", "options": "Product Specification"},
-    {"fieldname": "section_media", "fieldtype": "Section Break", "label": "Media"},
-    {"fieldname": "media", "fieldtype": "Table", "label": "Media", "options": "Product Media"},
-    {"fieldname": "thumbnail", "fieldtype": "Data", "label": "Thumbnail"},
-    {"fieldname": "section_meta", "fieldtype": "Section Break", "label": "SEO"},
-    {"fieldname": "meta_title", "fieldtype": "Data", "label": "Meta Title"},
-    {"fieldname": "meta_description", "fieldtype": "Small Text", "label": "Meta Description"},
-    {"fieldname": "tags", "fieldtype": "Data", "label": "Tags (comma separated)"},
-     {"fieldname": "section_vendor_listings", "fieldtype": "Section Break", "label": "Vendor Listings"},
-     {"fieldname": "section_pricing", "fieldtype": "Section Break", "label": "Pricing"},
-     {"fieldname": "prices", "fieldtype": "Table", "label": "Prices", "options": "Product Price"},
-     {"fieldname": "display_price", "fieldtype": "Currency", "label": "Display Price", "read_only": 1,
-      "description": "Cached cheapest active Vendor Listing price — kept in sync automatically whenever any Vendor Listing for this product changes (see saathimart.events.publisher.on_vendor_listing_changed). For fast list/browse reads only (homepage rails, search results); checkout and the product detail page still resolve the real per-vendor price from Vendor Listing directly, never this cache."},
-     {"fieldname": "display_compare_price", "fieldtype": "Currency", "label": "Display Compare Price", "read_only": 1},
-     {"fieldname": "section_inventory", "fieldtype": "Section Break", "label": "Inventory"},
-     {"fieldname": "sku", "fieldtype": "Data", "label": "SKU"},
-     {"fieldname": "track_inventory", "fieldtype": "Check", "label": "Track Inventory", "default": 1},
-     {"fieldname": "stock_qty", "fieldtype": "Float", "label": "Stock Qty", "default": "0", "read_only": 1},
-     {"fieldname": "section_rating", "fieldtype": "Section Break", "label": "Ratings"},
-    {"fieldname": "avg_rating", "fieldtype": "Float", "label": "Avg Rating", "default": "0", "read_only": 1, "in_list_view": 1},
-    {"fieldname": "review_count", "fieldtype": "Int", "label": "Review Count", "default": "0", "read_only": 1, "in_list_view": 1},
-    {"fieldname": "section_variants", "fieldtype": "Section Break", "label": "Variants"},
-    {"fieldname": "has_variants", "fieldtype": "Check", "label": "Has Variants", "default": "0",
-     "description": "This Product is a template/parent grouping several variants (e.g. one T-Shirt with Size/Color options) — it is not sold directly. Customers pick a specific variant on the product page."},
-    {"fieldname": "col_break_variants", "fieldtype": "Column Break"},
-    {"fieldname": "variant_of", "fieldtype": "Link", "label": "Variant Of", "options": "Product",
-     "description": "Set on a specific sellable variant (e.g. 'T-Shirt — Red, L') to link it back to its template Product. A variant has its own slug, Vendor Listings, and Vendor Stock — it's a full Product in its own right, just grouped under a template for display."},
-    {"fieldname": "variant_attributes", "fieldtype": "Table", "label": "Variant Attributes", "options": "Product Variant Attribute",
-     "description": "What distinguishes this variant from its siblings, e.g. Size=Large, Color=Red. Only meaningful when variant_of is set."}
-  ],
-  "title_field": "product_name",
-  "search_fields": "product_name,slug",
-  "permissions": [
-    {"role": "SM Admin", "read": 1, "write": 1, "create": 1, "delete": 1},
-    {"role": "SM Vendor", "read": 1, "write": 1, "create": 1},
-    {"role": "Guest", "read": 1}
-  ]
+ "name": "Product",
+ "module": "Saathimart",
+ "doctype": "DocType",
+ "autoname": "field:product_name",
+ "is_submittable": 0,
+ "track_changes": 1,
+ "fields": [
+  {
+   "fieldname": "product_name",
+   "fieldtype": "Data",
+   "label": "Product Name",
+   "reqd": 1,
+   "in_list_view": 1
+  },
+  {
+   "fieldname": "slug",
+   "fieldtype": "Data",
+   "label": "Slug",
+   "unique": 1
+  },
+  {
+   "fieldname": "category",
+   "fieldtype": "Link",
+   "label": "Category",
+   "options": "Category",
+   "in_list_view": 1
+  },
+  {
+   "fieldname": "brand",
+   "fieldtype": "Link",
+   "label": "Brand",
+   "options": "Brand",
+   "description": "Brand master entry (like Category). Free-text values are migrated to Brand docs by the migrate_free_text_brands patch."
+  },
+  {
+   "fieldname": "col_break_1",
+   "fieldtype": "Column Break"
+  },
+  {
+   "fieldname": "status",
+   "fieldtype": "Select",
+   "label": "Status",
+   "options": "Draft\nActive\nInactive\nOut of Stock",
+   "default": "Draft",
+   "in_list_view": 1
+  },
+  {
+   "fieldname": "section_general",
+   "fieldtype": "Section Break",
+   "label": "General"
+  },
+  {
+   "fieldname": "short_description",
+   "fieldtype": "Small Text",
+   "label": "Short Description"
+  },
+  {
+   "fieldname": "description",
+   "fieldtype": "Text Editor",
+   "label": "Description"
+  },
+  {
+   "fieldname": "specifications",
+   "fieldtype": "Table",
+   "label": "Specifications",
+   "options": "Product Specification"
+  },
+  {
+   "fieldname": "section_media",
+   "fieldtype": "Section Break",
+   "label": "Media"
+  },
+  {
+   "fieldname": "media",
+   "fieldtype": "Table",
+   "label": "Media",
+   "options": "Product Media"
+  },
+  {
+   "fieldname": "thumbnail",
+   "fieldtype": "Data",
+   "label": "Thumbnail"
+  },
+  {
+   "fieldname": "section_meta",
+   "fieldtype": "Section Break",
+   "label": "SEO"
+  },
+  {
+   "fieldname": "meta_title",
+   "fieldtype": "Data",
+   "label": "Meta Title"
+  },
+  {
+   "fieldname": "meta_description",
+   "fieldtype": "Small Text",
+   "label": "Meta Description"
+  },
+  {
+   "fieldname": "tags",
+   "fieldtype": "Data",
+   "label": "Tags (comma separated)"
+  },
+  {
+   "fieldname": "section_vendor_listings",
+   "fieldtype": "Section Break",
+   "label": "Vendor Listings"
+  },
+  {
+   "fieldname": "section_pricing",
+   "fieldtype": "Section Break",
+   "label": "Pricing"
+  },
+  {
+   "fieldname": "prices",
+   "fieldtype": "Table",
+   "label": "Prices",
+   "options": "Product Price"
+  },
+  {
+   "fieldname": "display_price",
+   "fieldtype": "Currency",
+   "label": "Display Price",
+   "read_only": 1,
+   "description": "Cached cheapest active Vendor Listing price — kept in sync automatically whenever any Vendor Listing for this product changes (see saathimart.events.publisher.on_vendor_listing_changed). For fast list/browse reads only (homepage rails, search results); checkout and the product detail page still resolve the real per-vendor price from Vendor Listing directly, never this cache."
+  },
+  {
+   "fieldname": "display_compare_price",
+   "fieldtype": "Currency",
+   "label": "Display Compare Price",
+   "read_only": 1
+  },
+  {
+   "fieldname": "section_inventory",
+   "fieldtype": "Section Break",
+   "label": "Inventory"
+  },
+  {
+   "fieldname": "sku",
+   "fieldtype": "Data",
+   "label": "SKU"
+  },
+  {
+   "fieldname": "track_inventory",
+   "fieldtype": "Check",
+   "label": "Track Inventory",
+   "default": 1
+  },
+  {
+   "fieldname": "stock_qty",
+   "fieldtype": "Float",
+   "label": "Stock Qty",
+   "default": "0",
+   "read_only": 1
+  },
+  {
+   "fieldname": "section_rating",
+   "fieldtype": "Section Break",
+   "label": "Ratings"
+  },
+  {
+   "fieldname": "avg_rating",
+   "fieldtype": "Float",
+   "label": "Avg Rating",
+   "default": "0",
+   "read_only": 1,
+   "in_list_view": 1
+  },
+  {
+   "fieldname": "review_count",
+   "fieldtype": "Int",
+   "label": "Review Count",
+   "default": "0",
+   "read_only": 1,
+   "in_list_view": 1
+  },
+  {
+   "fieldname": "section_variants",
+   "fieldtype": "Section Break",
+   "label": "Variants"
+  },
+  {
+   "fieldname": "has_variants",
+   "fieldtype": "Check",
+   "label": "Has Variants",
+   "default": "0",
+   "description": "This Product is a template/parent grouping several variants (e.g. one T-Shirt with Size/Color options) — it is not sold directly. Customers pick a specific variant on the product page."
+  },
+  {
+   "fieldname": "col_break_variants",
+   "fieldtype": "Column Break"
+  },
+  {
+   "fieldname": "variant_of",
+   "fieldtype": "Link",
+   "label": "Variant Of",
+   "options": "Product",
+   "description": "Set on a specific sellable variant (e.g. 'T-Shirt — Red, L') to link it back to its template Product. A variant has its own slug, Vendor Listings, and Vendor Stock — it's a full Product in its own right, just grouped under a template for display."
+  },
+  {
+   "fieldname": "variant_attributes",
+   "fieldtype": "Table",
+   "label": "Variant Attributes",
+   "options": "Product Variant Attribute",
+   "description": "What distinguishes this variant from its siblings, e.g. Size=Large, Color=Red. Only meaningful when variant_of is set."
+  }
+ ],
+ "title_field": "product_name",
+ "search_fields": "product_name,slug",
+ "permissions": [
+  {
+   "role": "SM Admin",
+   "read": 1,
+   "write": 1,
+   "create": 1,
+   "delete": 1
+  },
+  {
+   "role": "SM Vendor",
+   "read": 1,
+   "write": 1,
+   "create": 1
+  },
+  {
+   "role": "Guest",
+   "read": 1
+  }
+ ],
+ "engine": "InnoDB",
+ "allow_rename": 0,
+ "index_web_pages_for_search": 0,
+ "actions": [],
+ "links": [],
+ "states": [],
+ "naming_rule": "Expression (old style)",
+ "field_order": [
+  "product_name",
+  "slug",
+  "category",
+  "brand",
+  "col_break_1",
+  "status",
+  "section_general",
+  "short_description",
+  "description",
+  "specifications",
+  "section_media",
+  "media",
+  "thumbnail",
+  "section_meta",
+  "meta_title",
+  "meta_description",
+  "tags",
+  "section_vendor_listings",
+  "section_pricing",
+  "prices",
+  "display_price",
+  "display_compare_price",
+  "section_inventory",
+  "sku",
+  "track_inventory",
+  "stock_qty",
+  "section_rating",
+  "avg_rating",
+  "review_count",
+  "section_variants",
+  "has_variants",
+  "col_break_variants",
+  "variant_of",
+  "variant_attributes"
+ ],
+ "sort_field": "modified",
+ "sort_order": "DESC"
 }

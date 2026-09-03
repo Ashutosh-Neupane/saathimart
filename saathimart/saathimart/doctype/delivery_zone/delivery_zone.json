@@ -4,28 +4,128 @@
  "doctype": "DocType",
  "autoname": "field:zone_name",
  "fields": [
-  {"fieldname": "zone_name", "fieldtype": "Data", "label": "Zone Name", "reqd": 1, "unique": 1, "in_list_view": 1},
-  {"fieldname": "city", "fieldtype": "Data", "label": "City"},
-  {"fieldname": "districts", "fieldtype": "Small Text", "label": "Districts (comma separated)"},
-  {"fieldname": "col_break_1", "fieldtype": "Column Break"},
-  {"fieldname": "is_active", "fieldtype": "Check", "label": "Is Active", "default": "1"},
-  {"fieldname": "delivery_charge", "fieldtype": "Currency", "label": "Delivery Charge", "default": "0"},
-  {"fieldname": "free_delivery_above", "fieldtype": "Currency", "label": "Free Delivery Above", "default": "0"},
-  {"fieldname": "estimated_days", "fieldtype": "Int", "label": "Estimated Delivery Days", "default": "1"},
-  {"fieldname": "section_loyalty", "fieldtype": "Section Break", "label": "Loyalty & Onboarding"},
-  {"fieldname": "loyalty_multiplier", "fieldtype": "Float", "label": "Loyalty Multiplier", "default": "1",
-   "description": "Applied on top of the customer's tier multiplier when earning points on orders delivered to this zone. 1 = no change, 1.5 = 50% bonus points, 0 = no points earned here."},
-  {"fieldname": "col_break_loyalty", "fieldtype": "Column Break"},
-  {"fieldname": "first_order_discount_pct", "fieldtype": "Float", "label": "First Order Discount %", "default": "0",
-   "description": "Auto-applied discount on a customer's first order delivered to this zone. No coupon code needed."},
-  {"fieldname": "second_order_discount_pct", "fieldtype": "Float", "label": "Second Order Discount %", "default": "0",
-   "description": "Auto-applied discount on a customer's second order delivered to this zone."},
-  {"fieldname": "onboarding_max_discount_amount", "fieldtype": "Currency", "label": "Max Onboarding Discount Amount", "default": "0",
-   "description": "Caps the first/second order auto-discount amount. 0 = uncapped."}
+  {
+   "fieldname": "zone_name",
+   "fieldtype": "Data",
+   "label": "Zone Name",
+   "reqd": 1,
+   "unique": 1,
+   "in_list_view": 1
+  },
+  {
+   "fieldname": "city",
+   "fieldtype": "Data",
+   "label": "City"
+  },
+  {
+   "fieldname": "districts",
+   "fieldtype": "Small Text",
+   "label": "Districts (comma separated)"
+  },
+  {
+   "fieldname": "col_break_1",
+   "fieldtype": "Column Break"
+  },
+  {
+   "fieldname": "is_active",
+   "fieldtype": "Check",
+   "label": "Is Active",
+   "default": "1"
+  },
+  {
+   "fieldname": "delivery_charge",
+   "fieldtype": "Currency",
+   "label": "Delivery Charge",
+   "default": "0"
+  },
+  {
+   "fieldname": "free_delivery_above",
+   "fieldtype": "Currency",
+   "label": "Free Delivery Above",
+   "default": "0"
+  },
+  {
+   "fieldname": "estimated_days",
+   "fieldtype": "Int",
+   "label": "Estimated Delivery Days",
+   "default": "1"
+  },
+  {
+   "fieldname": "section_loyalty",
+   "fieldtype": "Section Break",
+   "label": "Loyalty & Onboarding"
+  },
+  {
+   "fieldname": "loyalty_multiplier",
+   "fieldtype": "Float",
+   "label": "Loyalty Multiplier",
+   "default": "1",
+   "description": "Applied on top of the customer's tier multiplier when earning points on orders delivered to this zone. 1 = no change, 1.5 = 50% bonus points, 0 = no points earned here."
+  },
+  {
+   "fieldname": "col_break_loyalty",
+   "fieldtype": "Column Break"
+  },
+  {
+   "fieldname": "first_order_discount_pct",
+   "fieldtype": "Float",
+   "label": "First Order Discount %",
+   "default": "0",
+   "description": "Auto-applied discount on a customer's first order delivered to this zone. No coupon code needed."
+  },
+  {
+   "fieldname": "second_order_discount_pct",
+   "fieldtype": "Float",
+   "label": "Second Order Discount %",
+   "default": "0",
+   "description": "Auto-applied discount on a customer's second order delivered to this zone."
+  },
+  {
+   "fieldname": "onboarding_max_discount_amount",
+   "fieldtype": "Currency",
+   "label": "Max Onboarding Discount Amount",
+   "default": "0",
+   "description": "Caps the first/second order auto-discount amount. 0 = uncapped."
+  }
  ],
  "title_field": "zone_name",
  "permissions": [
-  {"role": "SM Admin", "read": 1, "write": 1, "create": 1, "delete": 1},
-  {"role": "Guest", "read": 1}
- ]
+  {
+   "role": "SM Admin",
+   "read": 1,
+   "write": 1,
+   "create": 1,
+   "delete": 1
+  },
+  {
+   "role": "Guest",
+   "read": 1
+  }
+ ],
+ "engine": "InnoDB",
+ "allow_rename": 0,
+ "index_web_pages_for_search": 0,
+ "actions": [],
+ "links": [],
+ "states": [],
+ "naming_rule": "Expression (old style)",
+ "field_order": [
+  "zone_name",
+  "city",
+  "districts",
+  "col_break_1",
+  "is_active",
+  "delivery_charge",
+  "free_delivery_above",
+  "estimated_days",
+  "section_loyalty",
+  "loyalty_multiplier",
+  "col_break_loyalty",
+  "first_order_discount_pct",
+  "second_order_discount_pct",
+  "onboarding_max_discount_amount"
+ ],
+ "sort_field": "modified",
+ "sort_order": "DESC",
+ "track_changes": 0
 }

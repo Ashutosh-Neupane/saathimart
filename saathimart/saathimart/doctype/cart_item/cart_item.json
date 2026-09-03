@@ -25,7 +25,7 @@
    "label": "Vendor",
    "options": "Vendor",
    "in_list_view": 1,
-   "description": "Vendor fulfilling this item \u2014 determines site price"
+   "description": "Vendor fulfilling this item — determines site price"
   },
   {
    "fieldname": "qty",
@@ -48,13 +48,20 @@
    "read_only": 1
   }
  ],
- "permissions": [
-  {
-   "role": "SM Admin",
-   "read": 1,
-   "write": 1,
-   "create": 1,
-   "delete": 1
-  }
+ "permissions": [],
+ "engine": "InnoDB",
+ "allow_rename": 0,
+ "index_web_pages_for_search": 0,
+ "actions": [],
+ "links": [],
+ "states": [],
+ "naming_rule": "Random",
+ "field_order": [
+  "product",
+  "product_name",
+  "vendor",
+  "qty",
+  "rate",
+  "amount"
  ]
 }

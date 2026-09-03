@@ -4,20 +4,91 @@
  "doctype": "DocType",
  "autoname": "SM-CSUB-.#####",
  "fields": [
-  {"fieldname": "full_name", "fieldtype": "Data", "label": "Full Name", "reqd": 1, "in_list_view": 1},
-  {"fieldname": "email", "fieldtype": "Data", "label": "Email", "options": "Email", "reqd": 1, "in_list_view": 1},
-  {"fieldname": "phone", "fieldtype": "Data", "label": "Phone"},
-  {"fieldname": "subject", "fieldtype": "Data", "label": "Subject", "in_list_view": 1},
-  {"fieldname": "col_break_1", "fieldtype": "Column Break"},
-  {"fieldname": "status", "fieldtype": "Select", "label": "Status",
-   "options": "New\nRead\nReplied\nSpam", "default": "New", "in_list_view": 1},
-  {"fieldname": "submitted_at", "fieldtype": "Datetime", "label": "Submitted At", "in_list_view": 1},
-  {"fieldname": "section_message", "fieldtype": "Section Break", "label": "Message"},
-  {"fieldname": "message", "fieldtype": "Text Editor", "label": "Message", "reqd": 1}
+  {
+   "fieldname": "full_name",
+   "fieldtype": "Data",
+   "label": "Full Name",
+   "reqd": 1,
+   "in_list_view": 1
+  },
+  {
+   "fieldname": "email",
+   "fieldtype": "Data",
+   "label": "Email",
+   "options": "Email",
+   "reqd": 1,
+   "in_list_view": 1
+  },
+  {
+   "fieldname": "phone",
+   "fieldtype": "Data",
+   "label": "Phone"
+  },
+  {
+   "fieldname": "subject",
+   "fieldtype": "Data",
+   "label": "Subject",
+   "in_list_view": 1
+  },
+  {
+   "fieldname": "col_break_1",
+   "fieldtype": "Column Break"
+  },
+  {
+   "fieldname": "status",
+   "fieldtype": "Select",
+   "label": "Status",
+   "options": "New\nRead\nReplied\nSpam",
+   "default": "New",
+   "in_list_view": 1
+  },
+  {
+   "fieldname": "submitted_at",
+   "fieldtype": "Datetime",
+   "label": "Submitted At",
+   "in_list_view": 1
+  },
+  {
+   "fieldname": "section_message",
+   "fieldtype": "Section Break",
+   "label": "Message"
+  },
+  {
+   "fieldname": "message",
+   "fieldtype": "Text Editor",
+   "label": "Message",
+   "reqd": 1
+  }
  ],
  "title_field": "full_name",
  "track_changes": 1,
  "permissions": [
-  {"role": "SM Admin", "read": 1, "write": 1, "create": 1, "delete": 1}
- ]
+  {
+   "role": "SM Admin",
+   "read": 1,
+   "write": 1,
+   "create": 1,
+   "delete": 1
+  }
+ ],
+ "engine": "InnoDB",
+ "allow_rename": 0,
+ "index_web_pages_for_search": 0,
+ "actions": [],
+ "links": [],
+ "states": [],
+ "naming_rule": "Expression (old style)",
+ "field_order": [
+  "full_name",
+  "email",
+  "phone",
+  "subject",
+  "col_break_1",
+  "status",
+  "submitted_at",
+  "section_message",
+  "message"
+ ],
+ "sort_field": "modified",
+ "sort_order": "DESC"
 }

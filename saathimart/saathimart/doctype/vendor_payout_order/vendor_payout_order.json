@@ -1,15 +1,64 @@
 {
-  "name": "Vendor Payout Order",
-  "module": "Saathimart",
-  "doctype": "DocType",
-  "istable": 1,
-  "fields": [
-    {"fieldname": "order_id", "fieldtype": "Link", "label": "Order", "options": "Order", "reqd": 1, "in_list_view": 1},
-    {"fieldname": "customer_name", "fieldtype": "Data", "label": "Customer", "read_only": 1, "in_list_view": 1},
-    {"fieldname": "subtotal", "fieldtype": "Currency", "label": "Subtotal", "read_only": 1, "in_list_view": 1},
-    {"fieldname": "delivered_at", "fieldtype": "Datetime", "label": "Delivered At", "read_only": 1},
-    {"fieldname": "commission_amount", "fieldtype": "Currency", "label": "Commission", "read_only": 1},
-    {"fieldname": "payout_amount", "fieldtype": "Currency", "label": "Payout", "read_only": 1}
-  ],
-  "permissions": [{"role": "SM Admin", "read": 1, "write": 1}]
+ "name": "Vendor Payout Order",
+ "module": "Saathimart",
+ "doctype": "DocType",
+ "istable": 1,
+ "fields": [
+  {
+   "fieldname": "order_id",
+   "fieldtype": "Link",
+   "label": "Order",
+   "options": "Order",
+   "reqd": 1,
+   "in_list_view": 1
+  },
+  {
+   "fieldname": "customer_name",
+   "fieldtype": "Data",
+   "label": "Customer",
+   "read_only": 1,
+   "in_list_view": 1
+  },
+  {
+   "fieldname": "subtotal",
+   "fieldtype": "Currency",
+   "label": "Subtotal",
+   "read_only": 1,
+   "in_list_view": 1
+  },
+  {
+   "fieldname": "delivered_at",
+   "fieldtype": "Datetime",
+   "label": "Delivered At",
+   "read_only": 1
+  },
+  {
+   "fieldname": "commission_amount",
+   "fieldtype": "Currency",
+   "label": "Commission",
+   "read_only": 1
+  },
+  {
+   "fieldname": "payout_amount",
+   "fieldtype": "Currency",
+   "label": "Payout",
+   "read_only": 1
+  }
+ ],
+ "permissions": [],
+ "engine": "InnoDB",
+ "allow_rename": 0,
+ "index_web_pages_for_search": 0,
+ "actions": [],
+ "links": [],
+ "states": [],
+ "naming_rule": "Random",
+ "field_order": [
+  "order_id",
+  "customer_name",
+  "subtotal",
+  "delivered_at",
+  "commission_amount",
+  "payout_amount"
+ ]
 }

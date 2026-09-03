@@ -11,9 +11,28 @@
   "is_active"
  ],
  "fields": [
-  {"fieldname": "term", "fieldtype": "Data", "label": "Search Term", "reqd": 1, "in_list_view": 1, "description": "The original search term (e.g., 'milk')"},
-  {"fieldname": "synonym", "fieldtype": "Data", "label": "Synonym", "reqd": 1, "in_list_view": 1, "description": "Synonym that should also match (e.g., 'dairy', 'cow milk')"},
-  {"fieldname": "is_active", "fieldtype": "Check", "label": "Is Active", "default": "1"}
+  {
+   "fieldname": "term",
+   "fieldtype": "Data",
+   "label": "Search Term",
+   "reqd": 1,
+   "in_list_view": 1,
+   "description": "The original search term (e.g., 'milk')"
+  },
+  {
+   "fieldname": "synonym",
+   "fieldtype": "Data",
+   "label": "Synonym",
+   "reqd": 1,
+   "in_list_view": 1,
+   "description": "Synonym that should also match (e.g., 'dairy', 'cow milk')"
+  },
+  {
+   "fieldname": "is_active",
+   "fieldtype": "Check",
+   "label": "Is Active",
+   "default": "1"
+  }
  ],
  "title_field": "term",
  "allow_rename": 0,
@@ -22,6 +41,18 @@
  "links": [],
  "states": [],
  "permissions": [
-  {"role": "SM Admin", "read": 1, "write": 1, "create": 1, "delete": 1, "email": 1, "print": 1, "share": 1}
- ]
+  {
+   "role": "SM Admin",
+   "read": 1,
+   "write": 1,
+   "create": 1,
+   "delete": 1,
+   "email": 1,
+   "print": 1,
+   "share": 1
+  }
+ ],
+ "sort_field": "modified",
+ "sort_order": "DESC",
+ "track_changes": 0
 }

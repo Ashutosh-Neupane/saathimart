@@ -7,7 +7,7 @@ services:
     container_name: saathimart-backend
     restart: unless-stopped
     ports:
-      - "${PORT:-8000}:8000"
+      - "${PORT:-8080}:8000"
     environment:
       FRAPPE_SITE: ${FRAPPE_SITE:-saathimart.localhost}
       DB_HOST: mariadb
@@ -38,10 +38,11 @@ services:
     volumes:
       - mariadb_data:/var/lib/mysql
     healthcheck:
-      test: ["CMD", "mysqladmin", "ping", "-h", "localhost"]
+      test: ["CMD", "healthcheck.sh", "--connect", "--innodb_initialized"]
       interval: 10s
       timeout: 5s
       retries: 5
+      start_period: 30s
 
   # Cache Redis — Frappe page/query cache
   redis-cache:

@@ -1,12 +1,3 @@
 [pre_model_sync]
-# Patches that run BEFORE schema sync (use when reading fields that will be removed)
 
 [post_model_sync]
-# Patches that run AFTER schema sync (use when populating new fields)
-saathimart.patches.add_vendor_listing_parent_columns
-saathimart.patches.add_performance_indexes
-saathimart.patches.backfill_product_display_price
-saathimart.patches.backfill_vendor_name_display_fields
-saathimart.patches.seed_payment_modes
-saathimart.patches.migrate_free_text_brands
-saathimart.patches.initialize_vendor_stock_warehouse

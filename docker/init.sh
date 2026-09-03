@@ -135,17 +135,8 @@ EOF
 
 # ── Procfile (web + worker + scheduler) ──────────────────────────────────────
 cat > "$BENCH/Procfile" <<'EOF'
-web: cd /home/frappe/bench/sites && /home/frappe/bench/env/bin/gunicorn \
-  --bind 0.0.0.0:8000 \
-  --workers ${WORKERS:-4} \
-  --threads ${THREADS:-4} \
-  --timeout ${WORKER_TIMEOUT:-120} \
-  --keep-alive 5 \
-  --max-requests 2000 \
-  --max-requests-jitter 200 \
-  --graceful-timeout 30 \
-  gunicorn_wsgi:application
-worker: cd /home/frappe/bench/sites && /usr/local/bin/bench worker --queue short,default,long --queues short,default,long
+web: cd /home/frappe/bench/sites && /home/frappe/bench/env/bin/gunicorn --bind 0.0.0.0:8000 --workers ${WORKERS:-4} --threads ${THREADS:-4} --timeout ${WORKER_TIMEOUT:-120} --keep-alive 5 --max-requests 2000 --max-requests-jitter 200 --graceful-timeout 30 gunicorn_wsgi:application
+worker: cd /home/frappe/bench/sites && /usr/local/bin/bench worker --queue short,default,long
 schedule: cd /home/frappe/bench/sites && /usr/local/bin/bench schedule
 EOF
 

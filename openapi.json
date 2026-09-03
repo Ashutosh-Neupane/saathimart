@@ -1,0 +1,306 @@
+{
+  "openapi": "3.0.3",
+  "info": {
+    "title": "Saathimart API",
+    "version": "1.0.0",
+    "description": "Saathimart is a Blinkit-style multi-vendor marketplace platform built with Frappe. This API documentation covers all available endpoints."
+  },
+  "servers": [
+    {
+      "url": "http://localhost:8000",
+      "description": "Local development server"
+    }
+  ],
+  "tags": [
+    {"name": "Products", "description": "Product catalog and search"},
+    {"name": "Cart", "description": "Shopping cart operations"},
+    {"name": "Orders", "description": "Order creation and management"},
+    {"name": "Customers", "description": "Customer profile and addresses"},
+    {"name": "Payment", "description": "Payment processing"},
+    {"name": "Loyalty", "description": "Loyalty program"},
+    {"name": "CMS", "description": "Content management"},
+    {"name": "System", "description": "System endpoints"}
+  ],
+  "paths": {
+    "/api/method/saathimart.api.health.health_check": {
+      "get": {
+        "tags": ["System"],
+        "summary": "Health Check",
+        "description": "Basic health check for load balancers",
+        "responses": {
+          "200": {
+            "description": "Service is healthy",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "properties": {
+                    "status": {"type": "string"},
+                    "timestamp": {"type": "string", "format": "date-time"},
+                    "checks": {"type": "object"}
+                  }
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/method/saathimart.api.products.list_products": {
+      "get": {
+        "tags": ["Products"],
+        "summary": "List Products",
+        "description": "Paginated, filterable, searchable product listing with location-based filtering",
+        "parameters": [
+          {"name": "page", "in": "query", "schema": {"type": "integer", "default": 1}},
+          {"name": "page_size", "in": "query", "schema": {"type": "integer", "default": 20}},
+          {"name": "category", "in": "query", "schema": {"type": "string"}},
+          {"name": "search", "in": "query", "schema": {"type": "string"}},
+          {"name": "sort", "in": "query", "schema": {"type": "string", "enum": ["price_asc", "price_desc", "newest", "rating"]}},
+          {"name": "in_stock", "in": "query", "schema": {"type": "boolean"}},
+          {"name": "min_price", "in": "query", "schema": {"type": "number"}},
+          {"name": "max_price", "in": "query", "schema": {"type": "number"}},
+          {"name": "brand", "in": "query", "schema": {"type": "string"}},
+          {"name": "lat", "in": "query", "schema": {"type": "number"}},
+          {"name": "lng", "in": "query", "schema": {"type": "number"}},
+          {"name": "session_id", "in": "query", "schema": {"type": "string"}}
+        ],
+        "responses": {
+          "200": {
+            "description": "Product list",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "properties": {
+                    "items": {
+                      "type": "array",
+                      "items": {"$ref": "#/components/schemas/Product"}
+                    },
+                    "total": {"type": "integer"},
+                    "page": {"type": "integer"},
+                    "page_size": {"type": "integer"}
+                  }
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/method/saathimart.api.products.get_product": {
+      "get": {
+        "tags": ["Products"],
+        "summary": "Get Product",
+        "description": "Get single product by slug",
+        "parameters": [
+          {"name": "slug", "in": "query", "required": true, "schema": {"type": "string"}}
+        ],
+        "responses": {
+          "200": {
+            "description": "Product detail",
+            "content": {
+              "application/json": {
+                "schema": {"$ref": "#/components/schemas/Product"}
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/method/saathimart.api.cart.get_cart": {
+      "get": {
+        "tags": ["Cart"],
+        "summary": "Get Cart",
+        "description": "Get or create shopping cart",
+        "parameters": [
+          {"name": "session_id", "in": "query", "schema": {"type": "string"}}
+        ],
+        "responses": {
+          "200": {
+            "description": "Cart details",
+            "content": {
+              "application/json": {
+                "schema": {"$ref": "#/components/schemas/Cart"}
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/method/saathimart.api.cart.add_to_cart": {
+      "post": {
+        "tags": ["Cart"],
+        "summary": "Add to Cart",
+        "description": "Add product to cart with automatic franchise resolution",
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "type": "object",
+                "properties": {
+                  "session_id": {"type": "string"},
+                  "item_code": {"type": "string"},
+                  "franchise": {"type": "string"},
+                  "qty": {"type": "integer", "default": 1}
+                }
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "Updated cart",
+            "content": {
+              "application/json": {
+                "schema": {"$ref": "#/components/schemas/Cart"}
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/method/saathimart.api.orders.checkout": {
+      "post": {
+        "tags": ["Orders"],
+        "summary": "Checkout",
+        "description": "Place order from cart",
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "type": "object",
+                "properties": {
+                  "session_id": {"type": "string"},
+                  "customer_name": {"type": "string"},
+                  "customer_mobile": {"type": "string"},
+                  "delivery_address": {"type": "string"},
+                  "payment_mode": {"type": "string"},
+                  "delivery_latitude": {"type": "number"},
+                  "delivery_longitude": {"type": "number"}
+                }
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "Order placed",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "properties": {
+                    "order": {"type": "string"},
+                    "status": {"type": "string"}
+                  }
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/method/saathimart.api.payments.initiate_esewa_payment": {
+      "post": {
+        "tags": ["Payment"],
+        "summary": "Initiate eSewa Payment",
+        "description": "Initialize eSewa online payment",
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "type": "object",
+                "properties": {
+                  "order_id": {"type": "string"},
+                  "success_url": {"type": "string"},
+                  "failure_url": {"type": "string"}
+                }
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "Payment initiated",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "properties": {
+                    "redirect_url": {"type": "string"}
+                  }
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/method/saathimart.api.loyalty.get_loyalty_balance": {
+      "get": {
+        "tags": ["Loyalty"],
+        "summary": "Get Loyalty Balance",
+        "description": "Get customer's loyalty points balance",
+        "responses": {
+          "200": {
+            "description": "Loyalty balance",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "properties": {
+                    "points": {"type": "integer"},
+                    "tier": {"type": "string"}
+                  }
+                }
+              }
+            }
+          }
+        }
+      }
+    }
+  },
+  "components": {
+    "schemas": {
+      "Product": {
+        "type": "object",
+        "properties": {
+          "name": {"type": "string"},
+          "product_name": {"type": "string"},
+          "slug": {"type": "string"},
+          "category": {"type": "string"},
+          "brand": {"type": "string"},
+          "price": {"type": "number"},
+          "compare_price": {"type": "number"},
+          "stock_qty": {"type": "integer"},
+          "avg_rating": {"type": "number"},
+          "review_count": {"type": "integer"},
+          "thumbnail": {"type": "string"}
+        }
+      },
+      "Cart": {
+        "type": "object",
+        "properties": {
+          "name": {"type": "string"},
+          "items": {
+            "type": "array",
+            "items": {
+              "type": "object",
+              "properties": {
+                "product": {"type": "string"},
+                "qty": {"type": "integer"},
+                "rate": {"type": "number"},
+                "amount": {"type": "number"}
+              }
+            }
+          },
+          "subtotal": {"type": "number"}
+        }
+      }
+    }
+  }
+}

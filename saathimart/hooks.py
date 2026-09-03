@@ -20,6 +20,12 @@ after_request = [
     "saathimart.api.cache_headers.apply_cache_headers",
 ]
 
+# ── Performance: after_migrate hooks (cache warming + index verification) ────
+after_migrate = [
+    "saathimart.api.cache_warming.warm_cache",
+    "saathimart.api.indexes.add_performance_indexes",
+]
+
 # ── Desk tile ─────────────────────────────────────────────────────────────────
 add_to_apps_screen = [
     {
@@ -290,3 +296,10 @@ permission_query_conditions = {
 
 # ── Boot info ─────────────────────────────────────────────────────────
 extend_bootinfo = "saathimart.api.auth.extend_bootinfo"
+
+# ── Fixtures for new DocTypes ───────────────────────────────────────────────
+# Delivery slots are configuration data — export across environments
+fixtures.extend([
+    {"dt": "Delivery Time Slot"},
+    {"dt": "Delivery Slot Booking"},
+])

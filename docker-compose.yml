@@ -18,9 +18,20 @@ services:
       REDIS_PORT: 6379
       REDIS_QUEUE_HOST: redis-queue
       REDIS_QUEUE_PORT: 6379
+      WORKERS: ${WORKERS:-4}
+      THREADS: ${THREADS:-4}
+      WORKER_TIMEOUT: ${WORKER_TIMEOUT:-120}
     volumes:
       - ./saathimart:/home/frappe/saathimart   # live-reload in dev
       - bench_data:/home/frappe/bench
+    deploy:
+      resources:
+        limits:
+          cpus: '1.5'
+          memory: 1200M
+        reservations:
+          cpus: '0.5'
+          memory: 400M
     depends_on:
       mariadb:
         condition: service_healthy
@@ -37,6 +48,15 @@ services:
       MYSQL_ROOT_PASSWORD: ${DB_ROOT_PASSWORD:-root}
     volumes:
       - mariadb_data:/var/lib/mysql
+      - ./docker/my.cnf:/etc/mysql/conf.d/99-saathimart.cnf:ro
+    deploy:
+      resources:
+        limits:
+          cpus: '1.0'
+          memory: 800M
+        reservations:
+          cpus: '0.25'
+          memory: 256M
     healthcheck:
       test: ["CMD", "healthcheck.sh", "--connect", "--innodb_initialized"]
       interval: 10s
@@ -44,13 +64,23 @@ services:
       retries: 5
       start_period: 30s
 
-  # Cache Redis — Frappe page/query cache
+  # Cache Redis — Frappe page/query cache + session store
   redis-cache:
     image: redis:7-alpine
     container_name: saathimart-redis-cache
     restart: unless-stopped
+    command: redis-server /usr/local/etc/redis/redis.conf
     volumes:
       - redis_cache_data:/data
+      - ./docker/redis-cache.conf:/usr/local/etc/redis/redis.conf:ro
+    deploy:
+      resources:
+        limits:
+          cpus: '0.5'
+          memory: 300M
+        reservations:
+          cpus: '0.1'
+          memory: 64M
     healthcheck:
       test: ["CMD", "redis-cli", "ping"]
       interval: 10s
@@ -62,11 +92,19 @@ services:
     image: redis:7-alpine
     container_name: saathimart-redis-queue
     restart: unless-stopped
-    command: redis-server --save 60 1 --loglevel warning
+    command: redis-server --save 60 1 --loglevel warning --maxmemory 128mb --maxmemory-policy allkeys-lru
     volumes:
       - redis_queue_data:/data
     ports:
       - "${REDIS_QUEUE_PORT:-6380}:6379"   # expose so vendor sites can subscribe
+    deploy:
+      resources:
+        limits:
+          cpus: '0.5'
+          memory: 200M
+        reservations:
+          cpus: '0.1'
+          memory: 32M
     healthcheck:
       test: ["CMD", "redis-cli", "ping"]
       interval: 10s

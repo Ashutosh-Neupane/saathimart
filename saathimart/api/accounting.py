@@ -76,13 +76,76 @@ def _get_company():
     return company
 
 
+def _get_default_cost_center(company=None):
+    """Get the default cost center for marketplace operations.
+    
+    ERPNext requires cost_center for P&L accounts (Income/Expense).
+    This function finds or creates a 'Marketplace' cost center.
+    """
+    if not company:
+        company = _get_company()
+    if not company:
+        return None
+    
+    # Try to find existing Marketplace cost center
+    cc = frappe.db.get_value(
+        "Cost Center",
+        {"company": company, "cost_center_name": "Marketplace", "is_group": 0},
+        "name"
+    )
+    if cc:
+        return cc
+    
+    # Fall back to any non-group cost center
+    cc = frappe.db.get_value(
+        "Cost Center",
+        {"company": company, "is_group": 0},
+        "name"
+    )
+    if cc:
+        return cc
+    
+    # Last resort: get root and create Marketplace under it
+    root = frappe.db.get_value(
+        "Cost Center",
+        {"company": company, "is_group": 1},
+        "name"
+    )
+    if root:
+        try:
+            doc = frappe.new_doc("Cost Center")
+            doc.cost_center_name = "Marketplace"
+            doc.company = company
+            doc.parent_cost_center = root
+            doc.is_group = 0
+            doc.insert(ignore_permissions=True, ignore_mandatory=True)
+            return doc.name
+        except Exception:
+            pass
+    
+    return None
+
+
+def _requires_cost_center(account):
+    """Check if an account requires a cost center (P&L accounts)."""
+    if not account:
+        return False
+    root_type = frappe.db.get_value("Account", account, "root_type")
+    return root_type in ("Income", "Expense")
+
+
 def create_gl_entry(account, debit=0, credit=0, voucher_type="Payment Entry",
                     voucher_no="", remarks="", party_type=None, party=None,
-                    posting_date=None):
-    """Create a single GL Entry."""
+                    posting_date=None, cost_center=None):
+    """Create a single GL Entry with proper cost center handling."""
     company = _get_company()
     if not company:
         frappe.log_error("No company found for GL Entry", "Accounting")
+        return None
+
+    # Verify account exists
+    if not frappe.db.exists("Account", account):
+        frappe.log_error(f"Account '{account}' does not exist", "Accounting")
         return None
 
     gl = frappe.new_doc("GL Entry")
@@ -98,7 +161,16 @@ def create_gl_entry(account, debit=0, credit=0, voucher_type="Payment Entry",
         gl.party_type = party_type
     if party:
         gl.party = party
-    gl.insert(ignore_permissions=True)
+    
+    # Cost center is required for P&L accounts
+    if _requires_cost_center(account):
+        if not cost_center:
+            cost_center = _get_default_cost_center(company)
+        if cost_center:
+            gl.cost_center = cost_center
+    
+    # ignore_links allows GL entries to be created before the voucher is fully persisted
+    gl.insert(ignore_permissions=True, ignore_links=True)
     return gl
 
 

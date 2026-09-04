@@ -1,12 +1,14 @@
-# Hub + vendor integration stack — brings up one saathimart hub and ONE
-# saathimart-vendor site (vendor1.localhost) with a shared MariaDB/Redis so
-# the full sync surface (order.new, payment.received, stock, mapping) can be
-# exercised end-to-end locally.
+# Hub + vendor integration stack — brings up one saathimart hub and TWO
+# saathimart-vendor sites (vendor1.localhost + vendor2.localhost) in a
+# single multi-site vendor bench container with a shared MariaDB/Redis so
+# the full sync surface (order.new, payment.received, stock, mapping,
+# nearest-vendor routing) can be exercised end-to-end locally.
 #
 #   docker compose -f docker/docker-compose.integration.yml up -d
 #
 # Hub:      http://localhost:8000  (Host: saathimart.localhost)
-# Vendor:   http://localhost:8001  (Host: vendor1.localhost)
+# Vendor 1: http://localhost:8001  (Host: vendor1.localhost)
+# Vendor 2: http://localhost:8001  (Host: vendor2.localhost)
 #
 # WEBHOOK_SECRET must match on both sides — it is what hub→vendor pushes
 # (order.new, payment.received) authenticate with, and vendor→hub pushes
@@ -87,7 +89,7 @@ services:
     ports:
       - "8001:8000"
     environment:
-      VENDOR_SITES: vendor1.localhost
+      VENDOR_SITES: "vendor1.localhost vendor2.localhost"
       VENDOR_PORT: "8000"
       DB_HOST: mariadb
       DB_PORT: 3306

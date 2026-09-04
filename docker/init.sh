@@ -49,9 +49,16 @@ bench set-config -g gunicorn_bind  "0.0.0.0:8000"
 bench set-config -g db_host        "${DB_HOST:-mariadb}"
 
 # ── Link saathimart app ───────────────────────────────────────────────────────
-# Volume mount: ..:/home/frappe/saathimart-src (repo root, read-only)
-# App source lives at: /home/frappe/saathimart-src/saathimart/
+# Preferred source: dev bind-mount of the repo root at
+# /home/frappe/saathimart-src (live-reload). Fallback: the app baked into
+# the image at build time via COPY . /home/frappe/saathimart/. Earlier
+# versions of this script referenced only the mount path, which made a
+# fresh container from a plain `docker build` (no source volume) boot-loop
+# on a dangling symlink + failed pip -e install.
 APP_SRC="/home/frappe/saathimart-src/saathimart"
+if [ ! -d "$APP_SRC" ] && [ -d "/home/frappe/saathimart" ]; then
+  APP_SRC="/home/frappe/saathimart"
+fi
 if [ ! -d "$BENCH/apps/saathimart" ]; then
   ln -s "$APP_SRC" "$BENCH/apps/saathimart"
   echo "saathimart" >> "$BENCH/apps/apps.txt"

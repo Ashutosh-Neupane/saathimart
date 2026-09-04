@@ -2,28 +2,23 @@ import http from 'k6/http';
 import { sleep } from 'k6';
 
 export const options = {
-  scenarios: {
-    webTraffic: {
-      executor: 'constant-vus',
-      vus: 100,
-      duration: '30s',
-      exec: 'testPing',
-      tags: { test_type: 'web_traffic' },
-    },
-  },
+  vus: 1000,
+  duration: '120s',
   thresholds: {
-    http_req_duration: ['p(95)<2000'],
-    http_req_failed: ['rate<0.10'],
+    http_req_duration: ['p(95)<500'],
+    http_req_failed: ['rate<0.01'],
   },
 };
 
-export function testPing() {
-  const res = http.get('http://localhost:55233/api/method/ping', {
+export default function() {
+  const res = http.get('http://localhost:8080/api/method/saathimart.api.products.list_products?page=1&page_size=10', {
     headers: { 'Host': 'saathimart.localhost' },
   });
   
-  console.log(`Status: ${res.status}`);
-  console.log(`Response: ${res.body}`);
+  if (res.status !== 200) {
+    console.log(`ERROR: Status ${res.status}`);
+  }
   
-  sleep(1);
+  // Users take ~2 seconds between actions (browsing)
+  sleep(2);
 }

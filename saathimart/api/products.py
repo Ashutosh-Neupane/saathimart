@@ -11,6 +11,7 @@ from frappe import _
 from frappe.utils import flt, nowdate, add_days, today
 from saathimart.api.responses import handle_api_errors
 from saathimart.api.utils import guest_rate_limit, verify_hub_secret
+from saathimart.api.cached import cached_response
 
 
 def _load_vendor_locations_sql(vendor_names, customer_lat, customer_lng):
@@ -128,14 +129,14 @@ def _get_best_vendor_listing(product_name, vendor=None, delivery_zone=None,
                              customer_lat=None, customer_lng=None,
                              _listings_map=None, _stock_map=None, _vendor_location_map=None):
     """Return the best Vendor Listing for a product using pre-loaded data."""
-    vendor_location_map = _vendor_location_map or {}
-    if _listings_map is not None:
-        listings = _listings_map.get(product_name, [])
-    else:
-        cache_key = (
-            f"sm_best_listing:{product_name}:{vendor or ''}:"
-            f"{delivery_zone or ''}:{customer_lat or ''}:{customer_lng or ''}"
-        )
+    # Generate cache key for this specific request
+    cache_key = (
+        f"sm_best_listing:{product_name}:{vendor or ''}:"
+        f"{delivery_zone or ''}:{customer_lat or ''}:{customer_lng or ''}"
+    )
+    
+    # Check cache first if no pre-loaded data provided
+    if _listings_map is None:
         cached = frappe.cache().get_value(cache_key)
         if cached:
             return cached
@@ -147,12 +148,17 @@ def _get_best_vendor_listing(product_name, vendor=None, delivery_zone=None,
                     "priority", "sku", "vendor_product_id", "warehouse", "allow_backorder"],
             order_by="priority desc, price asc",
         )
+        vendor_location_map = {}
         if listings:
             vendor_names = [l.vendor for l in listings if l.vendor]
             if customer_lat is not None and customer_lng is not None and vendor_names:
                 vendor_location_map = _load_vendor_locations_sql(
                     vendor_names, customer_lat, customer_lng
                 )
+    else:
+        # Use pre-loaded data
+        listings = _listings_map.get(product_name, [])
+        vendor_location_map = _vendor_location_map or {}
 
     # Normalize stock_map: always {vendor: stock_data}
     if _stock_map is not None and product_name in _stock_map:
@@ -194,19 +200,16 @@ def _get_best_vendor_listing(product_name, vendor=None, delivery_zone=None,
             zoned = [l for l in candidates if l.delivery_zone == delivery_zone]
             if zoned:
                 result = _enrich(zoned[0])
-                if _listings_map is None:
-                    frappe.cache().set_value(cache_key, result, expires_in_sec=300)
+                frappe.cache().set_value(cache_key, result, expires_in_sec=300)
                 return result
         base = [l for l in candidates if not l.delivery_zone]
         if base:
             result = _enrich(base[0])
-            if _listings_map is None:
-                frappe.cache().set_value(cache_key, result, expires_in_sec=300)
+            frappe.cache().set_value(cache_key, result, expires_in_sec=300)
             return result
         if candidates:
             result = _enrich(candidates[0])
-            if _listings_map is None:
-                frappe.cache().set_value(cache_key, result, expires_in_sec=300)
+            frappe.cache().set_value(cache_key, result, expires_in_sec=300)
             return result
 
     if delivery_zone:
@@ -216,8 +219,7 @@ def _get_best_vendor_listing(product_name, vendor=None, delivery_zone=None,
                         if not l.track_inventory or flt(stock_map.get(l.vendor, {}).get("available_qty") or 0) > 0]
             vl = (in_stock or zone_listings)[0]
             result = _enrich(vl)
-            if _listings_map is None:
-                frappe.cache().set_value(cache_key, result, expires_in_sec=300)
+            frappe.cache().set_value(cache_key, result, expires_in_sec=300)
             return result
 
     if vendor_location_map:
@@ -292,6 +294,16 @@ def _get_best_template_listing(template_name, vendor=None, delivery_zone=None,
     like _get_best_vendor_listing's return value so callers don't need to
     know which one they got.
     """
+    cache_key = (
+        f"sm_best_template:{template_name}:{vendor or ''}:"
+        f"{delivery_zone or ''}:{customer_lat or ''}:{customer_lng or ''}"
+    )
+    
+    # Check cache first
+    cached = frappe.cache().get_value(cache_key)
+    if cached:
+        return cached
+
     variant_names = frappe.get_list(
         "Product", filters={"variant_of": template_name, "status": "Active"},
         pluck="name",
@@ -318,7 +330,11 @@ def _get_best_template_listing(template_name, vendor=None, delivery_zone=None,
     in_stock = [c for c in candidates
                 if not c.track_inventory or flt(getattr(c, "available_qty", 0) or 0) > 0]
     pool = in_stock or candidates
-    return min(pool, key=lambda c: flt(c.price))
+    result = min(pool, key=lambda c: flt(c.price))
+    
+    # Cache result
+    frappe.cache().set_value(cache_key, result, expires_in_sec=300)
+    return result
 
 
 def _resolve_best_listing(doc_or_name, has_variants, vendor=None, delivery_zone=None,
@@ -329,17 +345,37 @@ def _resolve_best_listing(doc_or_name, has_variants, vendor=None, delivery_zone=
     otherwise the normal per-product resolver. See both functions' own
     docstrings."""
     name = doc_or_name if isinstance(doc_or_name, str) else doc_or_name.name
+    
+    # Generate cache key for this specific request
+    cache_key = (
+        f"sm_resolve_listing:{name}:{vendor or ''}:"
+        f"{delivery_zone or ''}:{customer_lat or ''}:{customer_lng or ''}"
+    )
+    
+    # Check cache first if no pre-loaded data provided
+    if _listings_map is None:
+        cached = frappe.cache().get_value(cache_key)
+        if cached:
+            return cached
+    
     if has_variants:
-        return _get_best_template_listing(
+        result = _get_best_template_listing(
             name, vendor=vendor, delivery_zone=delivery_zone,
             customer_lat=customer_lat, customer_lng=customer_lng,
         )
-    return _get_best_vendor_listing(
-        name, vendor=vendor, delivery_zone=delivery_zone,
-        customer_lat=customer_lat, customer_lng=customer_lng,
-        _listings_map=_listings_map, _stock_map=_stock_map,
-        _vendor_location_map=_vendor_location_map,
-    )
+    else:
+        result = _get_best_vendor_listing(
+            name, vendor=vendor, delivery_zone=delivery_zone,
+            customer_lat=customer_lat, customer_lng=customer_lng,
+            _listings_map=_listings_map, _stock_map=_stock_map,
+            _vendor_location_map=_vendor_location_map,
+        )
+    
+    # Cache result if no pre-loaded data was provided
+    if _listings_map is None and result:
+        frappe.cache().set_value(cache_key, result, expires_in_sec=300)
+    
+    return result
 
 
 def _get_variant_summaries(template_name, vendor=None, delivery_zone=None,
@@ -597,6 +633,7 @@ def _serialize_product(doc, _listings_map=None, _stock_map=None, _vendor_locatio
 
 @frappe.whitelist(allow_guest=True)
 @handle_api_errors
+@cached_response(ttl=30, key_prefix="product_list")
 def list_products(category=None, vendor=None, search=None, page=1, page_size=20,
                   sort=None, in_stock=None, min_price=None, max_price=None, tags=None,
                   brand=None, delivery_zone=None, lat=None, lng=None, radius_km=5):

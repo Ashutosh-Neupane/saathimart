@@ -126,6 +126,33 @@
    "fieldname": "meta_description",
    "fieldtype": "Small Text",
    "label": "Meta Description"
+  },
+  {
+   "fieldname": "section_linking",
+   "fieldtype": "Section Break",
+   "label": "Discount Link"
+  },
+  {
+   "fieldname": "coupon_code",
+   "fieldtype": "Data",
+   "label": "Coupon Code",
+   "description": "Associate this promotional offer with a Coupon code so clicking 'Shop Now' on the offer page applies the discount automatically."
+  },
+  {
+   "fieldname": "col_break_link",
+   "fieldtype": "Column Break"
+  },
+  {
+   "fieldname": "applicable_products",
+   "fieldtype": "Small Text",
+   "label": "Applicable Products",
+   "description": "Comma-separated product codes. Leave blank for all products."
+  },
+  {
+   "fieldname": "applicable_categories",
+   "fieldtype": "Small Text",
+   "label": "Applicable Categories",
+   "description": "Comma-separated category names. Leave blank for all categories."
   }
  ],
  "title_field": "title",
@@ -171,7 +198,12 @@
   "terms",
   "section_seo",
   "meta_title",
-  "meta_description"
+  "meta_description",
+  "section_linking",
+  "coupon_code",
+  "col_break_link",
+  "applicable_products",
+  "applicable_categories"
  ],
  "sort_field": "modified",
  "sort_order": "DESC"

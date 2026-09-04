@@ -1,6 +1,11 @@
 """
 Search improvements — full-text search with MariaDB FULLTEXT indexes,
-fuzzy matching for typos, synonym support, and advanced ranking.
+fuzzy matching for typos, synonym support, advanced ranking, and semantic search.
+
+Semantic search is powered by Qdrant + Sentence Transformers:
+- "chiya" matches "tea" (semantic understanding)
+- Typos handled automatically
+- Works across languages (Nepali supported via multilingual model)
 """
 import frappe
 from frappe import _
@@ -9,14 +14,57 @@ from saathimart.api.responses import handle_api_errors
 from saathimart.api.cache import cached, TTL_LISTING
 
 
+def _get_product_ids_by_semantic_search(query, limit=50):
+    """Get product IDs using semantic vector search from Qdrant.
+    
+    Falls back to keyword search if Qdrant is unavailable.
+    """
+    try:
+        from saathimart.api.vector_search import semantic_search
+        return semantic_search(query, limit=limit)
+    except Exception:
+        # Fallback to keyword search if vector search fails
+        frappe.log_error(f"Vector search failed, falling back to keyword search", "search")
+        return []
+
+
+def _filter_results_by_semantic_order(results, semantic_ids):
+    """Reorder results to match semantic search priority.
+    
+    Products matching the semantic query appear first.
+    """
+    if not semantic_ids:
+        return results
+    
+    # Create priority map for semantic matches
+    semantic_priority = {pid: idx for idx, pid in enumerate(semantic_ids)}
+    
+    # Sort results: semantic matches first, then others
+    def sort_key(r):
+        pid = r.get("name")
+        if pid in semantic_priority:
+            return (0, semantic_priority[pid])  # Semantic matches first
+        return (1, 0)  # Others after
+    
+    return sorted(results, key=sort_key)
+
+
 @frappe.whitelist(allow_guest=True)
 @handle_api_errors
 def search_products(query="", page=1, page_size=20, category=None, brand=None,
                     min_price=None, max_price=None, in_stock=None,
                     lat=None, lng=None):
     """
-    Enhanced product search with full-text matching, fuzzy fallback,
-    and relevance scoring.
+    Enhanced product search with:
+    - Full-text matching (MariaDB FULLTEXT)
+    - Fuzzy matching for typos (Soundex)
+    - Semantic search (Qdrant + Sentence Transformers)
+    - Location-based vendor filtering
+
+    Semantic search enables meaning-based matching:
+      - "chiya" → matches "tea"
+      - "mobile" → matches "phone"
+      - Typos handled automatically
     """
     from saathimart.api.utils import guest_rate_limit
     guest_rate_limit("search", limit=30, window_seconds=60)
@@ -32,6 +80,11 @@ def search_products(query="", page=1, page_size=20, category=None, brand=None,
 
     if not query and not category and not brand:
         return {"results": [], "total": 0, "page": page, "page_size": page_size}
+
+    # Step 1: Get product IDs via semantic search (if query provided)
+    semantic_ids = []
+    if query:
+        semantic_ids = _get_product_ids_by_semantic_search(query, limit=page * page_size)
 
     # Build the search query
     conditions = ["p.status = 'Active'"]
@@ -117,6 +170,10 @@ def search_products(query="", page=1, page_size=20, category=None, brand=None,
 
     search_params = []
     results = frappe.db.sql(sql, search_params + params + [page_size, offset], as_dict=True)
+
+    # Reorder results by semantic search priority if available
+    if semantic_ids:
+        results = _filter_results_by_semantic_order(results, semantic_ids)
 
     # Enrich with the best active vendor listing for this location, rather
     # than whichever listing the database happens to return first.

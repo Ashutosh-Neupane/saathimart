@@ -479,6 +479,14 @@ def track_order(order_id, customer_phone=None):
 @frappe.whitelist()
 @handle_api_errors
 def refund_order(order_id, amount=None, reason=""):
+    """
+    Process a refund for an order. Handles:
+      1. Status flip + Payment Log
+      2. Stock reservation release
+      3. Clearing account reversal (GL entries)
+      4. Vendor notification (order.cancelled event)
+      5. Coupon usage reversal
+    """
     doc = frappe.get_doc("Order", order_id)
     if "SM Admin" not in frappe.get_roles():
         frappe.throw(_("Not permitted"), frappe.PermissionError)
@@ -487,9 +495,56 @@ def refund_order(order_id, amount=None, reason=""):
     if doc.payment_status == "Refunded":
         frappe.throw(_("Order already refunded"))
 
+    was_paid = doc.payment_status == "Paid"
     refund_amount = flt(amount) if amount else flt(doc.grand_total)
     refund_amount = min(refund_amount, flt(doc.grand_total))
 
+    # 1. Release stock reservation
+    try:
+        from saathimart.api.stock import release_reservation
+        for item in doc.items:
+            if item.vendor:
+                release_reservation(item.vendor, item.product, item.qty)
+    except Exception:
+        frappe.log_error(frappe.get_traceback(), f"Stock release failed for refund {order_id}")
+
+    # 2. Clearing account reversal (GL entries) — only if payment was made
+    if was_paid:
+        try:
+            from saathimart.api.accounting import create_refund_gl_entries
+            create_refund_gl_entries(order_id, refund_amount, reason)
+        except Exception:
+            frappe.log_error(frappe.get_traceback(), f"GL reversal failed for refund {order_id}")
+
+    # 3. Notify vendor(s) via order.cancelled event
+    try:
+        from saathimart.events.publisher import _enqueue
+        fulfillments = list(doc.vendor_fulfillments or [])
+        if not fulfillments and doc.vendor:
+            fulfillments = [frappe._dict(vendor=doc.vendor)]
+        for f in fulfillments:
+            if not f.vendor:
+                continue
+            vendor_url = frappe.db.get_value("Vendor", f.vendor, "frappe_site_url")
+            if not vendor_url:
+                continue
+            _enqueue("order.cancelled", {
+                "order_id": doc.name,
+                "vendor_id": f.vendor,
+                "reason": reason or "Refunded by admin",
+            }, target_site=vendor_url, target_vendor=f.vendor)
+    except Exception:
+        frappe.log_error(frappe.get_traceback(), f"Vendor cancel notification failed for {order_id}")
+
+    # 4. Revoke coupon usage
+    if doc.coupon_code:
+        try:
+            from saathimart.saathimart.doctype.coupon.coupon import decrement_coupon_usage
+            decrement_coupon_usage(doc.coupon_code, order=order_id)
+        except Exception:
+            frappe.log_error(frappe.get_traceback(), f"Coupon revoke failed for {order_id}")
+
+    # 5. Status flip + Payment Log
     doc.payment_status = "Refunded"
     doc.status = "Refunded"
     doc.notes = (doc.notes or "") + f"\nRefund: NPR {refund_amount} — {reason}".strip()

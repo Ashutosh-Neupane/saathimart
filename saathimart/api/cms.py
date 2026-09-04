@@ -490,12 +490,26 @@ def get_offers(status=None):
         "Offer",
         filters=filters,
         fields=["name", "title", "slug", "subtitle", "image", "mobile_image",
-                "valid_from", "valid_to", "sort_order", "meta_title", "meta_description"],
+                "valid_from", "valid_to", "sort_order", "meta_title", "meta_description",
+                "coupon_code", "applicable_products", "applicable_categories"],
         order_by="sort_order asc",
     )
 
-    frappe.cache().set_value(cache_key, offers, expires_in_sec=300)
-    return offers
+    result = []
+    for offer in offers:
+        doc = frappe.get_doc("Offer", offer["name"])
+        if doc.valid_from and str(doc.valid_from) > today():
+            continue
+        if doc.valid_to and str(doc.valid_to) < today():
+            continue
+        if offer.get("highlights"):
+            offer["highlights"] = [h.strip() for h in offer["highlights"].split("\n") if h.strip()]
+        else:
+            offer["highlights"] = []
+        result.append(offer)
+
+    frappe.cache().set_value(cache_key, result, expires_in_sec=300)
+    return result
 
 
 @frappe.whitelist(allow_guest=True)

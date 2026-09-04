@@ -101,6 +101,19 @@
    "fieldname": "applicable_vendors",
    "fieldtype": "Small Text",
    "label": "Applicable Vendors (comma separated, blank = all)"
+  },
+  {
+   "fieldname": "section_accounting",
+   "fieldtype": "Section Break",
+   "label": "Accounting"
+  },
+  {
+   "fieldname": "absorption_type",
+   "fieldtype": "Select",
+   "label": "Discount Absorbed By",
+   "options": "Platform\nVendor",
+   "default": "Platform",
+   "description": "Who absorbs this coupon's discount: Platform (SaathiMart reimburses vendor) or Vendor (reduces vendor's settlement)"
   }
  ],
  "title_field": "coupon_code",
@@ -137,7 +150,9 @@
   "section_validity",
   "valid_from",
   "valid_to",
-  "applicable_vendors"
+  "applicable_vendors",
+  "section_accounting",
+  "absorption_type"
  ],
  "sort_field": "modified",
  "sort_order": "DESC",

@@ -11,6 +11,8 @@ requires-python = ">=3.10"
 license = {text = "MIT"}
 dependencies = [
     "requests>=2.31.0",
+    "qdrant-client>=1.7.0",
+    "sentence-transformers>=2.2.0",
 ]
 
 [tool.bench.frappe-dependencies]

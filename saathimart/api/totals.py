@@ -6,6 +6,7 @@ Mirrors ERPNext's calculation order exactly:
   2. Net total     (sum of item amounts)
   3. Taxes         (each tax row computed on net_total or previous_row_total)
   4. Grand total   (net_total + total_taxes)
+  4.5. Offer Coupon (resolved from offer_slug, applied before explicit coupon)
   5. Coupon        (percentage or fixed, applied on net_total)
   6. Onboarding    (zone-configured first/second-order discount, applied after coupon)
   7. Membership    (per-line, category-aware; applied after coupon + onboarding)
@@ -54,10 +55,7 @@ def calculate_taxes_and_totals(doc):
     _calculate_membership_discount(doc)
     _calculate_loyalty_discount(doc)
     _calculate_grand_total(doc)
-    _round_totals(doc)
-
-
-# ── Step 1: item amounts ──────────────────────────────────────────────────────
+    _round_totals(doc) ──────────────────────────────────────────────────────
 
 def _calculate_item_amounts(doc):
     for item in doc.get("items") or []:
@@ -103,9 +101,29 @@ def _calculate_taxes(doc):
     _set(doc, "total_taxes", rounded(total_taxes, 2))
 
 
-# ── Step 4: coupon discount ───────────────────────────────────────────────────
+# ── Step 4: offer coupon (resolved from offer_slug) ─────────────────────────────
+
+def _resolve_offer_coupon(doc):
+    """If an offer_slug is present, resolve the associated coupon_code and
+    set it so Step 4 (Coupon) picks it up automatically."""
+    offer_slug = doc.get("offer_slug") or ""
+    if not offer_slug:
+        return
+
+    offer = frappe.db.get_value(
+        "Offer", {"slug": offer_slug, "status": "Published", "is_active": 1},
+        ["name", "coupon_code"], as_dict=True,
+    )
+    if offer and offer.get("coupon_code"):
+        _set(doc, "offer_coupon_code", offer.coupon_code)
+        if not doc.get("coupon_code"):
+            _set(doc, "coupon_code", offer.coupon_code)
+
+
+# ── Step 5: coupon discount ───────────────────────────────────────────────────
 
 def _calculate_coupon_discount(doc):
+    _resolve_offer_coupon(doc)
     coupon_code = doc.get("coupon_code") or ""
     if not coupon_code:
         _set(doc, "coupon_discount", 0.0)

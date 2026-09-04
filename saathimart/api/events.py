@@ -254,6 +254,9 @@ def _handle_inbound(event, payload):
             payload.get("discrepancies") or [],
         )
 
+    elif event == "settlement.received":
+        _apply_settlement_received(payload)
+
     frappe.db.commit()
 
 
@@ -589,6 +592,35 @@ def _apply_barcode_unregister(payload):
     if not vendor or not barcode:
         return
     frappe.db.delete("Vendor Barcode Index", {"vendor": vendor, "barcode": barcode})
+
+
+def _apply_settlement_received(payload):
+    """
+    Vendor confirmed receipt of a settlement (payment). Update the
+    Vendor Payout status so the hub knows the money landed.
+
+    payload keys: payout_id, vendor_id, amount, commission
+    """
+    payout_id = payload.get("payout_id")
+    vendor_id = payload.get("vendor_id")
+    if not payout_id:
+        return
+
+    if not frappe.db.exists("Vendor Payout", payout_id):
+        frappe.log_error(
+            f"settlement.received: unknown payout {payout_id}",
+            "Events Inbound",
+        )
+        return
+
+    # Update payout status to Confirmed (vendor received the money)
+    current = frappe.db.get_value("Vendor Payout", payout_id, "status")
+    if current not in ("Paid", "Confirmed"):
+        frappe.db.set_value("Vendor Payout", payout_id, {
+            "status": "Confirmed",
+            "notes": f"Vendor confirmed receipt. Amount: {payload.get('amount', 0)}, "
+                     f"Commission: {payload.get('commission', 0)}",
+        })
 
 
 @frappe.whitelist(allow_guest=True)

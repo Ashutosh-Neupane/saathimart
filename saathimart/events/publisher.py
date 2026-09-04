@@ -225,6 +225,35 @@ def publish_payment_received(order_id, amount=None, gateway="", reference=""):
            event_id=f"payment.received.{doc.name}.{f.vendor}")
 
 
+def publish_settlement(vendor_name, payout_id, amount, commission,
+                        coupon_reimbursement=0, loyalty_reimbursement=0):
+    """
+    The hub has settled (paid) a vendor. Push settlement.completed to the
+    vendor so they can create their own Journal Entry (Bank debit,
+    Commission expense debit, Clearing Account credit).
+
+    Three-party clearing house model: this is the ONLY event that causes
+    cash to hit the vendor's books.
+    """
+    vendor_url = frappe.db.get_value("Vendor", vendor_name, "frappe_site_url")
+    if not vendor_url:
+        frappe.log_error(
+            f"settlement.completed: vendor {vendor_name} has no frappe_site_url",
+            "Publisher",
+        )
+        return
+
+    _enqueue("settlement.completed", {
+        "vendor_id": vendor_name,
+        "payout_id": payout_id,
+        "amount": flt(amount),
+        "commission": flt(commission),
+        "coupon_reimbursement": flt(coupon_reimbursement),
+        "loyalty_reimbursement": flt(loyalty_reimbursement),
+    }, target_site=vendor_url, target_vendor=vendor_name,
+       event_id=f"settlement.completed.{payout_id}")
+
+
 def on_product_created(doc, method):
     """
     A new Product was just created on the hub. Broadcast it to every vendor

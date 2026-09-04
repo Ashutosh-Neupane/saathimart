@@ -95,6 +95,35 @@ def create_vendor_payout(vendor, from_date, to_date, payment_reference="", notes
         raise
     frappe.db.commit()
 
+    # Create settlement Journal Entry in accounting
+    try:
+        from saathimart.api.accounting import create_settlement_journal_entry, generate_settlement_statement
+        statement = generate_settlement_statement(vendor, from_date, to_date)
+        create_settlement_journal_entry(
+            vendor_name=vendor,
+            payout_id=doc.name,
+            amount=doc.payout_amount,
+            commission=doc.commission_amount,
+            coupon_reimbursement=statement.get("platform_coupon_discount", 0),
+            loyalty_reimbursement=statement.get("loyalty_discount", 0),
+        )
+        # Publish settlement.completed to vendor so they can create their
+        # own Journal Entry (Bank debit, Commission expense, Clearing credit)
+        from saathimart.events.publisher import publish_settlement
+        publish_settlement(
+            vendor_name=vendor,
+            payout_id=doc.name,
+            amount=doc.payout_amount,
+            commission=doc.commission_amount,
+            coupon_reimbursement=statement.get("platform_coupon_discount", 0),
+            loyalty_reimbursement=statement.get("loyalty_discount", 0),
+        )
+    except Exception:
+        frappe.log_error(
+            frappe.get_traceback(),
+            f"Settlement Journal Entry failed for payout {doc.name}"
+        )
+
     return {
         "payout_id": doc.name,
         "gross_sales": doc.total_sales,

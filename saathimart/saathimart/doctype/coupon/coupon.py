@@ -55,11 +55,11 @@ def validate_coupon(coupon_code, order_subtotal, customer_phone=None):
         discount = order_subtotal * (doc.discount_percentage / 100)
         if doc.max_discount_amount:
             discount = min(discount, doc.max_discount_amount)
-        return {"discount": round(discount, 2), "free_delivery": False}
+        return {"discount": round(discount, 2), "discount_type": "percentage", "free_delivery": False}
     elif doc.coupon_type == "Fixed Amount":
-        return {"discount": round(min(doc.discount_amount, order_subtotal), 2), "free_delivery": False}
+        return {"discount": round(min(doc.discount_amount, order_subtotal), 2), "discount_type": "fixed", "free_delivery": False}
     else:  # Free Delivery
-        return {"discount": 0, "free_delivery": True}
+        return {"discount": 0, "discount_type": "free_delivery", "free_delivery": True}
 
 
 def increment_coupon_usage(coupon_code, order=None, customer_phone=None,
@@ -94,6 +94,20 @@ def increment_coupon_usage(coupon_code, order=None, customer_phone=None,
         "discount_amount": discount_amount or 0,
         "used_at": now_datetime(),
     }).insert(ignore_permissions=True)
+
+
+def decrement_coupon_usage(coupon_code, order=None):
+    """Reverse a coupon usage — called when an order is refunded/cancelled.
+
+    Decrements the global counter and removes the Coupon Usage row so the
+    customer's per-user limit is freed up.
+    """
+    frappe.db.sql(
+        "UPDATE `tabCoupon` SET used_count = GREATEST(used_count - 1, 0) WHERE coupon_code = %(coupon_code)s",
+        {"coupon_code": coupon_code},
+    )
+    if order:
+        frappe.db.delete("Coupon Usage", {"order": order})
 
 
 @frappe.whitelist(allow_guest=True)

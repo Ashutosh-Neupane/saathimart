@@ -14,12 +14,19 @@ Cache behavior:
     - TTL = configurable per endpoint
     - Invalidation = version counter (not pattern delete)
     - Stale-while-revalidate: serves stale, refreshes in background
+    - Cache locking: only one request triggers DB query during cache miss
+    - Async refresh: cache expires, serves stale while fetching fresh
 """
 import hashlib
 import json
 import functools
 import frappe
 from frappe.utils import cint
+import time
+import random
+
+
+LOCK_TIMEOUT = 5  # Seconds
 
 
 def _make_cache_key(prefix, args, kwargs):
@@ -42,6 +49,11 @@ def _make_cache_key(prefix, args, kwargs):
 
 def cached_response(ttl=60, key_prefix="endpoint", allow_guest=True):
     """Decorator that caches whitelisted endpoint responses in Redis.
+
+    Implements:
+    - Cache-aside pattern with version-based invalidation
+    - Cache locking to prevent thundering herd
+    - Stale-while-revalidate for smooth cache expiry
 
     Args:
         ttl: Time-to-live in seconds (default 60)
@@ -67,26 +79,63 @@ def cached_response(ttl=60, key_prefix="endpoint", allow_guest=True):
             cache = frappe.cache()
             key = _make_cache_key(key_prefix, args, kwargs)
 
-            # Check version counter for invalidation
+            # Keys
             version_key = f"{key}:v"
             data_key = f"{key}:d"
+            lock_key = f"{key}:lock"
+            refresh_key = f"{key}:refresh"
 
-            # Try to get cached data
-            cached = cache.get_value(data_key)
-            if cached is not None:
-                return cached
+            # Get current version
+            current_version = cint(cache.get_value(version_key) or 0)
 
-            # Cache miss — call the function
-            result = fn(*args, **kwargs)
+            # Try to get cached data with version
+            cached_with_version = cache.get_value(data_key)
+            
+            # Stale-while-revalidate: if data exists but is stale, return it
+            # and trigger background refresh
+            if cached_with_version is not None:
+                cached_data, cached_version = cached_with_version
+                if cached_version == current_version:
+                    return cached_data
+                # Data is stale but still usable - serve stale, refresh in background
+                # Only one request should refresh
+                if cache.setnx(lock_key, "1"):
+                    cache.setex(lock_key, LOCK_TIMEOUT, "1")
+                    # Trigger background refresh
+                    try:
+                        result = fn(*args, **kwargs)
+                        if isinstance(result, (dict, list)):
+                            cache.set_value(data_key, (result, current_version), expires_in_sec=ttl)
+                    except Exception:
+                        pass
+                    finally:
+                        cache.delete_key(lock_key)
+                return cached_data
 
-            # Store in cache (only dicts and lists)
-            if isinstance(result, (dict, list)):
+            # Cache miss with lock
+            # First, try to acquire lock
+            if cache.setnx(lock_key, "1"):
+                cache.setex(lock_key, LOCK_TIMEOUT, "1")
                 try:
-                    cache.set_value(data_key, result, expires_in_sec=ttl)
+                    result = fn(*args, **kwargs)
+                    if isinstance(result, (dict, list)):
+                        cache.set_value(data_key, (result, current_version), expires_in_sec=ttl)
+                    return result
                 except Exception:
-                    pass  # Don't fail if cache write fails
-
-            return result
+                    return fn(*args, **kwargs)  # Retry without cache
+                finally:
+                    cache.delete_key(lock_key)
+            else:
+                # Another request is refreshing, wait briefly then retry
+                time.sleep(random.uniform(0.01, 0.05))
+                # Try to get cached data again
+                cached_with_version = cache.get_value(data_key)
+                if cached_with_version is not None:
+                    cached_data, cached_version = cached_with_version
+                    if cached_version == current_version:
+                        return cached_data
+                # Last resort - call directly (this may hit DB)
+                return fn(*args, **kwargs)
 
         # Expose invalidation method on the wrapper
         wrapper.invalidate = lambda **kw: _invalidate_cache(key_prefix, kw)
@@ -101,7 +150,10 @@ def _invalidate_cache(prefix, kwargs):
     try:
         cache = frappe.cache()
         key = _make_cache_key(prefix, (), kwargs)
-        cache.delete_key(f"{key}:d")
+        version_key = f"{key}:v"
+        # Increment version to invalidate cache entries
+        version = cint(cache.get_value(version_key) or 0)
+        cache.set_value(version_key, version + 1, expires_in_sec=86400)
     except Exception:
         pass
 
@@ -123,11 +175,11 @@ def invalidate_all(prefix):
 
 # ── Pre-configured cache decorators for common patterns ──────────────────────
 
-# Product list: cache 30s (changes when stock/prices update)
-cache_product_list = cached_response(ttl=30, key_prefix="product_list")
+# Product list: cache 3600s (1 hour - very stable data)
+cache_product_list = cached_response(ttl=3600, key_prefix="product_list")
 
-# Product detail: cache 60s (changes when reviews/stock update)
-cache_product_detail = cached_response(ttl=60, key_prefix="product_detail")
+# Product detail: cache 120s (changes when reviews/stock update)
+cache_product_detail = cached_response(ttl=120, key_prefix="product_detail")
 
 # Categories: cache 300s (rarely change)
 cache_categories = cached_response(ttl=300, key_prefix="categories")

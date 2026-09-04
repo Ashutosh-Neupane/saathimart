@@ -56,14 +56,21 @@ doc_events = {
             "saathimart.api.audit.log_order_update",
         ],
     },
+    "Payment Log": {
+        "after_insert": [
+            "saathimart.api.accounting.on_payment_log_created",
+        ],
+    },
     "Product": {
         "after_insert": [
             "saathimart.events.publisher.on_product_created",
             "saathimart.api.audit.log_product_update",
+            "saathimart.api.vector_search.index_product",
         ],
         "on_update": [
             "saathimart.events.publisher.on_product_updated",
             "saathimart.api.audit.log_product_update",
+            "saathimart.api.vector_search.index_product",
         ],
         "on_trash":     "saathimart.events.publisher.on_product_deleted",
     },

@@ -55,7 +55,7 @@ def calculate_taxes_and_totals(doc):
     _calculate_membership_discount(doc)
     _calculate_loyalty_discount(doc)
     _calculate_grand_total(doc)
-    _round_totals(doc) ──────────────────────────────────────────────────────
+    _round_totals(doc)
 
 def _calculate_item_amounts(doc):
     for item in doc.get("items") or []:

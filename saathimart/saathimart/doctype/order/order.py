@@ -1,5 +1,6 @@
 import frappe
 from frappe.model.document import Document
+from frappe.utils import flt
 from saathimart.api.totals import calculate_taxes_and_totals
 
 
@@ -14,6 +15,21 @@ class Order(Document):
     """
 
     def validate(self):
+        # Validation: Order must have at least one item
+        if not self.items or len(self.items) == 0:
+            frappe.throw(_("Order must contain at least one item"), title="Empty Order")
+
+        # Validation: All items must have positive quantity and rate
+        for item in self.items:
+            if flt(item.qty) <= 0:
+                frappe.throw(_("Item '{0}' must have a positive quantity").format(item.product), title="Invalid Quantity")
+            if flt(item.rate) < 0:
+                frappe.throw(_("Item '{0}' must have a non-negative rate").format(item.product), title="Invalid Rate")
+
+        # Validation: Grand total must be positive
+        if flt(self.grand_total) <= 0:
+            frappe.throw(_("Order grand total must be positive"), title="Invalid Total")
+
         # Run the full ERPNext-style totals engine on every save
         calculate_taxes_and_totals(self)
 

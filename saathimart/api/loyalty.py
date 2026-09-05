@@ -201,7 +201,21 @@ def redeem_points(customer_email: str, order_name: str, points: float, discount:
     """Record a redemption entry after order is placed."""
     s = frappe.get_single("Settings")
     if not s.loyalty_program:
-        return
+        frappe.throw(_("Loyalty program not configured"))
+
+    # Validation: Points must be positive
+    if flt(points) <= 0:
+        frappe.throw(_("Redemption points must be positive"))
+
+    # Validation: Discount must be positive
+    if flt(discount) <= 0:
+        frappe.throw(_("Redemption discount must be positive"))
+
+    # Validation: Points must not exceed available balance
+    balance = get_balance(customer_email)
+    if flt(points) > balance:
+        frappe.throw(_("Insufficient points. Available: {0}, Attempted: {1}").format(
+            round(balance, 2), round(points, 2)))
 
     entry = frappe.new_doc("Loyalty Point Entry")
     entry.customer_email = customer_email

@@ -183,16 +183,6 @@
    "label": "Meta"
   },
   {
-   "fieldname": "source_site",
-   "fieldtype": "Data",
-   "label": "Source Site"
-  },
-  {
-   "fieldname": "cart_id",
-   "fieldtype": "Data",
-   "label": "Cart ID"
-  },
-  {
    "fieldname": "notes",
    "fieldtype": "Small Text",
    "label": "Notes"
@@ -398,8 +388,6 @@
   "vendor",
   "vendor_order_id",
   "section_meta",
-  "source_site",
-  "cart_id",
   "notes",
   "section_payment_detail",
   "payment_reference",

@@ -156,8 +156,6 @@ def checkout(session_id, customer_name, customer_phone, delivery_address,
     order.coupon_code      = coupon_code or ""
     order.loyalty_points_redeemed = flt(loyalty_points)
     order.notes            = notes or ""
-    order.source_site      = cart.source_site or ""
-    order.cart_id          = cart.name
     order.vendor            = next(iter(vendor_groups.keys()), "") if vendor_groups else ""
     if customer_lat is not None:
         order.delivery_lat = flt(customer_lat)

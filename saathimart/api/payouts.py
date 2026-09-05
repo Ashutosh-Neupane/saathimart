@@ -129,7 +129,7 @@ def create_vendor_payout(vendor, from_date, to_date, payment_reference="", notes
         "gross_sales": doc.total_sales,
         "commission_amount": doc.commission_amount,
         "payout_amount": doc.payout_amount,
-        "fulfillments_count": len(doc.orders),
+        "fulfillments_count": doc.fulfillments_count or 0,
     }
 
 

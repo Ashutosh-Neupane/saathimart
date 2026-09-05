@@ -56,30 +56,32 @@ class VendorPayout(Document):
         if not fulfillments:
             frappe.throw(_("Nothing outstanding to pay {0} for this period").format(self.vendor))
 
-        self.orders = []
+        # Track claimed fulfillments and accumulate sales total.
         self.total_sales = 0
+        orders_count = 0
         for f in fulfillments:
-            self.append("orders", {
-                "order_id": f.order_id,
-                "customer_name": f.customer_name,
-                "subtotal": f.subtotal,
-                "delivered_at": f.delivered_at,
-            })
             self.total_sales = flt(self.total_sales) + flt(f.subtotal)
+            orders_count += 1
 
+        self.fulfillments_count = orders_count
         self.save(ignore_permissions=True)
 
         for f in fulfillments:
             frappe.db.set_value("Vendor Fulfillment", f.name, "vendor_payout", self.name)
 
         return {
-            "orders_count": len(fulfillments),
+            "orders_count": orders_count,
             "total_sales": self.total_sales,
             "payout_amount": self.payout_amount,
         }
 
     def on_trash(self):
-        """Release this payout's fulfillments so they're outstanding again."""
+        """Release this payout's fulfillments so they're outstanding again.
+
+        fulfillments_count (an Int mirror of the now-deleted child table) is
+        cleared to keep the record honest on re-calculation.
+        """
         frappe.db.set_value(
             "Vendor Fulfillment", {"vendor_payout": self.name}, "vendor_payout", None
         )
+        frappe.db.set_value(self.doctype, self.name, "fulfillments_count", 0)

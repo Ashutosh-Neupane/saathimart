@@ -13,7 +13,6 @@
   "is_active",
   "column_break_1",
   "rollout_percentage",
-  "enabled_for_users",
   "start_date",
   "end_date",
   "condition"
@@ -56,12 +55,6 @@
    "label": "Rollout Percentage",
    "default": "100",
    "description": "Percentage of users to enable this feature for (0-100)"
-  },
-  {
-   "fieldname": "enabled_for_users",
-   "fieldtype": "Table MultiSelect",
-   "label": "Enabled for Users",
-   "options": "SM Feature Flag User"
   },
   {
    "fieldname": "start_date",

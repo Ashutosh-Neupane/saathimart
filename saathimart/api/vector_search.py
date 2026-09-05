@@ -258,17 +258,29 @@ def semantic_search(query, limit=10):
 def keyword_search(query, limit=10):
     """Fallback keyword search using MariaDB.
 
-    This is the existing search logic when Qdrant is unavailable.
+    Direct SQL on purpose: this path runs when Qdrant/the model are
+    unavailable, and search_products() itself re-enters semantic_search(),
+    which falls back to keyword_search() again — calling it here would
+    recurse until RecursionError. Keep this a leaf query.
     """
     if not query:
         return []
 
-    # Use the existing search_products logic for fallback
-    from saathimart.api.search import search_products
-
     try:
-        result = search_products(query=query, page=1, page_size=limit)
-        return [r.get("name") for r in result.get("results", [])]
+        rows = frappe.db.sql(
+            """
+            SELECT name FROM `tabProduct`
+            WHERE status = 'Active'
+              AND (product_name LIKE %(like)s
+                   OR slug LIKE %(like)s
+                   OR tags LIKE %(like)s)
+            ORDER BY product_name ASC
+            LIMIT %(limit)s
+            """,
+            {"like": f"%{query}%", "limit": limit},
+            as_dict=True,
+        )
+        return [r.name for r in rows]
     except Exception as e:
         frappe.log_error(f"Keyword search failed: {e}", "vector_search")
         return []

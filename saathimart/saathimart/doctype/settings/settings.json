@@ -267,6 +267,71 @@
    "label": "Retain Orders (days)",
    "default": "365",
    "description": "Archive/delete delivered/cancelled orders older than this"
+  },
+  {
+   "fieldname": "section_erpnext",
+   "fieldtype": "Section Break",
+   "label": "ERPNext Integration",
+   "description": "Connect saathimart to a separate ERPNext site for daily accounting sync. Orders, payments, and customers are pushed once per day."
+  },
+  {
+   "fieldname": "erpnext_site_url",
+   "fieldtype": "Data",
+   "label": "ERPNext Site URL",
+   "description": "Full URL of the ERPNext site, e.g. https://erp.saathimart.com"
+  },
+  {
+   "fieldname": "erpnext_api_key",
+   "fieldtype": "Data",
+   "label": "ERPNext API Key",
+   "description": "API Key from ERPNext user (User > API Access)"
+  },
+  {
+   "fieldname": "erpnext_api_secret",
+   "fieldtype": "Password",
+   "label": "ERPNext API Secret"
+  },
+  {
+   "fieldname": "col_break_erpnext",
+   "fieldtype": "Column Break"
+  },
+  {
+   "fieldname": "erpnext_company",
+   "fieldtype": "Data",
+   "label": "ERPNext Company",
+   "description": "Company name in ERPNext, e.g. SaathiMart Pvt. Ltd."
+  },
+  {
+   "fieldname": "erpnext_default_warehouse",
+   "fieldtype": "Data",
+   "label": "ERPNext Default Warehouse",
+   "description": "Default warehouse for Sales Order items, e.g. Stores - SM"
+  },
+  {
+   "fieldname": "erpnext_selling_price_list",
+   "fieldtype": "Data",
+   "label": "ERPNext Selling Price List",
+   "default": "Standard Selling",
+   "description": "Price list to use on Sales Orders"
+  },
+  {
+   "fieldname": "erpnext_taxes_template",
+   "fieldtype": "Data",
+   "label": "ERPNext Taxes Template",
+   "description": "Sales Taxes and Charges Template name, e.g. Nepal VAT 13%"
+  },
+  {
+   "fieldname": "erpnext_delivery_charge_account",
+   "fieldtype": "Data",
+   "label": "ERPNext Delivery Charge Account",
+   "description": "Account head for delivery charges on Sales Orders, e.g. Delivery Charges - SM"
+  },
+  {
+   "fieldname": "erpnext_sync_enabled",
+   "fieldtype": "Check",
+   "label": "Enable Daily Sync",
+   "default": "0",
+   "description": "Enable the daily batch sync from saathimart to ERPNext. Disable to pause syncing."
   }
  ],
  "permissions": [
@@ -328,7 +393,18 @@
   "retain_webhook_events_days",
   "retain_sync_outbox_days",
   "retain_cart_days",
-  "retain_orders_days"
+  "retain_orders_days",
+  "section_erpnext",
+  "erpnext_site_url",
+  "erpnext_api_key",
+  "erpnext_api_secret",
+  "col_break_erpnext",
+  "erpnext_company",
+  "erpnext_default_warehouse",
+  "erpnext_selling_price_list",
+  "erpnext_taxes_template",
+  "erpnext_delivery_charge_account",
+  "erpnext_sync_enabled"
  ],
  "sort_field": "modified",
  "sort_order": "DESC",

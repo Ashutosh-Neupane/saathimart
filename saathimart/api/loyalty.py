@@ -263,3 +263,143 @@ def preview_redemption(points_to_redeem, order_subtotal):
         return {"ok": False, "error": "Login required to redeem points",
                 "error_code": "UNAUTHORIZED"}
     return calculate_redemption_discount(email, flt(points_to_redeem), flt(order_subtotal))
+
+
+# ── Referral Program ──────────────────────────────────────────────────────────
+
+def apply_referral(referrer_email: str, new_customer_email: str):
+    """Award bonus points to a referrer when a new customer places their first order.
+
+    Idempotent — uses a remarks marker so the same referral can never be
+    credited twice regardless of how many times this is called.
+    """
+    if not referrer_email or not new_customer_email:
+        return
+
+    s = frappe.get_single("Settings")
+    if not s.enable_loyalty or not s.loyalty_program:
+        return
+    if not frappe.db.get_value("Loyalty Program", s.loyalty_program, "is_active"):
+        return
+
+    marker = f"referral:{new_customer_email}"
+    if frappe.db.exists("Loyalty Point Entry", {
+        "customer_email": referrer_email,
+        "source": "referral",
+        "remarks": marker,
+    }):
+        return  # already rewarded
+
+    try:
+        entry = frappe.new_doc("Loyalty Point Entry")
+        entry.customer_email = referrer_email
+        entry.program = s.loyalty_program
+        entry.points = 100
+        entry.entry_type = "Earned"
+        entry.source = "referral"
+        entry.remarks = marker
+        entry.insert(ignore_permissions=True)
+        frappe.db.commit()
+    except Exception:
+        frappe.log_error(frappe.get_traceback(), "Loyalty referral bonus failed")
+
+
+# ── Birthday Rewards ──────────────────────────────────────────────────────────
+
+def check_birthday_rewards():
+    """Daily cron — award 50 bonus points to customers whose birthday is today.
+
+    Safe to run multiple times: a per-year remarks marker prevents
+    double-crediting within the same calendar year.
+    """
+    from frappe.utils import getdate
+    today = getdate()
+    month_day = today.strftime("%m-%d")
+
+    s = frappe.get_single("Settings")
+    if not s.enable_loyalty or not s.loyalty_program:
+        return
+    if not frappe.db.get_value("Loyalty Program", s.loyalty_program, "is_active"):
+        return
+
+    customers = frappe.db.sql("""
+        SELECT name, email_id
+        FROM   `tabUser`
+        WHERE  DATE_FORMAT(birthday, '%%m-%%d') = %s
+          AND  email_id IS NOT NULL
+          AND  email_id != ''
+    """, (month_day,), as_dict=True)
+
+    for c in customers:
+        if not c.email_id:
+            continue
+        marker = f"birthday:{today.year}"
+        if frappe.db.exists("Loyalty Point Entry", {
+            "customer_email": c.email_id,
+            "source": "birthday",
+            "remarks": marker,
+        }):
+            continue  # already rewarded this year
+
+        try:
+            entry = frappe.new_doc("Loyalty Point Entry")
+            entry.customer_email = c.email_id
+            entry.program = s.loyalty_program
+            entry.points = 50
+            entry.entry_type = "Earned"
+            entry.source = "birthday"
+            entry.remarks = marker
+            entry.insert(ignore_permissions=True)
+        except Exception:
+            frappe.log_error(frappe.get_traceback(), "Loyalty birthday bonus failed")
+
+    frappe.db.commit()
+
+
+# ── Loyalty Dashboard ─────────────────────────────────────────────────────────
+
+@frappe.whitelist()
+@handle_api_errors
+def get_loyalty_dashboard(customer_email: str = None):
+    """Return a full loyalty dashboard for the given customer.
+
+    Includes tier, balance, earn/redeem rates, next-tier progress and
+    recent transaction history. Staff may query any customer; regular
+    customers may only query themselves.
+    """
+    if customer_email and customer_email != frappe.session.user:
+        if not {"SM Admin", "SM Vendor"} & set(frappe.get_roles()):
+            frappe.throw(_("Not permitted"), frappe.PermissionError)
+        email = customer_email
+    else:
+        email = frappe.session.user
+
+    if email == "Guest":
+        frappe.throw(_("Login required"), frappe.PermissionError)
+
+    s = frappe.get_single("Settings")
+    if not s.enable_loyalty or not s.loyalty_program:
+        return {"enabled": False, "balance": 0, "tier": "Bronze"}
+
+    tier_info = get_tier(email, s.loyalty_program)
+    program   = frappe.get_doc("Loyalty Program", s.loyalty_program)
+
+    # Recent history (last 10 entries)
+    history = frappe.get_all(
+        "Loyalty Point Entry",
+        filters={"customer_email": email},
+        fields=["points", "entry_type", "order", "source", "creation"],
+        order_by="creation desc",
+        limit=10,
+    )
+
+    return {
+        "enabled": True,
+        "balance": tier_info["balance"],
+        "current_tier": tier_info["current_tier"],
+        "next_tier": tier_info["next_tier"],
+        "collection_factor": flt(program.collection_factor),
+        "redemption_factor": flt(program.redemption_factor),
+        "min_points_to_redeem": flt(program.min_points_to_redeem),
+        "history": history,
+    }

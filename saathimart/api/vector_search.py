@@ -7,31 +7,53 @@ This module enables semantic search that understands meaning, not just exact mat
 - Typos are handled automatically
 
 For Nepali language support, we use a multilingual model trained on multiple languages.
+
+NOTE: sentence-transformers and qdrant-client are optional dependencies.
+If they are not installed, all functions fall back gracefully to keyword search.
+Install with:  pip install sentence-transformers qdrant-client
 """
 import frappe
 from frappe.utils import now_datetime
 
+# Optional dependency flags — checked once at import time so every
+# individual function does NOT need its own try/except import block.
+try:
+    from sentence_transformers import SentenceTransformer as _SentenceTransformer
+    _SENTENCE_TRANSFORMERS_AVAILABLE = True
+except ImportError:
+    _SentenceTransformer = None
+    _SENTENCE_TRANSFORMERS_AVAILABLE = False
 
-# Lazy-loaded model and client
+try:
+    from qdrant_client import QdrantClient as _QdrantClient
+    _QDRANT_AVAILABLE = True
+except ImportError:
+    _QdrantClient = None
+    _QDRANT_AVAILABLE = False
+
+# Lazy-loaded model and client (only initialised on first use)
 _model = None
 _client = None
 
 
 def get_model():
-    """Get or create the Sentence Transformers model."""
+    """Get or create the Sentence Transformers model. Returns None if unavailable."""
     global _model
     if _model is not None:
         return _model
 
+    if not _SENTENCE_TRANSFORMERS_AVAILABLE:
+        # Logged once; callers check the return value, no need to spam logs.
+        frappe.logger().warning(
+            "sentence-transformers not installed — semantic search disabled. "
+            "Install with: pip install sentence-transformers"
+        )
+        return None
+
     try:
-        from sentence_transformers import SentenceTransformer
-        # Use multilingual model that supports Nepali
-        # Based on paraphrase-multilingual-MiniLM-L12-v2
-        _model = SentenceTransformer("sentence-transformers/paraphrase-multilingual-MiniLM-L12-v2")
-        frappe.log_error("Vector search model loaded successfully", "vector_search")
-    except ImportError:
-        frappe.log_error("sentence-transformers not installed. Install with: pip install sentence-transformers", "vector_search")
-        _model = None
+        _model = _SentenceTransformer(
+            "sentence-transformers/paraphrase-multilingual-MiniLM-L12-v2"
+        )
     except Exception as e:
         frappe.log_error(f"Failed to load vector search model: {e}", "vector_search")
         _model = None
@@ -40,23 +62,23 @@ def get_model():
 
 
 def get_client():
-    """Get or create the Qdrant client."""
+    """Get or create the Qdrant client. Returns None if unavailable."""
     global _client
     if _client is not None:
         return _client
 
+    if not _QDRANT_AVAILABLE:
+        frappe.logger().warning(
+            "qdrant-client not installed — semantic search disabled. "
+            "Install with: pip install qdrant-client"
+        )
+        return None
+
     try:
-        from qdrant_client import QdrantClient
         host = frappe.conf.get("qdrant_host", "localhost")
         port = frappe.conf.get("qdrant_port", 6333)
-
-        _client = QdrantClient(host=host, port=port)
-        # Test connection
-        _client.get_collections()
-        frappe.log_error("Qdrant client connected successfully", "vector_search")
-    except ImportError:
-        frappe.log_error("qdrant-client not installed. Install with: pip install qdrant-client", "vector_search")
-        _client = None
+        _client = _QdrantClient(host=host, port=port)
+        _client.get_collections()  # verify connection
     except Exception as e:
         frappe.log_error(f"Failed to connect to Qdrant: {e}", "vector_search")
         _client = None
@@ -79,21 +101,19 @@ def create_collection_if_not_exists():
         return False
 
     try:
-        from qdrant_client.models import VectorParams, Distance, CollectionStatus
+        from qdrant_client.models import VectorParams, Distance
 
         collection_name = "products"
         vector_size = get_vector_size()
 
-        # Check if collection exists
         collections = client.get_collections()
         collection_exists = any(c.name == collection_name for c in collections.collections)
 
         if not collection_exists:
             client.recreate_collection(
                 collection_name=collection_name,
-                vectors_config=VectorParams(size=vector_size, distance=Distance.COSINE)
+                vectors_config=VectorParams(size=vector_size, distance=Distance.COSINE),
             )
-            frappe.log_error(f"Created Qdrant collection: {collection_name}", "vector_search")
 
         return True
     except Exception as e:
@@ -101,12 +121,31 @@ def create_collection_if_not_exists():
         return False
 
 
-def index_product(product_id, product_name, description="", category="", brand=""):
+def index_product(doc_or_id, method=None, product_name=None, description="", category="", brand=""):
     """Index a single product in Qdrant for semantic search.
 
+    Can be called two ways:
+      1. As a Frappe doc_event hook:  index_product(doc, method)
+      2. Directly:                    index_product(product_id, product_name=..., ...)
+
     The embedding combines product name, description, category, and brand
-    to enable better semantic matching.
+    to enable better semantic matching. Returns False silently if Qdrant
+    or the model are unavailable — callers must not raise on this.
     """
+    # Called as a doc_event hook — doc is a Frappe Document object
+    if hasattr(doc_or_id, "name"):
+        doc = doc_or_id
+        product_id   = doc.name
+        product_name = doc.product_name or ""
+        description  = doc.description or ""
+        category     = doc.category or ""
+        brand        = doc.brand or ""
+    else:
+        product_id = doc_or_id
+
+    if not product_id or not product_name:
+        return False
+
     model = get_model()
     client = get_client()
 
@@ -114,11 +153,9 @@ def index_product(product_id, product_name, description="", category="", brand="
         return False
 
     try:
-        # Create combined text for embedding
         text = f"{product_name} {description} {category or ''} {brand or ''}"
         embedding = model.encode(text).tolist()
 
-        # Upsert to Qdrant
         client.upsert(
             collection_name="products",
             points=[{
@@ -130,12 +167,12 @@ def index_product(product_id, product_name, description="", category="", brand="
                     "description": description,
                     "category": category,
                     "brand": brand,
-                }
-            }]
+                },
+            }],
         )
-        frappe.db.set_value("Product", product_id, {
-            "indexed_at": now_datetime(),
-        }, update_modified=False)
+        frappe.db.set_value(
+            "Product", product_id, {"indexed_at": now_datetime()}, update_modified=False
+        )
         frappe.db.commit()
         return True
     except Exception as e:

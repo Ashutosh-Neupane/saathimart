@@ -68,8 +68,10 @@ def _preload_listing_data(product_names, customer_lat=None, customer_lng=None):
     rows = frappe.db.sql("""
         SELECT vl.product, vl.name, vl.vendor, vl.price, vl.compare_price,
                vl.track_inventory, vl.delivery_zone, vl.estimated_delivery_minutes,
-               vl.priority, vl.barcode, vl.sku, vl.vendor_product_id, vl.warehouse, vl.allow_backorder
+               vl.priority, vl.barcode, vl.sku, vl.vendor_product_id, vl.warehouse, vl.allow_backorder,
+               COALESCE(NULLIF(v.vendor_name, ''), v.name) AS vendor_name
         FROM `tabVendor Listing` vl
+        JOIN `tabVendor` v ON v.name = vl.vendor
         WHERE vl.product IN %s AND vl.status = 'Active'
         ORDER BY vl.priority DESC, vl.price ASC
     """, (tuple(product_names),), as_dict=True)
@@ -86,16 +88,31 @@ def _preload_listing_data(product_names, customer_lat=None, customer_lng=None):
 
     if all_vendors:
         vs_rows = frappe.db.sql("""
-            SELECT vendor, product, available_qty, reserved_qty, physical_qty
+            SELECT vendor, product, available_qty, reserved_qty, physical_qty,
+                   warehouse, is_default_warehouse
             FROM `tabVendor Stock`
             WHERE product IN %s AND vendor IN %s
         """, (tuple(product_names), tuple(all_vendors)), as_dict=True)
         for r in vs_rows:
-            stock_map.setdefault(r.product, {})[r.vendor] = {
+            # A vendor can hold stock across several warehouse rows. The
+            # vendor-level number shown on browse cards must match what
+            # checkout can actually reserve — the default warehouse row is
+            # the reservation pool (atomic_reserve/_get_vendor_stock both
+            # operate on it), so when multiple rows exist for the same
+            # vendor+product the default row wins. Without this the number
+            # flip-flopped between warehouse rows depending on DB order.
+            is_default = bool(r.is_default_warehouse) or (r.warehouse or "") == "default"
+            entry = {
                 "available_qty": flt(r.available_qty or 0),
                 "reserved_qty": flt(r.reserved_qty or 0),
                 "physical_qty": flt(r.physical_qty or 0),
+                "_is_default": is_default,
             }
+            bucket = stock_map.setdefault(r.product, {}).get(r.vendor)
+            if bucket is None:
+                stock_map[r.product][r.vendor] = entry
+            elif is_default and not bucket.get("_is_default"):
+                stock_map[r.product][r.vendor] = entry
 
         vendor_names_rows = frappe.db.sql("""
             SELECT name, vendor_name, lat, lng, service_radius_km
@@ -151,6 +168,17 @@ def _get_best_vendor_listing(product_name, vendor=None, delivery_zone=None,
         vendor_location_map = {}
         if listings:
             vendor_names = [l.vendor for l in listings if l.vendor]
+            # Hydrate vendor_name from tabVendor so cards never show a blank
+            # store name, even without a customer location (the preloaded
+            # path already JOINs it in — keep both paths consistent).
+            if vendor_names:
+                vname_rows = frappe.db.sql(
+                    "SELECT name, COALESCE(NULLIF(vendor_name, ''), name) AS vendor_name FROM `tabVendor` WHERE name IN %s",
+                    (tuple(vendor_names),), as_dict=True,
+                )
+                vname_map = {r.name: r.vendor_name for r in vname_rows}
+                for l in listings:
+                    l.vendor_name = vname_map.get(l.vendor, l.vendor or "")
             if customer_lat is not None and customer_lng is not None and vendor_names:
                 vendor_location_map = _load_vendor_locations_sql(
                     vendor_names, customer_lat, customer_lng
@@ -168,11 +196,16 @@ def _get_best_vendor_listing(product_name, vendor=None, delivery_zone=None,
         vendor_names = [l.vendor for l in listings if l.vendor]
         if vendor_names:
             rows = frappe.db.sql("""
-                SELECT vendor, available_qty, reserved_qty, physical_qty
+                SELECT vendor, available_qty, reserved_qty, physical_qty,
+                       warehouse, is_default_warehouse
                 FROM `tabVendor Stock`
                 WHERE product = %s AND vendor IN %s
+                ORDER BY is_default_warehouse DESC, warehouse = 'default' DESC
             """, (product_name, tuple(vendor_names)), as_dict=True)
-            stock_map = {r.vendor: r for r in rows}
+            # Prefer the default (reservation) warehouse row when a vendor
+            # splits stock across warehouses — mirrors _preload_listing_data.
+            for r in rows:
+                stock_map.setdefault(r.vendor, r)
     else:
         stock_map = {}
 
@@ -722,6 +755,12 @@ def list_products(category=None, vendor=None, search=None, page=1, page_size=20,
     elif sort == "popularity":
         order_by = "modified desc"
 
+    # NOTE: pagination must NOT happen in SQL here. Location/stock filters
+    # below are vendor-aware, so an item listed only on a far-away vendor
+    # (or one without coordinates) must be dropped BEFORE slicing the page —
+    # otherwise a customer near a store sees an empty first page whenever
+    # the newest products all belong to out-of-range vendors. Fetch up to
+    # a sane cap, filter, then slice in Python.
     products = frappe.get_list(
         "Product",
         filters=filters,
@@ -729,12 +768,11 @@ def list_products(category=None, vendor=None, search=None, page=1, page_size=20,
         fields=["name", "product_name", "slug", "category", "status",
                 "short_description", "tags", "thumbnail", "avg_rating",
                 "review_count", "brand", "has_variants"],
-        limit_start=(page - 1) * page_size,
-        limit_page_length=page_size,
+        limit_page_length=1000,
         order_by=order_by,
     )
 
-    # Batch-load all listing data for this page (eliminates N+1)
+    # Batch-load all listing data for the candidate set (eliminates N+1)
     product_names = [p["name"] for p in products]
     clat = flt(lat) if lat is not None else None
     clng = flt(lng) if lng is not None else None
@@ -829,13 +867,24 @@ def list_products(category=None, vendor=None, search=None, page=1, page_size=20,
     elif sort == "rating":
         filtered.sort(key=lambda x: x.get("avg_rating", 0), reverse=True)
 
-    serialized = [_serialize_product(p, vendor=vendor, delivery_zone=delivery_zone,
-                                     customer_lat=clat, customer_lng=clng) for p in filtered]
+    # Slice AFTER filtering so totals and pages reflect location/stock reality.
+    total = len(filtered)
+    start = (page - 1) * page_size
+    page_items = filtered[start:start + page_size]
+
+    # Pass the preloaded maps through — otherwise _serialize_product
+    # re-resolves every product via the uncached path (a second resolution
+    # per card) AND loses vendor_name, which only the preload hydrates.
+    serialized = [_serialize_product(p, _listings_map=listings_map,
+                                     _stock_map=stock_map,
+                                     _vendor_location_map=vendor_location_map,
+                                     vendor=vendor, delivery_zone=delivery_zone,
+                                     customer_lat=clat, customer_lng=clng) for p in page_items]
 
     # Variant metadata for grid cards — templates show their option chips
     # ("Size: S / M / L") and variant count without loading full variant
-    # listing data. One batched lookup for the whole page.
-    options_map = _get_variant_options_map([p["name"] for p in filtered if p.get("has_variants")])
+    # listing data. One batched lookup for the page slice.
+    options_map = _get_variant_options_map([p["name"] for p in page_items if p.get("has_variants")])
     for card in serialized:
         meta = options_map.get(card.get("name"))
         if meta:
@@ -852,14 +901,14 @@ def list_products(category=None, vendor=None, search=None, page=1, page_size=20,
         "items": serialized,
         "page": page,
         "page_size": page_size,
-        "total": len(serialized),
+        "total": total,
     }, expires_in_sec=60)
 
     return {
         "items": serialized,
         "page": page,
         "page_size": page_size,
-        "total": len(serialized),
+        "total": total,
     }
 
 
@@ -946,7 +995,10 @@ def get_product(slug, vendor=None, delivery_zone=None, lat=None, lng=None, radiu
     if vendor and data.get("vendor"):
         from saathimart.api.warehouses import get_stock_by_warehouse, find_nearest_warehouse
         data["warehouse_stock"] = get_stock_by_warehouse(name)
-        nearest = find_nearest_warehouse(data["vendor"], clat, clng)
+        # Stock-aware: the nearest warehouse shown is the closest one that
+        # can actually fulfil this product (matches select_nearest_warehouse
+        # semantics) rather than the closest empty warehouse.
+        nearest = find_nearest_warehouse(data["vendor"], clat, clng, product=name)
         data["nearest_warehouse"] = nearest
     else:
         data["warehouse_stock"] = {}

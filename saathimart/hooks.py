@@ -164,6 +164,7 @@ doc_events = {
 scheduler_events = {
     "daily": [
         "saathimart.api.loyalty.expire_old_points",
+        "saathimart.api.loyalty.check_birthday_rewards",
         "saathimart.api.membership.expire_memberships",
         "saathimart.api.archival.archive_old_data",
         # Purge expired OTP rows from the verification store.
@@ -180,6 +181,9 @@ scheduler_events = {
         "saathimart.api.push_notifications.cleanup_stale_tokens",
         # SSE: clean up stale connections (10-minute timeout)
         "saathimart.api.sse.cleanup_stale_connections",
+        # Daily sync to ERPNext — pushes paid orders, customers, invoices.
+        # Only runs when Settings.erpnext_sync_enabled = 1.
+        "saathimart.api.erpnext_sync.run_daily_sync",
     ],
     "hourly": [
         "saathimart.api.cart.expire_abandoned_carts",

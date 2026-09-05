@@ -28,44 +28,108 @@ from frappe.utils import flt, nowdate, getdate
 # Created via a setup script or manually in ERPNext desk.
 
 PLATFORM_ACCOUNTS = {
-    "cash_bank":         "Cash/Bank - SM",
-    "revenue":           "Product Revenue - SM",
-    "commission_income":  "Marketplace Commission - SM",
+    "cash_bank":           "Cash/Bank - SM",
+    "revenue":             "Product Revenue - SM",
+    "commission_income":   "Marketplace Commission - SM",
     "platform_coupon_exp": "Platform Coupon Expense - SM",
-    "loyalty_expense":    "Loyalty Points Expense - SM",
-    "delivery_income":    "Delivery Service Income - SM",
-    "clearing_vendor":    "Clearing Account - Vendor - SM",
-    "clearing_logistics": "Clearing Account - Logistics - SM",
-    "vat_output":         "Output VAT - SM",
-    "vat_input":          "Input VAT - SM",
+    "loyalty_expense":     "Loyalty Points Expense - SM",
+    "delivery_income":     "Delivery Service Income - SM",
+    "clearing_vendor":     "Clearing Account - Vendor - SM",
+    "clearing_logistics":  "Clearing Account - Logistics - SM",
+    "vat_output":          "Output VAT - SM",
+    "vat_input":           "Input VAT - SM",
     "accounts_receivable": "Accounts Receivable - SM",
-    "accounts_payable":   "Accounts Payable - SM",
+    "accounts_payable":    "Accounts Payable - SM",
 }
 
 VENDOR_ACCOUNTS = {
-    "cash_bank":         "Cash/Bank - Vendor",
-    "revenue":           "Product Revenue - Vendor",
-    "vat_output":        "Output VAT - Vendor",
-    "vat_input":         "Input VAT - Vendor",
-    "clearing_platform": "Clearing Account - Platform - Vendor",
-    "commission_expense": "Marketplace Commission Expense - Vendor",
+    "cash_bank":              "Cash/Bank - Vendor",
+    "revenue":                "Product Revenue - Vendor",
+    "vat_output":             "Output VAT - Vendor",
+    "vat_input":              "Input VAT - Vendor",
+    "clearing_platform":      "Clearing Account - Platform - Vendor",
+    "commission_expense":     "Marketplace Commission Expense - Vendor",
     "platform_coupon_income": "Platform Coupon Reimbursement - Vendor",
-    "loyalty_income":    "Loyalty Reimbursement - Vendor",
+    "loyalty_income":         "Loyalty Reimbursement - Vendor",
 }
 
+# Fuzzy keyword fallbacks — used when the exact account name from the map
+# above is not found (e.g. company abbreviation differs, or setup_accounts
+# was never run). Mirrors the same pattern in vendor_accounting.py so both
+# sides behave consistently. Each list is tried in order; first non-group
+# leaf match wins.
+_PLATFORM_FUZZY = {
+    "cash_bank":           ["Cash/Bank", "Cash In Hand", "Cash"],
+    "revenue":             ["Product Revenue", "Sales", "Revenue"],
+    "commission_income":   ["Marketplace Commission", "Commission on Sales", "Indirect Income"],
+    "platform_coupon_exp": ["Platform Coupon", "Coupon Expense", "Indirect Expenses"],
+    "loyalty_expense":     ["Loyalty", "Indirect Expenses"],
+    "delivery_income":     ["Delivery Service", "Delivery Charges", "Indirect Income"],
+    "clearing_vendor":     ["Clearing Account - Vendor", "Clearing - Vendor", "Accounts Payable"],
+    "clearing_logistics":  ["Clearing Account - Logistics", "Clearing - Logistics", "Accounts Payable"],
+    "vat_output":          ["Output VAT", "VAT", "Duties and Taxes"],
+    "vat_input":           ["Input VAT", "VAT", "Duties and Taxes"],
+    "accounts_receivable": ["Accounts Receivable", "Debtors"],
+    "accounts_payable":    ["Accounts Payable", "Creditors"],
+}
 
-def _get_account(account_key, entity="platform"):
-    """Get account name from chart of accounts. Falls back to a default if not found."""
-    accounts = PLATFORM_ACCOUNTS if entity == "platform" else VENDOR_ACCOUNTS
-    account_name = accounts.get(account_key)
-    if not account_name:
-        frappe.log_error(f"Account {account_key} not found in {entity} chart", "Accounting")
-        return None
-    # Verify account exists
-    if not frappe.db.exists("Account", account_name):
-        frappe.log_error(f"Account {account_name} does not exist in ERPNext", "Accounting")
-        return None
-    return account_name
+_VENDOR_FUZZY = {
+    "cash_bank":              ["Cash/Bank", "Cash In Hand", "Cash"],
+    "revenue":                ["Sales", "Product Revenue", "Revenue"],
+    "vat_output":             ["Output VAT", "VAT", "Duties and Taxes"],
+    "vat_input":              ["Input VAT", "VAT", "Duties and Taxes"],
+    "clearing_platform":      ["SaathiMart Clearing", "Clearing - Platform", "Accounts Receivable"],
+    "commission_expense":     ["Marketplace Commission", "Commission on Sales", "Indirect Expenses"],
+    "platform_coupon_income": ["Platform Coupon Reimbursement", "Coupon Reimbursement", "Indirect Income"],
+    "loyalty_income":         ["Loyalty Reimbursement", "Indirect Income"],
+}
+
+# Runtime cache so fuzzy lookups only hit the DB once per process lifetime.
+_account_cache: dict = {}
+
+
+def _get_account(account_key: str, entity: str = "platform") -> str | None:
+    """Return the account name for account_key, falling back to fuzzy LIKE
+    matching when the exact canonical name is not present in the chart.
+
+    Strategy (same as vendor_accounting.py, now applied to the platform side):
+      1. Return cached value immediately if we've resolved this key before.
+      2. Try the exact canonical name from PLATFORM_ACCOUNTS / VENDOR_ACCOUNTS.
+      3. Try each keyword in the fuzzy fallback list with a LIKE search,
+         preferring non-group (leaf) accounts.
+      4. Log and return None if nothing is found so callers can skip the
+         entry rather than crashing.
+    """
+    cache_key = f"{entity}:{account_key}"
+    if cache_key in _account_cache:
+        return _account_cache[cache_key]
+
+    accounts  = PLATFORM_ACCOUNTS if entity == "platform" else VENDOR_ACCOUNTS
+    fuzzy_map = _PLATFORM_FUZZY   if entity == "platform" else _VENDOR_FUZZY
+
+    # ── Step 1: exact match ───────────────────────────────────────────────
+    canonical = accounts.get(account_key)
+    if canonical and frappe.db.exists("Account", canonical):
+        _account_cache[cache_key] = canonical
+        return canonical
+
+    # ── Step 2: LIKE search using fuzzy keywords ──────────────────────────
+    for keyword in (fuzzy_map.get(account_key) or []):
+        found = frappe.db.get_value(
+            "Account",
+            {"account_name": ["like", f"%{keyword}%"], "is_group": 0},
+            "name",
+        )
+        if found:
+            _account_cache[cache_key] = found
+            return found
+
+    frappe.log_error(
+        f"Account '{account_key}' not found for entity '{entity}'. "
+        "Run saathimart.api.setup_accounts.setup_platform_accounts to create it.",
+        "Accounting",
+    )
+    return None
 
 
 def _get_company():

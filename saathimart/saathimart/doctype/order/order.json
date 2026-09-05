@@ -284,6 +284,59 @@
    "default": "0",
    "read_only": 1,
    "description": "Sum of per-line category benefits — see Membership Saving Entry for the rule-by-rule breakdown"
+  },
+  {
+   "fieldname": "section_erpnext_sync",
+   "fieldtype": "Section Break",
+   "label": "ERPNext Sync",
+   "collapsible": 1
+  },
+  {
+   "fieldname": "erpnext_customer",
+   "fieldtype": "Data",
+   "label": "ERPNext Customer",
+   "read_only": 1,
+   "description": "Customer name in the linked ERPNext site (set by daily sync)"
+  },
+  {
+   "fieldname": "erpnext_sales_order",
+   "fieldtype": "Data",
+   "label": "ERPNext Sales Order",
+   "read_only": 1,
+   "description": "Sales Order name in the linked ERPNext site (set by daily sync)"
+  },
+  {
+   "fieldname": "col_break_erpnext",
+   "fieldtype": "Column Break"
+  },
+  {
+   "fieldname": "erpnext_sales_invoice",
+   "fieldtype": "Data",
+   "label": "ERPNext Sales Invoice",
+   "read_only": 1,
+   "description": "Sales Invoice name in the linked ERPNext site (set by daily sync)"
+  },
+  {
+   "fieldname": "erpnext_sync_status",
+   "fieldtype": "Select",
+   "label": "ERPNext Sync Status",
+   "options": "\nPending\nSynced\nFailed\nSkipped",
+   "default": "",
+   "read_only": 1,
+   "description": "Status of the last daily sync attempt for this order"
+  },
+  {
+   "fieldname": "erpnext_sync_error",
+   "fieldtype": "Small Text",
+   "label": "ERPNext Sync Error",
+   "read_only": 1,
+   "description": "Error message from the last failed sync attempt"
+  },
+  {
+   "fieldname": "erpnext_synced_at",
+   "fieldtype": "Datetime",
+   "label": "ERPNext Synced At",
+   "read_only": 1
   }
  ],
  "search_fields": "customer_name,customer_email,customer_phone",
@@ -361,7 +414,15 @@
   "onboarding_discount",
   "onboarding_order_sequence",
   "membership",
-  "membership_discount"
+  "membership_discount",
+  "section_erpnext_sync",
+  "erpnext_customer",
+  "erpnext_sales_order",
+  "col_break_erpnext",
+  "erpnext_sales_invoice",
+  "erpnext_sync_status",
+  "erpnext_sync_error",
+  "erpnext_synced_at"
  ],
  "sort_field": "modified",
  "sort_order": "DESC"

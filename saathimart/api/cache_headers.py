@@ -121,12 +121,13 @@ def set_static_cache_headers():
 
 # Middleware-style hooks for automatic cache headers
 
-def apply_cache_headers(doc, method):
+def apply_cache_headers(response=None, request=None, **kwargs):
     """
     Frappe hook: Apply cache headers based on request path.
     
-    Add this to hooks.py:
-        before_request = ["saathimart.api.cache_headers.apply_cache_headers"]
+    Registered under `after_request` in hooks.py; Frappe invokes it with
+    `response`/`request` keyword args, so accept them (and tolerate direct
+    `doc, method` calls) rather than requiring a stale (doc, method) pair.
     """
     if not frappe.request:
         return

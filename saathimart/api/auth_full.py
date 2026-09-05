@@ -13,6 +13,7 @@ import secrets
 import frappe
 from frappe import _
 from frappe.utils import add_to_date, cint, cstr, now, now_datetime
+from saathimart.api.auth import get_user_token
 from saathimart.api.responses import handle_api_errors
 
 # Password policy used by the storefront. The
@@ -194,23 +195,6 @@ def _dispatch_otp_email(email, otp, purpose):
             )
 
 
-def _get_user_token(user):
-    """Return an api_key:api_secret pair for the user, generating one if absent."""
-    doc = frappe.get_doc("User", user)
-    if not doc.api_key:
-        doc.api_key = frappe.generate_hash(length=15)
-        if not doc.get_password("api_secret", raise_exception=False):
-            doc.api_secret = frappe.generate_hash(length=15)
-        doc.save(ignore_permissions=True)
-
-    api_secret = doc.get_password("api_secret")
-    return {
-        "api_key": doc.api_key,
-        "api_secret": api_secret,
-        "token": f"{doc.api_key}:{api_secret}",
-    }
-
-
 @frappe.whitelist(allow_guest=True)
 @handle_api_errors
 def signup(email, full_name, contact, password, phone=None):
@@ -273,7 +257,7 @@ def verify_signup_otp(email, otp):
     frappe.local.login_manager.login_as(email)
     frappe.db.commit()
 
-    token_payload = _get_user_token(email)
+    token_payload = get_user_token(email)
     return {
         "message": _("Account verified successfully"),
         "email": email,
@@ -311,7 +295,7 @@ def login(usr, pwd, guest_cart_guid=None):
         except Exception as e:
             frappe.log_error(frappe.get_traceback(), f"Guest cart merge failed for {usr}")
 
-    token_payload = _get_user_token(usr)
+    token_payload = get_user_token(usr)
     user_doc = frappe.get_doc("User", usr)
     return {
         "message": _("Logged in"),

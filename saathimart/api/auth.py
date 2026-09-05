@@ -131,8 +131,8 @@ def get_review_permission_query_conditions(user=None):
     if "SM Admin" in frappe.get_roles(user):
         return ""
     return (
-        f"(`tabSM Product Review`.status = 'Approved' "
-        f"OR `tabSM Product Review`.user = {frappe.db.escape(user)})"
+        f"(`tabReview`.status = 'Approved' "
+        f"OR `tabReview`.user = {frappe.db.escape(user)})"
     )
 
 

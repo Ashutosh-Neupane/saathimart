@@ -14,7 +14,7 @@ from __future__ import annotations
 import json
 import frappe
 from frappe import _
-from frappe.utils import today, add_days, nowdate, flt
+from frappe.utils import today, add_days, flt
 from saathimart.api.responses import handle_api_errors
 
 
@@ -48,18 +48,6 @@ def _serialize_product(row):
         "is_on_sale": flt(row.get("compare_price") or 0) > flt(row.get("price") or 0),
         "discount_pct": 0,
     }
-
-
-def _is_banner_active(banner):
-    """Check if banner is within its validity window."""
-    valid_from = banner.get("valid_from")
-    valid_to = banner.get("valid_to")
-    today_str = today()
-    if valid_from and str(valid_from) > today_str:
-        return False
-    if valid_to and str(valid_to) < today_str:
-        return False
-    return True
 
 
 @frappe.whitelist(allow_guest=True)
@@ -137,33 +125,30 @@ def get_quick_links():
 # ── Private helpers ────────────────────────────────────────────────────────────
 
 def _get_banners():
-    banners = frappe.get_list(
-        "Banner",
-        filters={"is_active": 1},
-        fields=["name", "title", "banner_type", "heading", "subheading",
-                "cta_label", "cta_url", "cta_secondary_label", "cta_secondary_url",
-                "image", "mobile_image", "bg_color", "text_color", "sort_order",
-                "valid_from", "valid_to"],
-        order_by="sort_order asc",
-    )
+    """Active banners in the home-screen shape.
+
+    Delegates the query + validity filtering to cms.get_banners (single
+    source of truth, shared cache) and only reshapes the payload — the
+    home feed uses ``type`` where the CMS row stores ``banner_type``.
+    """
+    from saathimart.api.cms import get_banners as _cms_banners
+    banners = _cms_banners() or []
     result = []
     for b in banners:
-        if not _is_banner_active(b):
-            continue
         result.append({
-            "id": frappe.scrub(b["title"]).replace("_", "-"),
-            "title": b["title"],
-            "type": b["banner_type"],
-            "heading": b["heading"],
-            "subheading": b["subheading"],
-            "cta_label": b["cta_label"],
-            "cta_url": b["cta_url"],
-            "cta_secondary_label": b["cta_secondary_label"],
-            "cta_secondary_url": b["cta_secondary_url"],
-            "image": b["image"],
-            "mobile_image": b["mobile_image"],
-            "bg_color": b["bg_color"],
-            "text_color": b["text_color"],
+            "id": b.get("id"),
+            "title": b.get("title"),
+            "type": b.get("banner_type"),
+            "heading": b.get("heading"),
+            "subheading": b.get("subheading"),
+            "cta_label": b.get("cta_label"),
+            "cta_url": b.get("cta_url"),
+            "cta_secondary_label": b.get("cta_secondary_label"),
+            "cta_secondary_url": b.get("cta_secondary_url"),
+            "image": b.get("image"),
+            "mobile_image": b.get("mobile_image"),
+            "bg_color": b.get("bg_color"),
+            "text_color": b.get("text_color"),
         })
     return result
 
@@ -196,18 +181,8 @@ def _get_deals(limit=20, customer_lat=None, customer_lng=None, max_radius=None):
     on_sale = []
     for l in listings[:limit]:
         # Blinkit-style radius filter
-        if customer_lat is not None and customer_lng is not None and max_radius is not None:
-            from saathimart.api.products import _get_best_vendor_listing, _preload_listing_data
-            listings_map, stock_map, vendor_location_map = _preload_listing_data(
-                [l.product], customer_lat=customer_lat, customer_lng=customer_lng
-            )
-            best = _get_best_vendor_listing(
-                l.product, customer_lat=customer_lat, customer_lng=customer_lng,
-                _listings_map=listings_map, _stock_map=stock_map,
-                _vendor_location_map=vendor_location_map,
-            )
-            if not best or flt(getattr(best, "distance_km", 0) or 0) > max_radius:
-                continue
+        if not _within_radius(l.product, customer_lat, customer_lng, max_radius):
+            continue
 
         on_sale.append({
             "name": l.product,
@@ -259,18 +234,8 @@ def _get_bestsellers(limit=10, customer_lat=None, customer_lng=None, max_radius=
             continue  # no active listing anywhere — nothing to actually sell right now
 
         # Blinkit-style radius filter
-        if customer_lat is not None and customer_lng is not None and max_radius is not None:
-            from saathimart.api.products import _get_best_vendor_listing, _preload_listing_data
-            listings_map, stock_map, vendor_location_map = _preload_listing_data(
-                [r.product], customer_lat=customer_lat, customer_lng=customer_lng
-            )
-            best = _get_best_vendor_listing(
-                r.product, customer_lat=customer_lat, customer_lng=customer_lng,
-                _listings_map=listings_map, _stock_map=stock_map,
-                _vendor_location_map=vendor_location_map,
-            )
-            if not best or flt(getattr(best, "distance_km", 0) or 0) > max_radius:
-                continue
+        if not _within_radius(r.product, customer_lat, customer_lng, max_radius):
+            continue
 
         result.append(_serialize_product({
             "name": r.product,
@@ -312,18 +277,8 @@ def _get_recommended(limit=12, customer_lat=None, customer_lng=None, max_radius=
     result = []
     for p in sample:
         # Blinkit-style radius filter
-        if customer_lat is not None and customer_lng is not None and max_radius is not None:
-            from saathimart.api.products import _get_best_vendor_listing, _preload_listing_data
-            listings_map, stock_map, vendor_location_map = _preload_listing_data(
-                [p["name"]], customer_lat=customer_lat, customer_lng=customer_lng
-            )
-            best = _get_best_vendor_listing(
-                p["name"], customer_lat=customer_lat, customer_lng=customer_lng,
-                _listings_map=listings_map, _stock_map=stock_map,
-                _vendor_location_map=vendor_location_map,
-            )
-            if not best or flt(getattr(best, "distance_km", 0) or 0) > max_radius:
-                continue
+        if not _within_radius(p["name"], customer_lat, customer_lng, max_radius):
+            continue
 
         result.append(_serialize_product({
             "name": p["name"],
@@ -339,6 +294,30 @@ def _get_recommended(limit=12, customer_lat=None, customer_lng=None, max_radius=
             "track_inventory": 1,
         }))
     return result
+
+
+def _within_radius(product_name, customer_lat=None, customer_lng=None, max_radius=None):
+    """True when the product has a vendor within ``max_radius`` of the customer.
+
+    Shared by the deals/bestsellers/recommended feeds — resolves the best
+    vendor listing for the product and compares its distance against the
+    service radius. With no location (or no radius) every product passes.
+    """
+    if customer_lat is None or customer_lng is None or max_radius is None:
+        return True
+
+    from saathimart.api.products import _get_best_vendor_listing, _preload_listing_data
+    listings_map, stock_map, vendor_location_map = _preload_listing_data(
+        [product_name], customer_lat=customer_lat, customer_lng=customer_lng
+    )
+    best = _get_best_vendor_listing(
+        product_name, customer_lat=customer_lat, customer_lng=customer_lng,
+        _listings_map=listings_map, _stock_map=stock_map,
+        _vendor_location_map=vendor_location_map,
+    )
+    if not best:
+        return False
+    return flt(getattr(best, "distance_km", 0) or 0) <= max_radius
 
 
 def _get_quick_links():

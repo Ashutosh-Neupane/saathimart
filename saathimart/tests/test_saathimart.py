@@ -3047,3 +3047,708 @@ class TestVerifyHubSecret(unittest.TestCase):
         h3 = self._headers(vendor_id=self.vendor.name)
         h3["X-SM-Signature"] = self._sig("third-unknown-secret-00000000000000")
         self._verify(h3, expect_error=True)
+
+# ── Test: ERPNext Sync ───────────────────────────────────────────────────────
+# Covers erpnext_sync.py: run_daily_sync, sync_single_order, _resolve_item_code,
+# _sync_order_to_sales_order, _sync_order_to_invoice
+
+class TestERPNextSync(unittest.TestCase):
+    """Test ERPNext sync without actually calling the remote ERPNext site."""
+
+    TEST_EMAIL = "erpnext_sync_test@saathimart.np"
+
+    def setUp(self):
+        frappe.set_user("Administrator")
+
+        # Create test product with item_code mapping
+        if frappe.db.exists("Product", "ERPNext Test Product"):
+            existing = frappe.get_doc("Product", "ERPNext Test Product")
+            frappe.db.sql("DELETE FROM `tabVendor Listing` WHERE product = %s", existing.name)
+            frappe.db.sql("DELETE FROM `tabVendor Stock` WHERE product = %s", existing.name)
+            frappe.db.delete("Product", existing.name)
+
+        self.product = frappe.new_doc("Product")
+        self.product.product_name = "ERPNext Test Product"
+        self.product.status = "Active"
+        self.product.item_code = "ERP-TEST-001"  # This item_code exists in ERPNext mock
+        self.product.insert(ignore_permissions=True)
+
+        # Create vendor with warehouse
+        self.vendor = _make_vendor("ERPNext Sync Vendor", slug="erpnext-sync-vendor")
+        frappe.db.set_value("Vendor", self.vendor.name, "default_warehouse", "Test Warehouse - SM")
+
+        # Create vendor listing
+        self.vl = frappe.new_doc("Vendor Listing")
+        self.vl.vendor = self.vendor.name
+        self.vl.product = self.product.name
+        self.vl.price = 1000
+        self.vl.status = "Active"
+        self.vl.insert(ignore_permissions=True)
+
+        # Seed stock
+        from saathimart.api.stock import get_or_create
+        row = get_or_create(self.vendor.name, self.product.name)
+        frappe.db.set_value("Vendor Stock", row.name, {
+            "available_qty": 10,
+            "reserved_qty": 0,
+            "physical_qty": 10,
+        })
+
+        # Create order
+        self.order = frappe.new_doc("Order")
+        self.order.customer_name = "ERPNext Test Customer"
+        self.order.customer_email = self.TEST_EMAIL
+        self.order.customer_phone = "9800000000"
+        self.order.delivery_address = "Test Address, Kathmandu"
+        self.order.delivery_zone = "Kathmandu"
+        self.order.payment_method = "eSewa"
+        self.order.payment_status = "Paid"
+        self.order.append("items", {
+            "product": self.product.name,
+            "product_name": self.product.product_name,
+            "qty": 2,
+            "rate": 1000,
+            "vendor": self.vendor.name,
+        })
+        self.order.append("vendor_fulfillments", {
+            "vendor": self.vendor.name,
+            "subtotal": 2000,
+            "items_count": 1,
+            "status": "Pending",
+            "warehouse": "Test Warehouse - SM",
+        })
+        self.order.insert(ignore_permissions=True)
+
+    def test_resolve_item_code_direct_mapping(self):
+        """Test _resolve_item_code finds product.item_code directly."""
+        from saathimart.api.erpnext_sync import _resolve_item_code
+
+        # Mock ERPNext config (won't actually call ERPNext because item_code is set)
+        config = {"site_url": "http://erpnext.localhost", "api_key": "test", "api_secret": "test"}
+
+        result = _resolve_item_code(config, "ERPNext Test Product", self.product)
+        self.assertEqual(result, "ERP-TEST-001")
+
+    def test_resolve_item_code_barcode_fallback(self):
+        """Test _resolve_item_code falls back to barcode lookup when item_code is empty."""
+        # Temporarily clear item_code
+        self.product.item_code = ""
+        self.product.sku = "SKU-ERP-TEST-001"
+        self.product.save(ignore_permissions=True)
+
+        from saathimart.api.erpnext_sync import _resolve_item_code
+
+        config = {"site_url": "http://erpnext.localhost", "api_key": "test", "api_secret": "test"}
+
+        # This will try to query ERPNext but we mock it below
+        with patch("saathimart.api.erpnext_sync._erp_get") as mock_erp_get:
+            mock_erp_get.return_value = [{"parent": "ERP-ITEM-FROM-BARCODE"}]
+            result = _resolve_item_code(config, "ERPNext Test Product", self.product)
+            self.assertEqual(result, "ERP-ITEM-FROM-BARCODE")
+
+    def test_resolve_item_code_name_fallback(self):
+        """Test _resolve_item_code falls back to item_name match."""
+        # Clear both item_code and sku
+        self.product.item_code = ""
+        self.product.sku = ""
+        self.product.save(ignore_permissions=True)
+
+        from saathimart.api.erpnext_sync import _resolve_item_code
+
+        config = {"site_url": "http://erpnext.localhost", "api_key": "test", "api_secret": "test"}
+
+        with patch("saathimart.api.erpnext_sync._erp_get") as mock_erp_get:
+            mock_erp_get.return_value = [{"name": "ERP-ITEM-FROM-NAME"}]
+            result = _resolve_item_code(config, "ERPNext Test Product", self.product)
+            self.assertEqual(result, "ERP-ITEM-FROM-NAME")
+
+    def test_resolve_item_code_no_match_returns_none(self):
+        """Test _resolve_item_code returns None when nothing matches."""
+        self.product.item_code = ""
+        self.product.sku = "NON-EXISTENT-BARCODE"
+        self.product.save(ignore_permissions=True)
+
+        from saathimart.api.erpnext_sync import _resolve_item_code
+
+        config = {"site_url": "http://erpnext.localhost", "api_key": "test", "api_secret": "test"}
+
+        with patch("saathimart.api.erpnext_sync._erp_get") as mock_erp_get:
+            mock_erp_get.return_value = []
+            result = _resolve_item_code(config, "ERPNext Test Product", self.product)
+            self.assertIsNone(result)
+
+    def test_run_daily_sync_skips_when_not_configured(self):
+        """Test run_daily_sync returns early when ERPNext is not configured."""
+        from saathimart.api.erpnext_sync import run_daily_sync
+
+        # Disable ERPNext sync
+        s = frappe.get_single("Settings")
+        s.erpnext_sync_enabled = 0
+        s.save(ignore_permissions=True)
+
+        result = run_daily_sync()
+        # Should return None or empty dict since nothing was synced
+        self.assertIn(result, [None, {}])
+
+    def test_run_daily_sync_skips_when_disabled(self):
+        """Test run_daily_sync returns early when ERPNext is disabled in Settings."""
+        from saathimart.api.erpnext_sync import run_daily_sync
+
+        # Enable flag but leave other fields empty
+        s = frappe.get_single("Settings")
+        s.erpnext_sync_enabled = 1
+        s.erpnext_site_url = ""
+        s.save(ignore_permissions=True)
+
+        result = run_daily_sync()
+        self.assertIn(result, [None, {}])
+
+    def test_run_daily_sync_processes_paid_orders(self):
+        """Test run_daily_sync processes paid orders with correct filters."""
+        from saathimart.api.erpnext_sync import run_daily_sync
+
+        # Mock ERPNext config to skip actual API calls but still process
+        s = frappe.get_single("Settings")
+        s.erpnext_sync_enabled = 1
+        s.erpnext_site_url = "http://erpnext.localhost"
+        s.erpnext_api_key = "test"
+        s.erpnext_api_secret = "test"
+        s.erpnext_company = "Test Company"
+        s.erpnext_default_warehouse = "Test Warehouse - SM"
+        s.save(ignore_permissions=True)
+
+        # Order is already Paid with no sync status
+        self.assertEqual(self.order.payment_status, "Paid")
+        self.assertEqual(self.order.erpnext_sync_status, "")
+
+        result = run_daily_sync()
+        # Should process at least one order
+        self.assertTrue(result.get("total", 0) >= 1)
+
+
+# ── Test: Loyalty Birthday Rewards ────────────────────────────────────────────
+
+class TestLoyaltyBirthdayRewards(unittest.TestCase):
+    """Test check_birthday_rewards() cron function."""
+
+    TEST_EMAIL = "birthday_test@saathimart.np"
+
+    def setUp(self):
+        frappe.set_user("Administrator")
+
+        # Create user with birthday today
+        if frappe.db.exists("User", self.TEST_EMAIL):
+            frappe.delete_doc("User", self.TEST_EMAIL, ignore_permissions=True)
+
+        from frappe.utils import today, add_days
+        from datetime import datetime
+
+        today_date = today()
+        month_day = today_date.strftime("%m-%d")
+
+        self.user = frappe.new_doc("User")
+        self.user.email = self.TEST_EMAIL
+        self.user.first_name = "Birthday"
+        self.user.last_name = "Test"
+        # Set birthday to today
+        self.user.birthday = today_date
+        self.user.insert(ignore_permissions=True)
+
+        # Enable loyalty program
+        if not frappe.db.exists("Loyalty Program", "Birthday Test Program"):
+            prog = frappe.new_doc("Loyalty Program")
+            prog.program_name = "Birthday Test Program"
+            prog.is_active = 1
+            prog.collection_factor = 0.01
+            prog.redemption_factor = 1.0
+            prog.min_points_to_redeem = 50
+            prog.max_redemption_per_order_pct = 20
+            prog.point_expiry_days = 365
+            prog.insert(ignore_permissions=True)
+
+        s = frappe.get_single("Settings")
+        s.enable_loyalty = 1
+        s.loyalty_program = "Birthday Test Program"
+        s.save(ignore_permissions=True)
+
+        # Clear any existing birthday entries for this year
+        from frappe.utils import today
+        marker = f"birthday:{today().year}"
+        frappe.db.sql("""
+            DELETE FROM `tabLoyalty Point Entry`
+            WHERE customer_email = %s AND source = 'birthday' AND remarks = %s
+        """, (self.TEST_EMAIL, marker))
+
+    def tearDown(self):
+        frappe.set_user("Administrator")
+        frappe.db.delete("User", self.TEST_EMAIL)
+
+    def test_check_birthday_rewards_awards_points(self):
+        """Test check_birthday_rewards awards 50 points to birthday customers."""
+        from saathimart.api.loyalty import check_birthday_rewards, get_balance
+
+        # Initially no birthday points
+        balance_before = get_balance(self.TEST_EMAIL)
+        self.assertEqual(balance_before, 0)
+
+        # Run the cron
+        check_birthday_rewards()
+
+        # Should have 50 points now
+        balance_after = get_balance(self.TEST_EMAIL)
+        self.assertEqual(balance_after, 50)
+
+    def test_check_birthday_rewards_is_idempotent(self):
+        """Test check_birthday_rewards doesn't double-award within same year."""
+        from saathimart.api.loyalty import check_birthday_rewards, get_balance
+
+        # Run first time
+        check_birthday_rewards()
+        balance_after_first = get_balance(self.TEST_EMAIL)
+        self.assertEqual(balance_after_first, 50)
+
+        # Run second time same day
+        check_birthday_rewards()
+        balance_after_second = get_balance(self.TEST_EMAIL)
+        # Should still be 50, not 100
+        self.assertEqual(balance_after_second, 50)
+
+    def test_check_birthday_rewards_skips_no_birthday(self):
+        """Test check_birthday_rewards doesn't award points to non-birthday customers."""
+        from saathimart.api.loyalty import check_birthday_rewards, get_balance
+
+        # Create user without birthday
+        if frappe.db.exists("User", "no_birthday_test@saathimart.np"):
+            frappe.delete_doc("User", "no_birthday_test@saathimart.np", ignore_permissions=True)
+
+        user_no_birthday = frappe.new_doc("User")
+        user_no_birthday.email = "no_birthday_test@saathimart.np"
+        user_no_birthday.first_name = "No"
+        user_no_birthday.last_name = "Birthday"
+        user_no_birthday.insert(ignore_permissions=True)
+
+        # No birthday point entries should exist
+        result = frappe.db.sql("""
+            SELECT COUNT(*) FROM `tabLoyalty Point Entry`
+            WHERE customer_email = %s AND source = 'birthday'
+        """, "no_birthday_test@saathimart.np")
+
+        # Run the cron
+        check_birthday_rewards()
+
+        # No new birthday entries should be created
+        result_after = frappe.db.sql("""
+            SELECT COUNT(*) FROM `tabLoyalty Point Entry`
+            WHERE customer_email = %s AND source = 'birthday'
+        """, "no_birthday_test@saathimart.np")
+
+        self.assertEqual(result[0][0], result_after[0][0])
+
+    def test_check_birthday_rewards_skips_no_loyalty(self):
+        """Test check_birthday_rewards does nothing when loyalty is disabled."""
+        from saathimart.api.loyalty import check_birthday_rewards
+
+        # Disable loyalty
+        s = frappe.get_single("Settings")
+        s.enable_loyalty = 0
+        s.save(ignore_permissions=True)
+
+        # Should not error, just silently do nothing
+        result = check_birthday_rewards()
+        self.assertIsNone(result)
+
+
+# ── Test: Webhook Event Delivery ─────────────────────────────────────────────
+
+class TestWebhookEventDelivery(unittest.TestCase):
+    """Test publisher.py webhook event queuing and delivery."""
+
+    def setUp(self):
+        frappe.set_user("Administrator")
+
+        self.vendor = _make_vendor("Webhook Test Vendor", slug="webhook-test-vendor")
+        self.product = _make_product("Webhook Test Product", price=1000)
+
+    def test_on_order_created_queues_webhook_event(self):
+        """Test on_order_created creates Webhook Event for vendor notification."""
+        from saathimart.events.publisher import on_order_created
+
+        # Create order
+        order = frappe.new_doc("Order")
+        order.customer_name = "Webhook Test Customer"
+        order.customer_phone = "9800000000"
+        order.delivery_address = "Test Address"
+        order.payment_method = "COD"
+        order.vendor = self.vendor.name
+        order.append("items", {
+            "product": self.product.name,
+            "product_name": self.product.product_name,
+            "qty": 1,
+            "rate": 1000,
+            "vendor": self.vendor.name,
+        })
+        order.append("vendor_fulfillments", {
+            "vendor": self.vendor.name,
+            "subtotal": 1000,
+            "items_count": 1,
+            "status": "Pending",
+        })
+        order.insert(ignore_permissions=True)
+
+        # Clear any existing webhook events
+        frappe.db.delete("Webhook Event", {"target_vendor": self.vendor.name})
+
+        # Trigger the event
+        on_order_created(order, method="after_insert")
+
+        # Should have queued a Webhook Event
+        events = frappe.get_all("Webhook Event", {
+            "target_vendor": self.vendor.name,
+            "event_type": "order.new"
+        }, pluck="name")
+
+        self.assertTrue(len(events) >= 1)
+
+    def test_on_product_created_queues_webhook_event(self):
+        """Test on_product_created creates Webhook Event for barcode matching vendors."""
+        from saathimart.events.publisher import on_product_created
+
+        # Product must have SKU for notification to be queued
+        self.product.sku = "SKU-WEBHOOK-001"
+        self.product.save(ignore_permissions=True)
+
+        # Clear any existing webhook events
+        frappe.db.delete("Webhook Event", {})
+
+        # Trigger the event
+        on_product_created(self.product, method="after_insert")
+
+        # Should have queued a background broadcast job (Webhook Event)
+        events = frappe.get_all("Webhook Event", {
+            "event_type": "product.new"
+        }, pluck="name")
+
+        self.assertTrue(len(events) >= 1)
+
+    def test_drain_event_queue_processes_queued_events(self):
+        """Test drain_event_queue picks up and processes queued events."""
+        from saathimart.events.publisher import drain_event_queue, _enqueue
+
+        # Enqueue an event
+        _enqueue("stock.update", {"product": self.product.name, "qty": 100},
+                 target_vendor=self.vendor.name)
+
+        # Should have queued event
+        queued = frappe.get_all("Webhook Event", {
+            "target_vendor": self.vendor.name,
+            "status": "Queued"
+        }, pluck="name")
+        self.assertTrue(len(queued) >= 1)
+
+        # drain_event_queue enqueues delivery jobs, doesn't deliver synchronously
+        # The actual delivery happens in background workers
+        drain_event_queue()
+
+        # Event should still exist (just scheduled for delivery)
+        still_exists = frappe.db.exists("Webhook Event", queued[0])
+        self.assertTrue(still_exists)
+
+
+# ── Test: Checkout Flow ──────────────────────────────────────────────────────
+
+class TestCheckoutFlow(unittest.TestCase):
+    """Test end-to-end cart → checkout → order flow."""
+
+    def setUp(self):
+        frappe.set_user("Guest")
+
+        self.zone = _make_zone("Checkout Test Zone", charge=80, free_above=1500)
+        self.product = _make_product("Checkout Test Product", price=500, stock=100)
+        self.vendor = _make_vendor("Checkout Test Vendor", slug="checkout-test-vendor")
+
+        # Create vendor listing
+        self.vl = frappe.new_doc("Vendor Listing")
+        self.vl.vendor = self.vendor.name
+        self.vl.product = self.product.name
+        self.vl.price = 500
+        self.vl.status = "Active"
+        self.vl.insert(ignore_permissions=True)
+
+        # Seed stock
+        from saathimart.api.stock import get_or_create
+        row = get_or_create(self.vendor.name, self.product.name)
+        frappe.db.set_value("Vendor Stock", row.name, {
+            "available_qty": 100,
+            "reserved_qty": 0,
+            "physical_qty": 100,
+        })
+
+    def test_checkout_creates_order(self):
+        """Test checkout() converts cart to order."""
+        from saathimart.api.cart import _get_or_create_cart, add_to_cart
+        from saathimart.api.orders import checkout
+
+        # Create cart and add item
+        session_id = "checkout-test-session"
+        cart = _get_or_create_cart(session_id)
+        add_to_cart(session_id, self.product.name, qty=2, vendor=self.vendor.name)
+
+        # Verify cart has item
+        cart = add_to_cart(session_id, self.product.name, qty=2, vendor=self.vendor.name)
+        self.assertEqual(len(cart.get("items", [])), 1)
+
+        # Checkout
+        result = checkout(
+            session_id=session_id,
+            customer_name="Checkout Test Customer",
+            customer_phone="9800000000",
+            delivery_address="Test Address, Kathmandu",
+            payment_method="COD",
+            delivery_zone=self.zone.name,
+        )
+
+        self.assertTrue(result.get("ok", False) or "order_id" in result)
+        self.assertIn("order_id", result)
+
+    def test_checkout_validates_cart_not_empty(self):
+        """Test checkout() rejects empty cart."""
+        from saathimart.api.cart import _get_or_create_cart
+        from saathimart.api.orders import checkout
+
+        session_id = "empty-cart-session"
+
+        # Create empty cart
+        cart = _get_or_create_cart(session_id)
+        self.assertEqual(len(cart.items), 0)
+
+        # Checkout should fail
+        result = checkout(
+            session_id=session_id,
+            customer_name="Empty Cart Customer",
+            customer_phone="9800000000",
+            delivery_address="Test Address",
+            payment_method="COD",
+            delivery_zone=self.zone.name,
+        )
+
+        self.assertFalse(result.get("order_id"))
+        self.assertIn("error", result)
+
+    def test_checkout_validates_cart_has_items(self):
+        """Test checkout() rejects cart with zero qty items."""
+        from saathimart.api.cart import _get_or_create_cart, add_to_cart
+        from saathimart.api.orders import checkout
+
+        session_id = "zero-qty-session"
+
+        # Add item with qty 0 (should fail at add_to_cart or validation)
+        result = add_to_cart(session_id, self.product.name, qty=0, vendor=self.vendor.name)
+        self.assertFalse(result.get("ok", True))
+
+    def test_checkout_resolves_delivery_zone(self):
+        """Test checkout() correctly calculates delivery charge based on zone."""
+        from saathimart.api.cart import _get_or_create_cart, add_to_cart
+        from saathimart.api.orders import checkout
+
+        # Product total: 500 × 2 = 1000, below free_delivery_above (1500)
+        # Should have delivery charge
+        session_id = "zone-test-session"
+        cart = _get_or_create_cart(session_id)
+        add_to_cart(session_id, self.product.name, qty=2, vendor=self.vendor.name)
+
+        result = checkout(
+            session_id=session_id,
+            customer_name="Zone Test Customer",
+            customer_phone="9800000000",
+            delivery_address="Test Address",
+            payment_method="COD",
+            delivery_zone=self.zone.name,
+        )
+
+        # Should have delivery charge since subtotal < free_above
+        self.assertGreater(result.get("delivery_charge", 0), 0)
+
+    def test_checkout_free_delivery_threshold(self):
+        """Test checkout() gives free delivery when subtotal >= free_above."""
+        from saathimart.api.cart import _get_or_create_cart, add_to_cart
+        from saathimart.api.orders import checkout
+
+        # Product total: 500 × 4 = 2000, above free_delivery_above (1500)
+        # Should have delivery charge = 0
+        session_id = "free-delivery-session"
+        cart = _get_or_create_cart(session_id)
+        add_to_cart(session_id, self.product.name, qty=4, vendor=self.vendor.name)
+
+        result = checkout(
+            session_id=session_id,
+            customer_name="Free Delivery Customer",
+            customer_phone="9800000000",
+            delivery_address="Test Address",
+            payment_method="COD",
+            delivery_zone=self.zone.name,
+        )
+
+        self.assertEqual(result.get("delivery_charge", -1), 0)
+
+    def test_checkout_reduces_stock(self):
+        """Test checkout() reserves and deducts vendor stock."""
+        from saathimart.api.cart import _get_or_create_cart, add_to_cart
+        from saathimart.api.orders import checkout
+        from saathimart.api.stock import get_vendor_stock
+
+        # Record initial stock
+        before = get_vendor_stock(self.vendor.name, self.product.name)
+
+        session_id = "stock-test-session"
+        add_to_cart(session_id, self.product.name, qty=3, vendor=self.vendor.name)
+
+        result = checkout(
+            session_id=session_id,
+            customer_name="Stock Test Customer",
+            customer_phone="9800000000",
+            delivery_address="Test Address",
+            payment_method="COD",
+            delivery_zone=self.zone.name,
+        )
+
+        # After checkout, stock should be reduced
+        after = get_vendor_stock(self.vendor.name, self.product.name)
+        self.assertEqual(after["reserved_qty"], 3)
+
+    def test_checkout_multivendor_splits_fulfillments(self):
+        """Test checkout() creates separate vendor_fulfillments for multi-vendor carts."""
+        from saathimart.api.cart import _get_or_create_cart, add_to_cart
+        from saathimart.api.orders import checkout
+
+        # Create second vendor
+        vendor_b = _make_vendor("Checkout Vendor B", slug="checkout-vendor-b")
+        product_b = _make_product("Checkout Product B", price=300, stock=50)
+
+        # Create vendor listing for vendor_b
+        vl_b = frappe.new_doc("Vendor Listing")
+        vl_b.vendor = vendor_b.name
+        vl_b.product = product_b.name
+        vl_b.price = 300
+        vl_b.status = "Active"
+        vl_b.insert(ignore_permissions=True)
+
+        # Seed stock for vendor_b
+        from saathimart.api.stock import get_or_create
+        row_b = get_or_create(vendor_b.name, product_b.name)
+        frappe.db.set_value("Vendor Stock", row_b.name, {
+            "available_qty": 50,
+            "reserved_qty": 0,
+            "physical_qty": 50,
+        })
+
+        session_id = "multivendor-session"
+        add_to_cart(session_id, self.product.name, qty=1, vendor=self.vendor.name)
+        add_to_cart(session_id, product_b.name, qty=2, vendor=vendor_b.name)
+
+        result = checkout(
+            session_id=session_id,
+            customer_name="Multi Vendor Customer",
+            customer_phone="9800000000",
+            delivery_address="Test Address",
+            payment_method="COD",
+            delivery_zone=self.zone.name,
+        )
+
+        # Should have two vendor fulfillments
+        fulfillments = result.get("vendor_fulfillments", [])
+        self.assertEqual(len(fulfillments), 2)
+
+        vendor_ids = [f["vendor"] for f in fulfillments]
+        self.assertIn(self.vendor.name, vendor_ids)
+        self.assertIn(vendor_b.name, vendor_ids)
+
+
+# ── Test: Loyalty Redemption Validation ──────────────────────────────────────
+
+class TestLoyaltyRedemptionValidation(unittest.TestCase):
+    """Test loyalty point redemption validation logic."""
+
+    TEST_EMAIL = "loyalty_validation_test@saathimart.np"
+
+    def setUp(self):
+        frappe.set_user("Administrator")
+
+        # Create loyalty program
+        if not frappe.db.exists("Loyalty Program", "Validation Test Program"):
+            prog = frappe.new_doc("Loyalty Program")
+            prog.program_name = "Validation Test Program"
+            prog.is_active = 1
+            prog.collection_factor = 0.01
+            prog.redemption_factor = 1.0
+            prog.min_points_to_redeem = 100
+            prog.max_redemption_per_order_pct = 20
+            prog.point_expiry_days = 365
+            prog.insert(ignore_permissions=True)
+
+        s = frappe.get_single("Settings")
+        s.enable_loyalty = 1
+        s.loyalty_program = "Validation Test Program"
+        s.save(ignore_permissions=True)
+
+        # Clear existing entries
+        frappe.db.delete("Loyalty Point Entry", {"customer_email": self.TEST_EMAIL})
+
+    def test_redemption_below_minimum_fails(self):
+        """Test redeem_points() rejects redemption below min_points_to_redeem."""
+        from saathimart.api.loyalty import redeem_points
+
+        # Try to redeem 50 points when min is 100
+        with self.assertRaises(Exception):
+            redeem_points(self.TEST_EMAIL, "TEST-ORD-VALIDATION", 50, 50)
+
+    def test_redemption_insufficient_balance_fails(self):
+        """Test redeem_points() rejects redemption when balance is insufficient."""
+        from saathimart.api.loyalty import earn_points, redeem_points
+
+        # Earn only 50 points
+        earn_points(self.TEST_EMAIL, "TEST-ORD-LOW-BALANCE", 5000)
+
+        # Try to redeem 100 points (more than balance)
+        with self.assertRaises(Exception):
+            redeem_points(self.TEST_EMAIL, "TEST-ORD-VALIDATION", 100, 100)
+
+    def test_redemption_negative_points_fails(self):
+        """Test redeem_points() rejects negative point redemption."""
+        from saathimart.api.loyalty import redeem_points
+
+        with self.assertRaises(Exception):
+            redeem_points(self.TEST_EMAIL, "TEST-ORD-VALIDATION", -10, -10)
+
+    def test_redemption_positive_points_succeeds(self):
+        """Test redeem_points() accepts valid redemption."""
+        from saathimart.api.loyalty import earn_points, get_balance, redeem_points
+
+        # Earn enough points
+        earn_points(self.TEST_EMAIL, "TEST-ORD-VALIDATION-SETUP", 20000)  # 200 points
+        balance_before = get_balance(self.TEST_EMAIL)
+        self.assertEqual(balance_before, 200)
+
+        # Redeem 100 points (valid: above min, within balance)
+        redeem_points(self.TEST_EMAIL, "TEST-ORD-VALIDATION", 100, 100)
+
+        # Balance should be reduced
+        balance_after = get_balance(self.TEST_EMAIL)
+        self.assertEqual(balance_after, 100)
+
+    def test_redemption_capped_by_max_pct(self):
+        """Test calculate_redemption_discount() caps redemption by max_redemption_per_order_pct."""
+        from saathimart.api.loyalty import earn_points, calculate_redemption_discount
+
+        # Earn 1000 points
+        earn_points(self.TEST_EMAIL, "TEST-ORD-VALIDATION-CAP", 100000)
+
+        # Try to redeem 500 points = NPR 500, but max is 20% of order
+        # Order subtotal = 200, max discount = 40
+        result = calculate_redemption_discount(self.TEST_EMAIL, 500, 200)
+        self.assertTrue(result["ok"])
+        self.assertEqual(result["discount"], 40)  # Capped at 20% of 200
+
+
+if __name__ == "__main__":
+    import unittest
+    unittest.main()

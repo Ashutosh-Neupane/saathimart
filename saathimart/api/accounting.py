@@ -37,6 +37,7 @@ PLATFORM_ACCOUNTS = {
     "clearing_vendor":     "Clearing Account - Vendor - SM",
     "clearing_logistics":  "Clearing Account - Logistics - SM",
     "tds_receivable":      "TDS Receivable - SM",
+    "tds_payable":         "TDS Payable - SM",
     "platform_coupon_payable": "Platform Coupon Payable - SM",
     "loyalty_payable":         "Loyalty Payable - SM",
     "vat_output":          "Output VAT - SM",
@@ -71,6 +72,7 @@ _PLATFORM_FUZZY = {
     "clearing_vendor":     ["Clearing Account - Vendor", "Clearing - Vendor", "Accounts Payable"],
     "clearing_logistics":  ["Clearing Account - Logistics", "Clearing - Logistics", "Accounts Payable"],
     "tds_receivable":      ["TDS Receivable", "TDS", "Advance Tax", "Duties and Taxes"],
+    "tds_payable":         ["TDS Payable", "TDS", "Duties and Taxes"],
     "platform_coupon_payable": ["Platform Coupon Payable", "Coupon Payable", "Accounts Payable"],
     "loyalty_payable":         ["Loyalty Payable", "Accounts Payable"],
     "vat_output":          ["Output VAT", "VAT", "Duties and Taxes"],
@@ -684,93 +686,92 @@ def create_settlement_journal_entry(vendor_name, payout_id, amount, commission,
     customer's payment was booked (record_order_payment_gl) — this entry
     only moves money:
 
-      DR: Bank                      (cash actually transferred to vendor)
-      DR: TDS Receivable            (vendor withheld 15% of commission and
-                                     deposited it with IRD under s88 — the
-                                     platform claims it as prepaid tax)
-      CR: Clearing Account - Vendor (clears the balance)
+      DR: Clearing Account - Vendor    (relieves the payable)
+      DR: Platform Coupon Payable      (promotional funding reclassified
+      DR: Loyalty Payable               out of clearing by the nightly job)
+      CR: Bank                         (cash actually transferred to vendor)
+      CR: TDS Payable                  (vendor withheld s88 TDS on the
+                                         commission; held in suspense until
+                                         the TDS certificate reconciles)
+
+    Balanced by construction: DR = amount + tds regardless of how much of
+    the promotional payables exist (bounded clearing picks up the rest).
 
     `commission`, `coupon_reimbursement` and `loyalty_reimbursement` are
-    accepted for backward compatibility with earlier callers but are no
-    longer booked here — they were already inside the clearing balance.
+    accepted for backward compatibility with earlier callers.
     """
     entries = []
-    company = _get_company()
     posting_date = nowdate()
+    tds = flt(tds_amount)
 
-    # Bank Account debit (what vendor actually receives)
+    # ── Debits: relieve the liabilities we owe the vendor ──
+    # Promotional payables first (bounded by their actual balance so payouts
+    # for ranges that straddle midnight still work), then clearing for the
+    # remainder.
+    relieved = flt(amount) + tds
+
+    coupon_pay = _get_account("platform_coupon_payable")
+    promo_coupon = rounded(min(flt(coupon_reimbursement),
+                               _get_party_balance(coupon_pay, vendor_name)), 2) \
+        if coupon_pay else 0.0
+    if promo_coupon > 0:
+        entries.append({
+            "account": coupon_pay,
+            "debit": promo_coupon,
+            "credit": 0,
+            "party_type": "Supplier",
+            "party": vendor_name,
+            "remarks": f"Platform coupon funding cleared for {vendor_name} — payout {payout_id}",
+        })
+
+    loyalty_pay = _get_account("loyalty_payable")
+    promo_loyalty = rounded(min(flt(loyalty_reimbursement),
+                                 _get_party_balance(loyalty_pay, vendor_name)), 2) \
+        if loyalty_pay else 0.0
+    if promo_loyalty > 0:
+        entries.append({
+            "account": loyalty_pay,
+            "debit": promo_loyalty,
+            "credit": 0,
+            "party_type": "Supplier",
+            "party": vendor_name,
+            "remarks": f"Loyalty funding cleared for {vendor_name} — payout {payout_id}",
+        })
+
+    clearing_account = _get_account("clearing_vendor")
+    if clearing_account:
+        entries.append({
+            "account": clearing_account,
+            "debit": rounded(relieved - promo_coupon - promo_loyalty, 2),
+            "credit": 0,
+            "party_type": "Supplier",
+            "party": vendor_name,
+            "remarks": f"Clearing for {vendor_name} payout {payout_id}",
+        })
+
+    # ── Credits: cash leaves, withheld TDS sits in suspense ──
     bank_account = _get_account("cash_bank")
     if bank_account:
         entries.append({
             "account": bank_account,
-            "debit": flt(amount, 2),
-            "credit": 0,
+            "debit": 0,
+            "credit": flt(amount, 2),
             "party_type": "Supplier",
             "party": vendor_name,
             "remarks": f"Payout to {vendor_name} for {payout_id}",
         })
 
-    # TDS Receivable (vendor withheld TDS on the commission it paid us)
-    tds = flt(tds_amount)
     if tds > 0:
-        tds_account = _get_account("tds_receivable")
+        tds_account = _get_account("tds_payable")
         if tds_account:
             entries.append({
                 "account": tds_account,
-                "debit": tds,
-                "credit": 0,
+                "debit": 0,
+                "credit": tds,
                 "party_type": "Supplier",
                 "party": vendor_name,
                 "remarks": f"TDS withheld by {vendor_name} on commission (s88) — payout {payout_id}",
             })
-
-    # Clearing Account credit (clears the order-time balance).
-    # The nightly promotional consolidation (daily_promotions.py) moves the
-    # coupon/loyalty funding out of clearing into the named payable accounts
-    # — so at payout we clear THOSE accounts first (bounded by their actual
-    # balance, so payouts for ranges that straddle midnight still work), and
-    # only the remainder is credited against clearing.
-    clearing_account = _get_account("clearing_vendor")
-    if clearing_account:
-        total_clearing = flt(amount) + tds
-        remaining = total_clearing
-
-        coupon_pay = _get_account("platform_coupon_payable")
-        promo = rounded(min(flt(coupon_reimbursement),
-                            _get_party_balance(coupon_pay, vendor_name)), 2) \
-            if coupon_pay else 0.0
-        if promo > 0:
-            entries.append({
-                "account": coupon_pay,
-                "debit": promo,
-                "credit": 0,
-                "party_type": "Supplier",
-                "party": vendor_name,
-                "remarks": f"Platform coupon funding cleared for {vendor_name} — payout {payout_id}",
-            })
-            remaining = rounded(remaining - promo, 2)
-
-        loyalty_pay = _get_account("loyalty_payable")
-        promo_loyalty = rounded(min(flt(loyalty_reimbursement),
-                                     _get_party_balance(loyalty_pay, vendor_name)), 2) \
-            if loyalty_pay else 0.0
-        if promo_loyalty > 0:
-            entries.append({
-                "account": loyalty_pay,
-                "debit": promo_loyalty,
-                "credit": 0,
-                "party_type": "Supplier",
-                "party": vendor_name,
-                "remarks": f"Loyalty funding cleared for {vendor_name} — payout {payout_id}",
-            })
-            remaining = rounded(remaining - promo_loyalty, 2)
-
-        entries.append({
-            "account": clearing_account,
-            "debit": 0,
-            "credit": remaining,
-            "remarks": f"Clearing for {vendor_name} payout {payout_id}",
-        })
 
     # Create journal entry
     if entries:

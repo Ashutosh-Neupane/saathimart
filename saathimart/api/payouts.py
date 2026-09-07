@@ -103,7 +103,8 @@ def create_vendor_payout(vendor, from_date, to_date, payment_reference="", notes
         # so under Income Tax Act s88 the vendor withholds 15% of it and
         # deposits it with IRD. The platform therefore receives
         #   cash = payout_amount − tds
-        # and books the withheld amount as TDS Receivable (prepaid tax).
+        # and holds the withheld amount as TDS Payable until the vendor's
+        # TDS certificate reconciles (s88).
         tds_rate = flt(frappe.db.get_single_value("SaathiMart Settings", "tds_rate") or 15.0)
         tds_amount = rounded(flt(doc.commission_amount) * tds_rate / 100.0, 2)
         create_settlement_journal_entry(

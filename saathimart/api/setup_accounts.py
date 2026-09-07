@@ -183,6 +183,8 @@ def setup_platform_accounts():
         created += 1
     if _create_account("Loyalty Payable - SM", company, "Current Liability", "Liability", liability_root):
         created += 1
+    if _create_account("TDS Payable - SM", company, "Current Liability", "Liability", liability_root):
+        created += 1
     
     # ── Create Cost Center ──
     print("\nCost Center:")

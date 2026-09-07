@@ -1,4 +1,5 @@
 [pre_model_sync]
+saathimart.patches.rename_settings_doctype
 
 [post_model_sync]
 saathimart.patches.backfill_legacy_warehouse

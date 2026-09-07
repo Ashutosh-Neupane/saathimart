@@ -2,7 +2,7 @@
 SaathiMart Settings — centralized access to the monolithic Settings Single DocType.
 
 All app code should import from here rather than calling
-frappe.get_single("Settings") directly. This module provides:
+frappe.get_single("SaathiMart Settings") directly. This module provides:
   - Cached single-doc access
   - Typed getters with sensible defaults
   - A single place to split Settings into domain-specific docs later
@@ -22,7 +22,7 @@ def get_settings():
     cached = frappe.cache().get_value(_cache_key)
     if cached:
         return cached
-    doc = frappe.get_single("Settings")
+    doc = frappe.get_single("SaathiMart Settings")
     frappe.cache().set_value(_cache_key, doc, expires_in_sec=_cache_ttl)
     return doc
 

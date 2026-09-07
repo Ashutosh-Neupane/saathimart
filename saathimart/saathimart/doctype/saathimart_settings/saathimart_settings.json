@@ -1,5 +1,5 @@
 {
- "name": "Settings",
+ "name": "SaathiMart Settings",
  "module": "Saathimart",
  "doctype": "DocType",
  "issingle": 1,
@@ -39,6 +39,13 @@
    "label": "Default Commission %",
    "default": "0",
    "description": "Default commission rate for new vendors"
+  },
+  {
+   "fieldname": "tds_rate",
+   "fieldtype": "Float",
+   "label": "TDS Rate on Commission %",
+   "default": "15",
+   "description": "Withholding rate vendors apply to the commission they pay the platform (Income Tax Act 2058 s88). Settlement transfers payout minus TDS; the platform books the withheld amount as TDS Receivable."
   },
   {
    "fieldname": "section_cart",

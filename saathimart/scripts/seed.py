@@ -31,7 +31,7 @@ def run():
 # ── Settings ──────────────────────────────────────────────────────────────────
 
 def _seed_settings():
-    s = frappe.get_single("Settings")
+    s = frappe.get_single("SaathiMart Settings")
     s.site_name            = "SaathiMart"
     s.currency             = "NPR"
     s.enable_esewa         = 1
@@ -266,7 +266,7 @@ def _seed_loyalty_program():
     doc.insert(ignore_permissions=True)
 
     # Link to settings
-    s = frappe.get_single("Settings")
+    s = frappe.get_single("SaathiMart Settings")
     s.loyalty_program = "SaathiMart Rewards"
     s.save(ignore_permissions=True)
     print("  loyalty program seeded")

@@ -28,6 +28,12 @@
    "fieldtype": "Check",
    "label": "Published",
    "default": "1"
+  },
+  {
+   "fieldname": "sort_order",
+   "fieldtype": "Int",
+   "label": "Sort Order",
+   "default": "0"
   }
  ],
  "title_field": "title",
@@ -62,7 +68,8 @@
   "rail_key",
   "title",
   "subtitle",
-  "published"
+  "published",
+  "sort_order"
  ],
  "sort_field": "modified",
  "sort_order": "DESC",

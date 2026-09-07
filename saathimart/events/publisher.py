@@ -107,7 +107,7 @@ def _schedule_immediate_delivery(event_name):
     narrow window — only possible if the worker pool is backed up), only
     one delivery attempt actually gets queued.
     """
-    settings = frappe.get_single("Settings")
+    settings = frappe.get_single("SaathiMart Settings")
     secret = settings.get_password("webhook_secret", raise_exception=False) or ""
     max_retries = settings.max_webhook_retries or 3
     safe_enqueue(
@@ -125,7 +125,7 @@ def _schedule_immediate_delivery(event_name):
 def _publish_to_redis(event_type, payload):
     """Publish to Redis pub/sub for real-time subscribers."""
     try:
-        settings = frappe.get_single("Settings")
+        settings = frappe.get_single("SaathiMart Settings")
         channel = settings.event_channel or "saathimart:events"
         message = json.dumps({"event": event_type, "data": payload, "ts": str(now_datetime())})
         frappe.cache().publish(channel, message)
@@ -148,7 +148,6 @@ def on_order_created(doc, method):
         "vendor": doc.vendor,
         "status": doc.status,
         "grand_total": doc.grand_total,
-        "source_site": doc.source_site,
         "event_seq": None,  # set by _enqueue if target_vendor is known
     }
     _publish_to_redis("order.created", payload)
@@ -226,7 +225,8 @@ def publish_payment_received(order_id, amount=None, gateway="", reference=""):
 
 
 def publish_settlement(vendor_name, payout_id, amount, commission,
-                        coupon_reimbursement=0, loyalty_reimbursement=0):
+                        coupon_reimbursement=0, loyalty_reimbursement=0,
+                        tds_amount=0):
     """
     The hub has settled (paid) a vendor. Push settlement.completed to the
     vendor so they can create their own Journal Entry (Bank debit,
@@ -248,6 +248,7 @@ def publish_settlement(vendor_name, payout_id, amount, commission,
         "payout_id": payout_id,
         "amount": flt(amount),
         "commission": flt(commission),
+        "tds_amount": flt(tds_amount),
         "coupon_reimbursement": flt(coupon_reimbursement),
         "loyalty_reimbursement": flt(loyalty_reimbursement),
     }, target_site=vendor_url, target_vendor=vendor_name,
@@ -502,7 +503,7 @@ def drain_event_queue():
     entirely this pass — one struggling vendor no longer holds up every
     other vendor's events behind it in the same 50-row batch.
     """
-    settings = frappe.get_single("Settings")
+    settings = frappe.get_single("SaathiMart Settings")
     max_retries = settings.max_webhook_retries or 3
     secret = settings.get_password("webhook_secret", raise_exception=False) or ""
 

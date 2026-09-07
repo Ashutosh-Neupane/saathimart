@@ -24,6 +24,7 @@ after_request = [
 after_migrate = [
     "saathimart.api.cache_warming.warm_cache",
     "saathimart.api.indexes.add_performance_indexes",
+    "saathimart.api.custom_fields.ensure_custom_fields",
 ]
 
 # ── Desk tile ─────────────────────────────────────────────────────────────────
@@ -49,6 +50,8 @@ doc_events = {
             "saathimart.events.publisher.on_order_created",
             "saathimart.api.order_events.on_order_created",
             "saathimart.api.audit.log_order_update",
+            # Publish to Redis Stream (via frappe.enqueue)
+            "saathimart.streams.publisher.publish_order_created",
         ],
         "on_update": [
             "saathimart.events.publisher.on_order_updated",
@@ -159,6 +162,11 @@ doc_events = {
 
 # ── Scheduled tasks ───────────────────────────────────────────────────────────
 scheduler_events = {
+    # 00:00 sharp — the nightly promotional close: the day's redeemed coupons
+    # and loyalty points hit accounting as per-vendor liability JEs.
+    "0 0 * * *": [
+        "saathimart.api.daily_promotions.consolidate_daily_promotions",
+    ],
     "daily": [
         "saathimart.api.loyalty.expire_old_points",
         "saathimart.api.loyalty.check_birthday_rewards",
@@ -172,6 +180,10 @@ scheduler_events = {
         "saathimart.api.dead_letter.retry_dead_letters",
         # Dead letter alert when threshold exceeded
         "saathimart.api.dead_letter.dead_letter_alert",
+        # Redis Streams: Check all DLQs and move failed messages
+        "saathimart.streams.dead_letter.check_all_dead_letter_queues",
+        # Redis Streams: Send stream health digest to admins
+        "saathimart.streams.monitor.send_stream_health_digest",
         # Alert (never auto-rotates) when a vendor's webhook secret is overdue
         "saathimart.api.secret_rotation.check_stale_secrets",
         # Push notification: clean up stale device tokens (90-day inactivity)
@@ -217,73 +229,36 @@ scheduler_events = {
 }
 
 # ── Fixtures ──────────────────────────────────────────────────────────
-# Exported on every `bench migrate` / `bench export-fixtures` so that
-# configuration data (roles, settings, CMS content) is portable across
-# environments. Only doctypes that hold *configuration* or *content*
-# are listed — transactional data (Cart, Order, Vendor Stock, etc.) is
-# environment-specific and must not be fixtures-exported.
+# ── Fixtures ─────────────────────────────────────────────────────────────────
+# ONLY include structural data that must exist for the app to work.
+# Business data should be seeded via admin UI or migration scripts.
+#
+# DO NOT include:
+#   - Products, Categories, Brands (business data)
+#   - Vendors, Warehouses (business data)
+#   - CMS content (Hero Slides, Offers, Banners - marketing data)
+#   - Payment Modes, Delivery Zones (business configuration)
+#   - Loyalty/Membership config (business rules)
+#
+# WHY: Fixtures are exported on every `bench migrate` and overwrite existing data.
+#      Business data should be managed via UI, not overwritten on each migration.
 fixtures = [
-    # ── Roles & Permissions ──
+    # ── Roles (required for permissions to work) ──
     {"dt": "Role", "filters": [["name", "in", [
         "SM Admin", "SM Vendor", "SM Delivery", "SM Customer", "Website Manager",
     ]]]},
-    # ── Core Settings ──
-    {"dt": "Settings"},
-    {"dt": "Site Config"},
-    {"dt": "Homepage Settings"},
-    # ── Authentication ──
-    {"dt": "Pending Verification"},
-    # ── CMS Content ──
-    {"dt": "Hero Slide"},
-    {"dt": "Seasonal Banner"},
-    {"dt": "Trust Badge"},
-    {"dt": "Product Rail Heading"},
-    {"dt": "Website Content"},
-    {"dt": "SM Search Term"},
-    {"dt": "SM Audit Log"},
-    {"dt": "SM Feature Flag"},
-    # ── Static Pages ──
-    {"dt": "About Us"},
-    {"dt": "Terms Page"},
-    {"dt": "Privacy Page"},
-    {"dt": "Cookies Page"},
-    {"dt": "Careers Page"},
-    {"dt": "Partner Page"},
-    {"dt": "Rider Page"},
-    # ── Catalogue Master Data ──
-    {"dt": "Category"},
-    {"dt": "Brand"},
-    {"dt": "Delivery Zone"},
-    {"dt": "Payment Mode"},
-    # ── CMS Supporting Data ──
-    {"dt": "FAQ Category"},
-    {"dt": "FAQ Item"},
-    {"dt": "Offer"},
-    {"dt": "Popular Location"},
-    {"dt": "Navigation Item"},
-    {"dt": "Banner"},
-    {"dt": "Site Page"},
-    # ── Loyalty & Membership ──
-    {"dt": "Loyalty Program"},
-    {"dt": "Loyalty Tier"},
-    {"dt": "Membership Plan"},
-    {"dt": "Membership Benefit"},
-    # ── Product Schema (for structure, not data) ──
-    {"dt": "Product Specification"},
-    {"dt": "Product Variant Attribute"},
-    {"dt": "Product Media"},
-    {"dt": "Product Price"},
-    # ── Order Child Tables ──
+    
+    # ── Core App Configuration (not business data) ──
+    {"dt": "SaathiMart Settings"},           # App-level settings
+    {"dt": "Site Config"},        # Site metadata
+    {"dt": "Homepage Settings"},  # Homepage structure (not content)
+    
+    # ── DocType Definitions (child tables) ──
     {"dt": "Order Item"},
     {"dt": "Order Tax"},
     {"dt": "Cart Item"},
-    # ── Vendor Schema ──
     {"dt": "Vendor Warehouse"},
-    {"dt": "Vendor Barcode Index"},
-    # ── Notification Device ──
     {"dt": "SM Notification Device"},
-    # ── Export & Reporting ──
-    {"dt": "SM Feature Flag"},
 ]
 
 # ── Permissions ───────────────────────────────────────────────────────────────
@@ -304,9 +279,3 @@ permission_query_conditions = {
 # ── Boot info ─────────────────────────────────────────────────────────
 extend_bootinfo = "saathimart.api.auth.extend_bootinfo"
 
-# ── Fixtures for new DocTypes ───────────────────────────────────────────────
-# Delivery slots are configuration data — export across environments
-fixtures.extend([
-    {"dt": "Delivery Time Slot"},
-    {"dt": "Delivery Slot Booking"},
-])

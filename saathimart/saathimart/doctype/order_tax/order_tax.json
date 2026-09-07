@@ -26,6 +26,13 @@
    "in_list_view": 1
   },
   {
+   "fieldname": "included_in_price",
+   "fieldtype": "Check",
+   "label": "Included in Price",
+   "default": "0",
+   "description": "VAT already inside the quoted price (Nepal retail model) — backed out, not added"
+  },
+  {
    "fieldname": "tax_amount",
    "fieldtype": "Currency",
    "label": "Tax Amount",

@@ -9,7 +9,7 @@ amount is only ever counted as owed once.
 """
 import frappe
 from frappe import _
-from frappe.utils import flt
+from frappe.utils import flt, rounded
 from saathimart.api.responses import handle_api_errors
 
 
@@ -99,22 +99,31 @@ def create_vendor_payout(vendor, from_date, to_date, payment_reference="", notes
     try:
         from saathimart.api.accounting import create_settlement_journal_entry, generate_settlement_statement
         statement = generate_settlement_statement(vendor, from_date, to_date)
+        # TDS: the VENDOR pays the platform a commission (a service charge),
+        # so under Income Tax Act s88 the vendor withholds 15% of it and
+        # deposits it with IRD. The platform therefore receives
+        #   cash = payout_amount − tds
+        # and books the withheld amount as TDS Receivable (prepaid tax).
+        tds_rate = flt(frappe.db.get_single_value("SaathiMart Settings", "tds_rate") or 15.0)
+        tds_amount = rounded(flt(doc.commission_amount) * tds_rate / 100.0, 2)
         create_settlement_journal_entry(
             vendor_name=vendor,
             payout_id=doc.name,
-            amount=doc.payout_amount,
+            amount=flt(doc.payout_amount) - tds_amount,
             commission=doc.commission_amount,
+            tds_amount=tds_amount,
             coupon_reimbursement=statement.get("platform_coupon_discount", 0),
             loyalty_reimbursement=statement.get("loyalty_discount", 0),
         )
         # Publish settlement.completed to vendor so they can create their
-        # own Journal Entry (Bank debit, Commission expense, Clearing credit)
+        # own Journal Entry (Bank debit, TDS Payable, Clearing credit)
         from saathimart.events.publisher import publish_settlement
         publish_settlement(
             vendor_name=vendor,
             payout_id=doc.name,
-            amount=doc.payout_amount,
+            amount=flt(doc.payout_amount) - tds_amount,
             commission=doc.commission_amount,
+            tds_amount=tds_amount,
             coupon_reimbursement=statement.get("platform_coupon_discount", 0),
             loyalty_reimbursement=statement.get("loyalty_discount", 0),
         )

@@ -31,7 +31,8 @@
   {
    "fieldname": "frappe_site_url",
    "fieldtype": "Data",
-   "label": "Frappe Site URL"
+   "label": "Frappe Site URL",
+   "description": "Full URL of the vendor's Frappe site, e.g. http://vendor1.example.com:8000. The hostname portion is sent as the Host header so the hub reaches the right site on a multi-tenant vendor bench (a bare container/service name cannot route)."
   },
   {
    "fieldname": "api_key",

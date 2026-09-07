@@ -179,6 +179,10 @@ def setup_platform_accounts():
     
     if _create_account("Output VAT - SM", company, "Tax", "Liability", liability_root):
         created += 1
+    if _create_account("Platform Coupon Payable - SM", company, "Current Liability", "Liability", liability_root):
+        created += 1
+    if _create_account("Loyalty Payable - SM", company, "Current Liability", "Liability", liability_root):
+        created += 1
     
     # ── Create Cost Center ──
     print("\nCost Center:")

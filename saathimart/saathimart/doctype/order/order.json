@@ -95,6 +95,13 @@
    "options": "Order Tax"
   },
   {
+   "fieldname": "taxable_value",
+   "fieldtype": "Currency",
+   "label": "Taxable Value (pre-VAT)",
+   "read_only": 1,
+   "description": "Customer bill minus VAT — the VAT-Act s.12 taxable value reported to CBMS"
+  },
+  {
    "fieldname": "total_taxes",
    "fieldtype": "Currency",
    "label": "Total Taxes",

@@ -20,7 +20,7 @@ from __future__ import annotations
 
 import frappe
 from frappe import _
-from frappe.utils import flt, nowdate, getdate
+from frappe.utils import flt, nowdate, getdate, rounded
 
 
 # ── Chart of Accounts Structure ──────────────────────────────────────────────
@@ -36,6 +36,9 @@ PLATFORM_ACCOUNTS = {
     "delivery_income":     "Delivery Service Income - SM",
     "clearing_vendor":     "Clearing Account - Vendor - SM",
     "clearing_logistics":  "Clearing Account - Logistics - SM",
+    "tds_receivable":      "TDS Receivable - SM",
+    "platform_coupon_payable": "Platform Coupon Payable - SM",
+    "loyalty_payable":         "Loyalty Payable - SM",
     "vat_output":          "Output VAT - SM",
     "vat_input":           "Input VAT - SM",
     "accounts_receivable": "Accounts Receivable - SM",
@@ -67,6 +70,9 @@ _PLATFORM_FUZZY = {
     "delivery_income":     ["Delivery Service", "Delivery Charges", "Indirect Income"],
     "clearing_vendor":     ["Clearing Account - Vendor", "Clearing - Vendor", "Accounts Payable"],
     "clearing_logistics":  ["Clearing Account - Logistics", "Clearing - Logistics", "Accounts Payable"],
+    "tds_receivable":      ["TDS Receivable", "TDS", "Advance Tax", "Duties and Taxes"],
+    "platform_coupon_payable": ["Platform Coupon Payable", "Coupon Payable", "Accounts Payable"],
+    "loyalty_payable":         ["Loyalty Payable", "Accounts Payable"],
     "vat_output":          ["Output VAT", "VAT", "Duties and Taxes"],
     "vat_input":           ["Input VAT", "VAT", "Duties and Taxes"],
     "accounts_receivable": ["Accounts Receivable", "Debtors"],
@@ -93,6 +99,8 @@ def _get_account(account_key: str, entity: str = "platform") -> str | None:
     matching when the exact canonical name is not present in the chart.
 
     Strategy (same as vendor_accounting.py, now applied to the platform side):
+      0. Return None immediately when ERPNext isn't installed (no tabAccount)
+         — the hub can run standalone and GL recording is simply skipped.
       1. Return cached value immediately if we've resolved this key before.
       2. Try the exact canonical name from PLATFORM_ACCOUNTS / VENDOR_ACCOUNTS.
       3. Try each keyword in the fuzzy fallback list with a LIKE search,
@@ -100,6 +108,9 @@ def _get_account(account_key: str, entity: str = "platform") -> str | None:
       4. Log and return None if nothing is found so callers can skip the
          entry rather than crashing.
     """
+    if not frappe.db.exists("DocType", "Account"):
+        return None
+
     cache_key = f"{entity}:{account_key}"
     if cache_key in _account_cache:
         return _account_cache[cache_key]
@@ -133,11 +144,22 @@ def _get_account(account_key: str, entity: str = "platform") -> str | None:
 
 
 def _get_company():
-    """Get the default company for this site."""
-    company = frappe.defaults.get_global_default("company")
-    if not company:
-        company = frappe.db.get_value("Company", {}, "name")
-    return company
+    """Get the default company for this site.
+
+    Returns None when ERPNext isn't installed (the hub can run standalone —
+    GL entries simply aren't recorded). The global-default lookup itself is
+    guarded: on a site without ERPNext there is no tabCompany table and the
+    defaults query can 1146.
+    """
+    if not frappe.db.exists("DocType", "Company"):
+        return None
+    try:
+        company = frappe.defaults.get_global_default("company")
+        if not company:
+            company = frappe.db.get_value("Company", {}, "name")
+        return company
+    except Exception:
+        return None
 
 
 def _get_default_cost_center(company=None):
@@ -292,7 +314,46 @@ def record_order_payment_gl(order_id, amount, gateway="", reference=""):
     company = _get_company()
     posting_date = nowdate()
 
-    # ── Step 1: Cash/Bank debit (money received from customer)
+    # ── Nepal marketplace model: the platform's PAN books only ITS OWN
+    # income and liabilities. Product revenue and product Output VAT belong
+    # to the VENDOR's PAN (they made the sale) — booking them here would
+    # declare the vendors' sales on the platform's VAT return. What the
+    # platform actually earns on this order:
+    #   - marketplace commission (a service -> 13% service VAT)
+    #   - nothing else (delivery is pass-through, coupons/loyalty are costs)
+    # Everything else the customer paid sits in the vendor Clearing Account
+    # until settlement.
+
+    # ── Per-vendor commission (each vendor has their own rate) ──
+    fulfillments = frappe.get_all(
+        "Vendor Fulfillment",
+        filters={"parent": order.name, "status": ["!=", "Cancelled"]},
+        fields=["vendor", "subtotal"],
+    )
+    total_subtotal = sum(flt(f.subtotal) for f in fulfillments) or 1.0
+
+    coupon_absorption = _get_coupon_absorption(order)
+    platform_absorbs = flt(coupon_absorption.get("platform_absorbs", 0))
+    loyalty = flt(order.loyalty_discount or 0)
+    delivery_charge = flt(order.delivery_charge or 0)
+    delivery_vat = rounded(delivery_charge * 13.0 / 113.0, 2)  # price-inclusive
+
+    commission_total = 0.0
+    commission_detail = []
+    for f in fulfillments:
+        # Vendor-absorbed coupons reduce this vendor's base proportionally
+        vendor_gross = flt(f.subtotal) - (
+            flt(coupon_absorption.get("vendor_absorbs", 0)) * flt(f.subtotal) / total_subtotal
+        )
+        pct = flt(frappe.db.get_value("Vendor", f.vendor, "commission_pct") or 0) if f.vendor else 0
+        commission_v = rounded(vendor_gross * pct / 100.0, 2)
+        if commission_v > 0:
+            commission_detail.append(f"{f.vendor}: {vendor_gross}x{pct}%={commission_v}")
+        commission_total += commission_v
+
+    service_vat = rounded(commission_total * 13.0 / 100.0, 2)
+
+    # ── Step 1: Cash/Bank debit (the whole bill the customer paid) ──
     cash_account = _get_account("cash_bank")
     if cash_account:
         entries.append({
@@ -303,69 +364,88 @@ def record_order_payment_gl(order_id, amount, gateway="", reference=""):
             "party": order.customer_email or order.customer_name,
         })
 
-    # ── Step 2: Revenue credit (product sales)
-    revenue_account = _get_account("revenue")
-    if revenue_account:
-        entries.append({
-            "account": revenue_account,
-            "debit": 0,
-            "credit": flt(order.net_total, 2),
-        })
-
-    # ── Step 3: VAT Output credit (tax collected)
-    vat_account = _get_account("vat_output")
-    if vat_account and flt(order.total_taxes) > 0:
-        entries.append({
-            "account": vat_account,
-            "debit": 0,
-            "credit": flt(order.total_taxes, 2),
-        })
-
-    # ── Step 4: Platform Coupon Expense (if platform absorbed)
-    coupon_absorption = _get_coupon_absorption(order)
-    if coupon_absorption.get("platform_absorbs", 0) > 0:
+    # ── Step 2: Platform Coupon Expense (platform-funded discount) ──
+    if platform_absorbs > 0:
         coupon_exp_account = _get_account("platform_coupon_exp")
         if coupon_exp_account:
             entries.append({
                 "account": coupon_exp_account,
-                "debit": flt(coupon_absorption["platform_absorbs"], 2),
+                "debit": platform_absorbs,
                 "credit": 0,
                 "remarks": f"Platform coupon absorbed for {order_id}",
             })
 
-    # ── Step 5: Loyalty Expense (platform reimburses vendor for loyalty redemption)
-    if flt(order.loyalty_discount) > 0:
+    # ── Step 3: Loyalty Expense (platform reimburses vendor) ──
+    if loyalty > 0:
         loyalty_exp_account = _get_account("loyalty_expense")
         if loyalty_exp_account:
             entries.append({
                 "account": loyalty_exp_account,
-                "debit": flt(order.loyalty_discount, 2),
+                "debit": loyalty,
                 "credit": 0,
                 "remarks": f"Loyalty points redeemed for {order_id}",
             })
 
-    # ── Step 6: Delivery Income (if delivery charge exists)
-    if flt(order.delivery_charge) > 0:
+    # ── Step 4: Marketplace Commission Income (platform's service fee) ──
+    commission_account = _get_account("commission_income")
+    if commission_account and commission_total > 0:
+        entries.append({
+            "account": commission_account,
+            "debit": 0,
+            "credit": commission_total,
+            "remarks": f"Commission for {order_id} ({'; '.join(commission_detail)})",
+        })
+
+    # ── Step 5: Service VAT on commission (13% — platform's own VAT liability) ──
+    vat_account = _get_account("vat_output")
+    if vat_account and service_vat > 0:
+        entries.append({
+            "account": vat_account,
+            "debit": 0,
+            "credit": service_vat,
+            "remarks": f"Service VAT on commission for {order_id}",
+        })
+
+    # ── Step 6: Delivery charge (pass-through service, price-inclusive VAT) ──
+    if delivery_charge > 0:
         delivery_account = _get_account("delivery_income")
         if delivery_account:
             entries.append({
                 "account": delivery_account,
                 "debit": 0,
-                "credit": flt(order.delivery_charge, 2),
+                "credit": flt(delivery_charge - delivery_vat, 2),
                 "remarks": f"Delivery charge for {order_id}",
             })
+            if delivery_vat > 0 and vat_account:
+                entries.append({
+                    "account": vat_account,
+                    "debit": 0,
+                    "credit": delivery_vat,
+                    "remarks": f"Delivery charge VAT for {order_id}",
+                })
 
-    # ── Step 7: Clearing Account debit (amount owed to vendors)
-    # This is the net amount after all deductions that goes to vendors
-    clearing_amount = _calculate_vendor_clearing_amount(order, coupon_absorption)
+    # ── Step 7: Vendor Clearing (residual = everything owed to vendors) ──
+    # Balancing figure: cash-in + platform-funded discounts − platform's own
+    # earnings. Settlement claims per-vendor amounts out of this account.
+    clearing_amount = rounded(
+        flt(amount) + platform_absorbs + loyalty
+        - commission_total - service_vat - delivery_charge,
+        2,
+    )
     clearing_account = _get_account("clearing_vendor")
     if clearing_account and clearing_amount > 0:
         entries.append({
             "account": clearing_account,
-            "debit": flt(clearing_amount, 2),
-            "credit": 0,
+            "debit": 0,
+            "credit": clearing_amount,
             "remarks": f"Vendor clearing for {order_id}",
         })
+    elif clearing_amount < 0:
+        frappe.log_error(
+            f"Negative vendor clearing {clearing_amount} for {order_id} — "
+            "commission + VAT + delivery exceed the bill; check commission_pct",
+            "Accounting",
+        )
 
     # Create all entries
     if entries:
@@ -535,7 +615,10 @@ def record_delivery_charge_gl(order_id):
         return
 
     delivery_amount = flt(order.delivery_charge)
-    delivery_vat = delivery_amount * 0.13  # 13% VAT on delivery
+    # The customer's delivery charge is VAT-INCLUSIVE (13% is inside what
+    # they paid — same model as the ERPNext middleware, VAT Act s.12).
+    # Back it out: VAT = amount × 13/113, income = amount × 100/113.
+    delivery_vat = rounded(delivery_amount * 13.0 / 113.0, 2)
 
     entries = []
 
@@ -576,16 +659,40 @@ def record_delivery_charge_gl(order_id):
 
 # ── Vendor Settlement Journal Entry ──────────────────────────────────────────
 
+def _get_party_balance(account, party):
+    """Current credit-positive balance of a liability account for one party
+    (Supplier). Returns credits minus debits — what we still owe."""
+    rows = frappe.db.sql(
+        """
+        SELECT SUM(credit - debit) AS bal
+        FROM `tabGL Entry`
+        WHERE account = %s AND party = %s AND is_cancelled = 0
+        """,
+        (account, party),
+        as_dict=True,
+    )
+    return rounded(flt(rows[0].bal if rows else 0), 2)
+
+
 def create_settlement_journal_entry(vendor_name, payout_id, amount, commission,
-                                    coupon_reimbursement=0, loyalty_reimbursement=0):
+                                    coupon_reimbursement=0, loyalty_reimbursement=0,
+                                    tds_amount=0):
     """
     Create Journal Entry when settling with vendor (weekly/bi-weekly payout).
-    
-    Clears the Saathimart Clearing Account to zero and records:
-      - Bank Account debit (cash deposited to vendor)
-      - Marketplace Commission Expense debit
-      - Input VAT debit (VAT claimable on commission)
-      - Clearing Account credit (clears the original balance)
+
+    Commission income and its service VAT were already recognised when the
+    customer's payment was booked (record_order_payment_gl) — this entry
+    only moves money:
+
+      DR: Bank                      (cash actually transferred to vendor)
+      DR: TDS Receivable            (vendor withheld 15% of commission and
+                                     deposited it with IRD under s88 — the
+                                     platform claims it as prepaid tax)
+      CR: Clearing Account - Vendor (clears the balance)
+
+    `commission`, `coupon_reimbursement` and `loyalty_reimbursement` are
+    accepted for backward compatibility with earlier callers but are no
+    longer booked here — they were already inside the clearing balance.
     """
     entries = []
     company = _get_company()
@@ -603,59 +710,67 @@ def create_settlement_journal_entry(vendor_name, payout_id, amount, commission,
             "remarks": f"Payout to {vendor_name} for {payout_id}",
         })
 
-    # Commission expense
-    commission_account = _get_account("commission_income")
-    if commission_account and commission > 0:
-        entries.append({
-            "account": commission_account,
-            "debit": flt(commission, 2),
-            "credit": 0,
-            "remarks": f"Commission from {vendor_name} for {payout_id}",
-        })
+    # TDS Receivable (vendor withheld TDS on the commission it paid us)
+    tds = flt(tds_amount)
+    if tds > 0:
+        tds_account = _get_account("tds_receivable")
+        if tds_account:
+            entries.append({
+                "account": tds_account,
+                "debit": tds,
+                "credit": 0,
+                "party_type": "Supplier",
+                "party": vendor_name,
+                "remarks": f"TDS withheld by {vendor_name} on commission (s88) — payout {payout_id}",
+            })
 
-    # Input VAT on commission (13% service VAT)
-    vat_input = _get_account("vat_input")
-    if vat_input and commission > 0:
-        vat_on_commission = commission * 0.13
-        entries.append({
-            "account": vat_input,
-            "debit": flt(vat_on_commission, 2),
-            "credit": 0,
-            "remarks": f"Input VAT on commission from {vendor_name}",
-        })
-
-    # Clearing Account credit (clears the original order clearing)
+    # Clearing Account credit (clears the order-time balance).
+    # The nightly promotional consolidation (daily_promotions.py) moves the
+    # coupon/loyalty funding out of clearing into the named payable accounts
+    # — so at payout we clear THOSE accounts first (bounded by their actual
+    # balance, so payouts for ranges that straddle midnight still work), and
+    # only the remainder is credited against clearing.
     clearing_account = _get_account("clearing_vendor")
     if clearing_account:
-        total_clearing = amount + commission + (commission * 0.13 if commission > 0 else 0)
+        total_clearing = flt(amount) + tds
+        remaining = total_clearing
+
+        coupon_pay = _get_account("platform_coupon_payable")
+        promo = rounded(min(flt(coupon_reimbursement),
+                            _get_party_balance(coupon_pay, vendor_name)), 2) \
+            if coupon_pay else 0.0
+        if promo > 0:
+            entries.append({
+                "account": coupon_pay,
+                "debit": promo,
+                "credit": 0,
+                "party_type": "Supplier",
+                "party": vendor_name,
+                "remarks": f"Platform coupon funding cleared for {vendor_name} — payout {payout_id}",
+            })
+            remaining = rounded(remaining - promo, 2)
+
+        loyalty_pay = _get_account("loyalty_payable")
+        promo_loyalty = rounded(min(flt(loyalty_reimbursement),
+                                     _get_party_balance(loyalty_pay, vendor_name)), 2) \
+            if loyalty_pay else 0.0
+        if promo_loyalty > 0:
+            entries.append({
+                "account": loyalty_pay,
+                "debit": promo_loyalty,
+                "credit": 0,
+                "party_type": "Supplier",
+                "party": vendor_name,
+                "remarks": f"Loyalty funding cleared for {vendor_name} — payout {payout_id}",
+            })
+            remaining = rounded(remaining - promo_loyalty, 2)
+
         entries.append({
             "account": clearing_account,
             "debit": 0,
-            "credit": flt(total_clearing, 2),
+            "credit": remaining,
             "remarks": f"Clearing for {vendor_name} payout {payout_id}",
         })
-
-    # Platform coupon reimbursement (if platform absorbed coupons)
-    if coupon_reimbursement > 0:
-        coupon_exp = _get_account("platform_coupon_exp")
-        if coupon_exp:
-            entries.append({
-                "account": coupon_exp,
-                "debit": flt(coupon_reimbursement, 2),
-                "credit": 0,
-                "remarks": f"Coupon reimbursement for {vendor_name}",
-            })
-
-    # Loyalty reimbursement
-    if loyalty_reimbursement > 0:
-        loyalty_exp = _get_account("loyalty_expense")
-        if loyalty_exp:
-            entries.append({
-                "account": loyalty_exp,
-                "debit": flt(loyalty_reimbursement, 2),
-                "credit": 0,
-                "remarks": f"Loyalty reimbursement for {vendor_name}",
-            })
 
     # Create journal entry
     if entries:

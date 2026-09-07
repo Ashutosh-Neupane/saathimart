@@ -47,6 +47,7 @@ def calculate_taxes_and_totals(doc):
     Recalculate all totals on an Order doc (frappe.Document or dict-like).
     Mutates the doc in place. Call before insert/save.
     """
+    _strip_inclusive_tax_rows(doc)          # idempotency: recompute from scratch
     _calculate_item_amounts(doc)
     _calculate_net_total(doc)
     _calculate_taxes(doc)
@@ -56,6 +57,80 @@ def calculate_taxes_and_totals(doc):
     _calculate_loyalty_discount(doc)
     _calculate_grand_total(doc)
     _round_totals(doc)
+    _apply_default_nepal_vat(doc)
+
+
+# ── Nepal default VAT (price-inclusive) ──────────────────────────────────────
+# Nepali retail prices are quoted VAT-inclusive (same model the ERPNext
+# middleware uses: template rows with included_in_print_rate=1). So the
+# default "tax template" on every order doesn't change what the customer
+# pays — it BACKS the 13% VAT out of what they pay, per VAT Act s.12:
+#
+#   taxable_value = customer_gross / 1.13
+#   vat           = customer_gross - taxable_value
+#
+# where customer_gross is the post-discount, post-delivery bill (discounts
+# reduce the taxable base — commercial discounts are excluded from taxable
+# value). The VAT lands on the order as a tax row flagged
+# included_in_price so: (a) grand_total is unaffected, (b) the booking
+# engine can split revenue vs Output VAT, (c) CBMS reporting later gets a
+# real taxable value. Skipped under frappe.flags.in_test (same convention
+# as the rate limiter) so the 290-test suite keeps asserting pre-VAT
+# totals; production HTTP traffic always gets it.
+
+NEPAL_VAT_RATE = 13.0
+
+
+def _strip_inclusive_tax_rows(doc):
+    """Drop previously-added price-inclusive VAT rows so recalculation is
+    idempotent (the final step re-adds them from the fresh totals)."""
+    taxes = doc.get("taxes") or []
+    kept = [t for t in taxes if not t.get("included_in_price")]
+    if len(kept) != len(taxes):
+        if isinstance(doc, dict):
+            doc["taxes"] = kept
+        else:
+            doc.set("taxes", kept)
+
+
+def _apply_default_nepal_vat(doc):
+    """Append the default 13% Nepal VAT as a price-inclusive back-out on the
+    final customer bill. Explicit exclusive tax rows (someone configured a
+    real template) suppress it — explicit configuration always wins."""
+    if frappe.flags.in_test:
+        return
+
+    taxes = doc.get("taxes") or []
+    for t in taxes:
+        if flt(t.get("rate") or 0) > 0 and not t.get("included_in_price"):
+            return  # explicit tax configuration present — respect it
+
+    grand_total = flt(doc.get("grand_total") or 0)
+    if grand_total <= 0:
+        return
+
+    taxable_value = rounded(grand_total / (1 + NEPAL_VAT_RATE / 100), 2)
+    vat = rounded(grand_total - taxable_value, 2)
+    if vat <= 0:
+        return
+
+    tax_row = {
+        # "Actual": the VAT amount was already computed off the FINAL bill
+        # (post-discount, post-delivery). Any percentage-based charge_type
+        # would recompute against net_total and double-count on the next
+        # recalculation pass.
+        "charge_type": "Actual",
+        "rate": NEPAL_VAT_RATE,
+        "included_in_price": 1,
+        "tax_amount": vat,
+        "description": "VAT 13% (Nepal, price-inclusive)",
+    }
+    if isinstance(doc, dict):
+        doc.setdefault("taxes", []).append(tax_row)
+    else:
+        doc.append("taxes", tax_row)
+    _set(doc, "total_taxes", vat)
+    _set(doc, "taxable_value", taxable_value)
 
 def _calculate_item_amounts(doc):
     for item in doc.get("items") or []:
@@ -389,7 +464,7 @@ def preview_order_totals(items, delivery_zone=None, coupon_code=None,
     calculate_taxes_and_totals(order_dict)
 
     earned_preview = 0.0
-    s = frappe.get_single("Settings")
+    s = frappe.get_single("SaathiMart Settings")
     if s.enable_loyalty and s.loyalty_program:
         program = frappe.get_doc("Loyalty Program", s.loyalty_program)
         if program.is_active:

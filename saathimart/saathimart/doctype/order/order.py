@@ -1,4 +1,5 @@
 import frappe
+from frappe import _
 from frappe.model.document import Document
 from frappe.utils import flt
 from saathimart.api.totals import calculate_taxes_and_totals
@@ -26,12 +27,15 @@ class Order(Document):
             if flt(item.rate) < 0:
                 frappe.throw(_("Item '{0}' must have a non-negative rate").format(item.product), title="Invalid Rate")
 
-        # Validation: Grand total must be positive
+        # Run the full ERPNext-style totals engine on every save — this MUST
+        # precede the grand-total guard, otherwise a brand-new Order (grand_total
+        # still unset = 0) fails validation even though the engine would compute
+        # a positive total. Every direct Order.insert() was hitting this.
+        calculate_taxes_and_totals(self)
+
+        # Validation: Grand total must be positive (now that it's computed)
         if flt(self.grand_total) <= 0:
             frappe.throw(_("Order grand total must be positive"), title="Invalid Total")
-
-        # Run the full ERPNext-style totals engine on every save
-        calculate_taxes_and_totals(self)
 
     def _redeem_loyalty_points(self):
         if not (self.loyalty_points_redeemed and self.loyalty_discount and self.customer_email):

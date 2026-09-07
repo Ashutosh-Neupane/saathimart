@@ -155,7 +155,7 @@ def get_user_token(user):
 
 def extend_bootinfo(bootinfo):
     """Inject saathimart context into every Frappe boot payload."""
-    s = frappe.get_single("Settings")
+    s = frappe.get_single("SaathiMart Settings")
     bootinfo["saathimart"] = {
         "currency":        s.currency or "NPR",
         "loyalty_enabled": bool(getattr(s, "enable_loyalty", 0)),

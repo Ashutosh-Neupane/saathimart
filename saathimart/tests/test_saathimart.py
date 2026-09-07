@@ -45,7 +45,7 @@ _original_esewa_secret = None
 def setUpModule():
     global _original_settings, _original_esewa_secret
     frappe.set_user("Administrator")
-    doc = frappe.get_single("Settings")
+    doc = frappe.get_single("SaathiMart Settings")
     _original_settings = {f: doc.get(f) for f in _SETTINGS_FIELDS}
     _original_esewa_secret = doc.get_password("esewa_secret_key", raise_exception=False)
 
@@ -54,7 +54,7 @@ def tearDownModule():
     if _original_settings is None:
         return
     frappe.set_user("Administrator")
-    doc = frappe.get_single("Settings")
+    doc = frappe.get_single("SaathiMart Settings")
     for field, value in _original_settings.items():
         doc.set(field, value)
     if _original_esewa_secret is not None:
@@ -789,7 +789,7 @@ class TestLoyalty(unittest.TestCase):
             prog.point_expiry_days            = 365
             prog.insert(ignore_permissions=True)
 
-        s = frappe.get_single("Settings")
+        s = frappe.get_single("SaathiMart Settings")
         s.enable_loyalty   = 1
         s.loyalty_program  = "Test Rewards"
         s.save(ignore_permissions=True)
@@ -910,7 +910,7 @@ class TestLocationBasedLoyalty(unittest.TestCase):
             prog.point_expiry_days = 365
             prog.insert(ignore_permissions=True)
 
-        s = frappe.get_single("Settings")
+        s = frappe.get_single("SaathiMart Settings")
         s.enable_loyalty = 1
         s.loyalty_program = "Test Rewards"
         s.save(ignore_permissions=True)
@@ -2141,7 +2141,7 @@ class TestEsewaSignature(unittest.TestCase):
 
     def setUp(self):
         frappe.set_user("Administrator")
-        s = frappe.get_single("Settings")
+        s = frappe.get_single("SaathiMart Settings")
         s.esewa_secret_key    = "8gBm/:&EnhH.1/q"  # eSewa sandbox secret
         s.esewa_merchant_code = "EPAYTEST"
         s.payment_sandbox_mode = 1
@@ -2923,10 +2923,10 @@ class TestVerifyHubSecret(unittest.TestCase):
         from frappe.utils.password import set_encrypted_password
 
         self._orig_global = (
-            frappe.get_single("Settings").get_password("webhook_secret", raise_exception=False)
+            frappe.get_single("SaathiMart Settings").get_password("webhook_secret", raise_exception=False)
             or ""
         )
-        set_encrypted_password("Settings", "Settings", self.GLOBAL, "webhook_secret")
+        set_encrypted_password("SaathiMart Settings", "SaathiMart Settings", self.GLOBAL, "webhook_secret")
 
         self.vendor = _make_vendor("HMAC Auth Test Vendor")
         set_encrypted_password("Vendor", self.vendor.name, self.VENDOR, "webhook_secret")
@@ -2937,7 +2937,7 @@ class TestVerifyHubSecret(unittest.TestCase):
         from frappe.utils.password import set_encrypted_password
 
         set_encrypted_password(
-            "Settings", "Settings", self._orig_global or None, "webhook_secret"
+            "SaathiMart Settings", "SaathiMart Settings", self._orig_global or None, "webhook_secret"
         )
         # Clear rotation fields so later tests don't inherit stale secrets.
         # Password fields live in __Auth — db.set_value to None doesn't
@@ -3100,6 +3100,10 @@ class TestERPNextSync(unittest.TestCase):
         self.order.customer_email = self.TEST_EMAIL
         self.order.customer_phone = "9800000000"
         self.order.delivery_address = "Test Address, Kathmandu"
+        if not frappe.db.exists("Delivery Zone", "Kathmandu"):
+            zone_doc = frappe.new_doc("Delivery Zone")
+            zone_doc.zone_name = "Kathmandu"
+            zone_doc.insert(ignore_permissions=True)
         self.order.delivery_zone = "Kathmandu"
         self.order.payment_method = "eSewa"
         self.order.payment_status = "Paid"
@@ -3182,7 +3186,7 @@ class TestERPNextSync(unittest.TestCase):
         from saathimart.api.erpnext_sync import run_daily_sync
 
         # Disable ERPNext sync
-        s = frappe.get_single("Settings")
+        s = frappe.get_single("SaathiMart Settings")
         s.erpnext_sync_enabled = 0
         s.save(ignore_permissions=True)
 
@@ -3195,7 +3199,7 @@ class TestERPNextSync(unittest.TestCase):
         from saathimart.api.erpnext_sync import run_daily_sync
 
         # Enable flag but leave other fields empty
-        s = frappe.get_single("Settings")
+        s = frappe.get_single("SaathiMart Settings")
         s.erpnext_sync_enabled = 1
         s.erpnext_site_url = ""
         s.save(ignore_permissions=True)
@@ -3208,7 +3212,7 @@ class TestERPNextSync(unittest.TestCase):
         from saathimart.api.erpnext_sync import run_daily_sync
 
         # Mock ERPNext config to skip actual API calls but still process
-        s = frappe.get_single("Settings")
+        s = frappe.get_single("SaathiMart Settings")
         s.erpnext_sync_enabled = 1
         s.erpnext_site_url = "http://erpnext.localhost"
         s.erpnext_api_key = "test"
@@ -3240,10 +3244,10 @@ class TestLoyaltyBirthdayRewards(unittest.TestCase):
         if frappe.db.exists("User", self.TEST_EMAIL):
             frappe.delete_doc("User", self.TEST_EMAIL, ignore_permissions=True)
 
-        from frappe.utils import today, add_days
+        from frappe.utils import today, add_days, getdate
         from datetime import datetime
 
-        today_date = today()
+        today_date = getdate()
         month_day = today_date.strftime("%m-%d")
 
         self.user = frappe.new_doc("User")
@@ -3266,14 +3270,14 @@ class TestLoyaltyBirthdayRewards(unittest.TestCase):
             prog.point_expiry_days = 365
             prog.insert(ignore_permissions=True)
 
-        s = frappe.get_single("Settings")
+        s = frappe.get_single("SaathiMart Settings")
         s.enable_loyalty = 1
         s.loyalty_program = "Birthday Test Program"
         s.save(ignore_permissions=True)
 
         # Clear any existing birthday entries for this year
-        from frappe.utils import today
-        marker = f"birthday:{today().year}"
+        from frappe.utils import getdate
+        marker = f"birthday:{getdate().year}"
         frappe.db.sql("""
             DELETE FROM `tabLoyalty Point Entry`
             WHERE customer_email = %s AND source = 'birthday' AND remarks = %s
@@ -3349,7 +3353,7 @@ class TestLoyaltyBirthdayRewards(unittest.TestCase):
         from saathimart.api.loyalty import check_birthday_rewards
 
         # Disable loyalty
-        s = frappe.get_single("Settings")
+        s = frappe.get_single("SaathiMart Settings")
         s.enable_loyalty = 0
         s.save(ignore_permissions=True)
 
@@ -3367,6 +3371,12 @@ class TestWebhookEventDelivery(unittest.TestCase):
         frappe.set_user("Administrator")
 
         self.vendor = _make_vendor("Webhook Test Vendor", slug="webhook-test-vendor")
+        # _enqueue only fires for vendors with a reachable site — give the
+        # test vendor one so order.new events are actually queued.
+        if not self.vendor.frappe_site_url:
+            frappe.db.set_value("Vendor", self.vendor.name,
+                                "frappe_site_url", "https://webhook-test.example.com")
+            self.vendor.reload()
         self.product = _make_product("Webhook Test Product", price=1000)
 
     def test_on_order_created_queues_webhook_event(self):
@@ -3398,6 +3408,10 @@ class TestWebhookEventDelivery(unittest.TestCase):
         # Clear any existing webhook events
         frappe.db.delete("Webhook Event", {"target_vendor": self.vendor.name})
 
+        # Also flush the content-dedup fingerprints (10-min TTL) so a re-run
+        # with the same order payload isn't swallowed as a duplicate.
+        frappe.cache().delete_keys("sm_dedup:")
+
         # Trigger the event
         on_order_created(order, method="after_insert")
 
@@ -3410,22 +3424,46 @@ class TestWebhookEventDelivery(unittest.TestCase):
         self.assertTrue(len(events) >= 1)
 
     def test_on_product_created_queues_webhook_event(self):
-        """Test on_product_created creates Webhook Event for barcode matching vendors."""
-        from saathimart.events.publisher import on_product_created
+        """Test product creation notifies vendors registered for that barcode.
 
-        # Product must have SKU for notification to be queued
-        self.product.sku = "SKU-WEBHOOK-001"
+        The broadcast is targeted now: only vendors present in the Vendor
+        Barcode Index for the product's SKU get a product.new event (see
+        publisher._broadcast_new_product). So register the test vendor for
+        the SKU first, then run the notification leg synchronously — the
+        chunk fan-out itself is a background job we don't need to test.
+        """
+        from saathimart.events.publisher import (
+            _notify_vendors_of_matching_product_chunk,
+            on_product_created,
+        )
+
+        # Unique barcode per run — the content-dedup cache holds fingerprints
+        # for 10 minutes, so a fixed barcode would be swallowed on re-runs.
+        barcode = f"SKU-WEBHOOK-{frappe.utils.now_datetime().strftime('%Y%m%d%H%M%S')}"
+        self.product.sku = barcode
         self.product.save(ignore_permissions=True)
 
-        # Clear any existing webhook events
-        frappe.db.delete("Webhook Event", {})
-
-        # Trigger the event
+        # on_product_created itself only schedules the broadcast job
         on_product_created(self.product, method="after_insert")
 
-        # Should have queued a background broadcast job (Webhook Event)
+        # Register the vendor for this barcode (what barcode.register does)
+        if not frappe.db.exists("Vendor Barcode Index",
+                                {"vendor": self.vendor.name, "barcode": barcode}):
+            frappe.new_doc("Vendor Barcode Index").update({
+                "vendor": self.vendor.name,
+                "barcode": barcode,
+            }).insert(ignore_permissions=True)
+
+        # Clear any existing webhook events, then run the final leg
+        frappe.db.delete("Webhook Event", {})
+        _notify_vendors_of_matching_product_chunk(
+            [self.vendor.name], self.product.name, barcode, self.product.product_name
+        )
+
+        # Should have queued a product.new Webhook Event for exactly this vendor
         events = frappe.get_all("Webhook Event", {
-            "event_type": "product.new"
+            "event_type": "product.new",
+            "target_vendor": self.vendor.name,
         }, pluck="name")
 
         self.assertTrue(len(events) >= 1)
@@ -3465,6 +3503,13 @@ class TestCheckoutFlow(unittest.TestCase):
         self.zone = _make_zone("Checkout Test Zone", charge=80, free_above=1500)
         self.product = _make_product("Checkout Test Product", price=500, stock=100)
         self.vendor = _make_vendor("Checkout Test Vendor", slug="checkout-test-vendor")
+
+        # Wipe leftover carts from prior runs — every test in this class uses
+        # fixed session ids, so stale carts silently double quantities and
+        # corrupt totals (12 reserved instead of 3, etc.).
+        frappe.db.sql("DELETE FROM `tabCart Item` WHERE parenttype = 'Cart' AND parent IN (SELECT name FROM `tabCart` WHERE session_id LIKE '%%-session' OR session_id IN ('checkout-test-session', 'empty-cart-session', 'free-delivery-session', 'multivendor-session', 'stock-test-session', 'zero-qty-session', 'zone-test-session'))")
+        frappe.db.sql("DELETE FROM `tabCart` WHERE session_id LIKE '%%-session' OR session_id IN ('checkout-test-session', 'empty-cart-session', 'free-delivery-session', 'multivendor-session', 'stock-test-session', 'zero-qty-session', 'zone-test-session')")
+        frappe.db.commit()
 
         # Create vendor listing
         self.vl = frappe.new_doc("Vendor Listing")
@@ -3685,13 +3730,34 @@ class TestLoyaltyRedemptionValidation(unittest.TestCase):
             prog.point_expiry_days = 365
             prog.insert(ignore_permissions=True)
 
-        s = frappe.get_single("Settings")
+        s = frappe.get_single("SaathiMart Settings")
         s.enable_loyalty = 1
         s.loyalty_program = "Validation Test Program"
         s.save(ignore_permissions=True)
 
         # Clear existing entries
         frappe.db.delete("Loyalty Point Entry", {"customer_email": self.TEST_EMAIL})
+
+        # redeem_points() writes a Loyalty Point Entry whose `order` field is a
+        # Link to Order — link validation runs before any business-rule error
+        # for a nonexistent order name, so use a real Order doc here.
+        if not frappe.db.exists("Order", "TEST-ORD-VALIDATION"):
+            o = frappe.new_doc("Order")
+            o.customer_name = "Redemption Validation Customer"
+            o.customer_email = self.TEST_EMAIL
+            o.customer_phone = "9800000099"
+            o.delivery_address = "Test Address"
+            o.payment_method = "COD"
+            o.append("items", {"product": None, "product_name": "Validation Item",
+                               "qty": 1, "rate": 5000})
+            # items require a real product link too; fall back to any product
+            prod = frappe.db.get_value("Product", {}, "name")
+            o.items = []
+            o.append("items", {"product": prod, "product_name": "Validation Item",
+                               "qty": 1, "rate": 5000})
+            o.insert(ignore_permissions=True)
+            frappe.rename_doc("Order", o.name, "TEST-ORD-VALIDATION", force=True)
+        frappe.db.commit()
 
     def test_redemption_below_minimum_fails(self):
         """Test redeem_points() rejects redemption below min_points_to_redeem."""

@@ -15,6 +15,7 @@ from frappe.utils import add_days, flt, now_datetime
 from saathimart.api.auth import get_session_id, _set_session_cookie
 from saathimart.api.products import select_best_vendor, get_effective_price
 from saathimart.api.responses import handle_api_errors
+from saathimart.api.get_commit_guard import commit_on_get
 from saathimart.api.utils import guest_rate_limit
 
 
@@ -257,6 +258,7 @@ def get_cart(session_id=None):
 
 @frappe.whitelist(allow_guest=True)
 @handle_api_errors
+@commit_on_get
 def add_to_cart(session_id=None, product=None, qty=1, vendor=None, delivery_zone=None, customer_lat=None, customer_lng=None):
     from saathimart.api.utils import check_request_size
     check_request_size()
@@ -352,6 +354,7 @@ def add_to_cart(session_id=None, product=None, qty=1, vendor=None, delivery_zone
 
 @frappe.whitelist(allow_guest=True)
 @handle_api_errors
+@commit_on_get
 def update_cart_item(session_id=None, product=None, qty=None, vendor=None):
     """
     vendor is optional: add_to_cart() auto-resolves a vendor internally even
@@ -397,6 +400,7 @@ def update_cart_item(session_id=None, product=None, qty=None, vendor=None):
 
 @frappe.whitelist(allow_guest=True)
 @handle_api_errors
+@commit_on_get
 def clear_cart(session_id=None):
     guest_rate_limit("cart.clear", limit=30, window_seconds=60)
     cart = _get_or_create_cart(session_id)
@@ -553,7 +557,7 @@ def merge_guest_cart(user, guest_session_id):
 
 def expire_abandoned_carts():
     """Scheduled: mark carts abandoned after configured hours and release any reservations."""
-    settings = frappe.get_single("Settings")
+    settings = frappe.get_single("SaathiMart Settings")
     hours = settings.abandoned_cart_hours or 24
     frappe.db.sql("""
         UPDATE `tabCart`

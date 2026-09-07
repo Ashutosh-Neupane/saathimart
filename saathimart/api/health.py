@@ -40,7 +40,7 @@ def health_check():
 
     # Check Frappe app availability
     try:
-        frappe.get_doc("Settings", "Settings")
+        frappe.get_doc("SaathiMart Settings", "SaathiMart Settings")
         status["checks"]["frappe"] = "ok"
     except Exception as e:
         status["checks"]["frappe"] = f"error: {str(e)}"

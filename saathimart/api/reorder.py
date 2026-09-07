@@ -12,7 +12,7 @@ Endpoints:
 """
 import frappe
 from frappe import _
-from frappe.utils import flt, now_datetime
+from frappe.utils import cint, flt, now_datetime
 from saathimart.api.responses import handle_api_errors
 
 

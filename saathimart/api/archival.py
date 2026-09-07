@@ -18,7 +18,7 @@ def archive_old_data():
     Daily cron — purge old records according to Settings retention fields.
     Safe for large tables because it uses LIMIT + date filter.
     """
-    settings = frappe.get_single("Settings")
+    settings = frappe.get_single("SaathiMart Settings")
 
     # Webhook Events
     webhook_days = get_retain_webhook_events_days()

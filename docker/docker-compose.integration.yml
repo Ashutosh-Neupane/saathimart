@@ -23,6 +23,13 @@ services:
       MYSQL_ROOT_PASSWORD: root
     volumes:
       - int_mariadb_data:/var/lib/mysql
+    command: >
+      --max_connections=500
+      --innodb_buffer_pool_size=256M
+      --query_cache_type=1
+      --query_cache_size=64M
+      --wait_timeout=300
+      --interactive_timeout=300
     healthcheck:
       test: ["CMD", "mysqladmin", "ping", "-h", "localhost", "-proot"]
       interval: 10s
@@ -71,6 +78,19 @@ services:
       REDIS_QUEUE_HOST: redis-queue
       REDIS_QUEUE_PORT: "6379"
       WEBHOOK_SECRET: saathimart-webhook-secret
+      # Worker tuning — 16 workers × 4 threads = 64 concurrent requests.
+      # This is enough to handle 1000 VUs with realistic think-time gaps.
+      # For a 4-core Mac the formula is (2 × CPU cores) + 1 = 9; we use 16
+      # to saturate IO-bound gunicorn threads on the container.
+      WORKERS: ${WORKERS:-24}
+      THREADS: ${THREADS:-8}
+      WORKER_TIMEOUT: ${WORKER_TIMEOUT:-120}
+      # Load-test knob: "1" disables the per-IP guest rate limiter so a
+      # synthetic swarm (all VUs behind one IP) exercises the system instead
+      # of measuring the limiter. Real deployments behind a proxy that strips
+      # client IPs face the same problem — set the proxy to pass X-Forwarded-For
+      # instead of using this.
+      SM_DISABLE_RATE_LIMIT: ${SM_DISABLE_RATE_LIMIT:-0}
     volumes:
       - int_hub_bench:/home/frappe/bench
     depends_on:
@@ -102,6 +122,9 @@ services:
       REDIS_CACHE: redis://redis-cache:6379/1
       REDIS_QUEUE: redis://redis-queue:6379/1
       WEBHOOK_SECRET: saathimart-webhook-secret
+      WORKERS: ${WORKERS:-8}
+      THREADS: ${THREADS:-4}
+      WORKER_TIMEOUT: ${WORKER_TIMEOUT:-120}
     volumes:
       - int_vendor_bench:/home/frappe/bench
     depends_on:

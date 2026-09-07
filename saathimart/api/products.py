@@ -294,7 +294,7 @@ def _get_best_vendor_listing(product_name, vendor=None, delivery_zone=None,
                     frappe.cache().set_value(cache_key, result, expires_in_sec=300)
                 return result
 
-    mode = frappe.db.get_single_value("Settings", "vendor_selection_mode") or "Highest Priority"
+    mode = frappe.db.get_single_value("SaathiMart Settings", "vendor_selection_mode") or "Highest Priority"
     if mode == "Lowest Price":
         listings.sort(key=lambda l: flt(l.price))
     elif mode == "Lowest Delivery Time":

@@ -99,8 +99,11 @@ def add_performance_indexes():
             errors += 1
             continue
 
-        # Create the index
+        # Create the index. DDL implicitly commits in MariaDB, so flush any
+        # pending transaction first or the connector raises
+        # "This statement can cause implicit commit".
         try:
+            frappe.db.commit()
             unique_str = "UNIQUE " if unique else ""
             col_str = ", ".join(f"`{c.strip()}`" for c in col_list)
             sql = f"CREATE {unique_str}INDEX `{index_name}` ON `{table}` ({col_str})"
@@ -126,6 +129,7 @@ def drop_performance_indexes():
     for table, columns, unique, comment in INDEXES:
         index_name = f"idx_sm_{columns.replace(', ', '_').replace('`', '').replace(' ', '')}"
         try:
+            frappe.db.commit()
             frappe.db.sql(f"DROP INDEX IF EXISTS `{index_name}` ON `{table}`")
             dropped += 1
         except Exception:

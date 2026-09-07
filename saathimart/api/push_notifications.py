@@ -21,7 +21,7 @@ from saathimart.api.responses import handle_api_errors
 
 def _get_firebase_credentials():
     """Return the FCM server key / service account from SaathiMart Settings."""
-    settings = frappe.get_single("Settings")
+    settings = frappe.get_single("SaathiMart Settings")
     return getattr(settings, "fcm_server_key", None)
 
 

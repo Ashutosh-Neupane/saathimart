@@ -15,9 +15,11 @@ class Cart(Document):
         for item in self.items:
             item.amount = (item.qty or 0) * (item.rate or 0)
 
-        # Validation: Cart cannot be empty
-        if not self.items or len(self.items) == 0:
-            frappe.throw(_("Cart must contain at least one item"), title="Empty Cart")
+        # NOTE: an empty cart is a legitimate state — _get_or_create_cart
+        # creates the shell before the first item and clear_cart() empties
+        # it on demand. Enforcing non-emptiness here made both impossible
+        # (chicken-and-egg: set_customer_location/create before add_to_cart,
+        # and clear). Empty-cart enforcement lives at checkout() instead.
 
         # Validation: All items must have positive quantity and rate
         for item in self.items:

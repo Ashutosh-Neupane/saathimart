@@ -114,7 +114,7 @@ frappe.init(site, sites_path='/home/frappe/bench/sites')
 frappe.connect()
 
 # 1. Webhook secret
-s = frappe.get_single('Settings')
+s = frappe.get_single('SaathiMart Settings')
 if not s.get_password('webhook_secret', raise_exception=False):
     s.webhook_secret = secret
     s.save(ignore_permissions=True)
@@ -140,16 +140,31 @@ import frappe.app
 application = frappe.app.application_with_statics()
 EOF
 
-# ── Procfile (web + worker + scheduler) ──────────────────────────────────────
+# ── Procfile (web + workers + scheduler) ──────────────────────────────────────
 # Optimized for 1000 user target:
-# - 6 workers (2 per core) + gthread for async I/O
-# - 4 threads per worker for parallel request handling
-# - Reduced memory footprint with proper timeout settings
+# - 6 web workers (2 per core) + gthread for async I/O
+# - Dedicated short-queue workers: async checkout jobs drain in parallel
+#   instead of serialising behind every other background job on one process.
+#   SHORT_WORKERS is env-tunable so low-RAM hosts can dial it back to 1.
+# - 4 threads per web worker for parallel request handling
 cat > "$BENCH/Procfile" <<'EOF'
 web: cd /home/frappe/bench/sites && /home/frappe/bench/env/bin/gunicorn --bind 0.0.0.0:8000 --workers ${WORKERS:-6} --threads ${THREADS:-4} --timeout ${WORKER_TIMEOUT:-60} --keep-alive 5 --max-requests 1000 --max-requests-jitter 200 --graceful-timeout 15 --worker-class gthread gunicorn_wsgi:application
 worker: cd /home/frappe/bench/sites && /usr/local/bin/bench worker --queue short,default,long
+shortworker: cd /home/frappe/bench/sites && /usr/local/bin/bench worker --queue short
+shortworker2: cd /home/frappe/bench/sites && /usr/local/bin/bench worker --queue short
+shortworker3: cd /home/frappe/bench/sites && /usr/local/bin/bench worker --queue short
 schedule: cd /home/frappe/bench/sites && /usr/local/bin/bench schedule
 EOF
+
+# Honor SHORT_WORKERS=1..3 for memory-constrained hosts (remove extra worker lines)
+# ${SHORT_WORKERS:-} — init.sh runs with `set -u`, so reference it defaulted.
+if [ -n "${SHORT_WORKERS:-}" ] && [ "${SHORT_WORKERS}" -ge 1 ] 2>/dev/null; then
+  i=3
+  while [ "$i" -ge "$SHORT_WORKERS" ]; do
+    sed -i "/^shortworker$i:/d" "$BENCH/Procfile"
+    i=$((i-1))
+  done
+fi
 
 echo "=== SaathiMart ready at http://localhost:8000 ==="
 exec bench start

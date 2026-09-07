@@ -7,6 +7,8 @@ Multi-vendor support:
   Each vendor gets a Vendor Fulfillment child row with its own subtotal,
   delivery charge, and status tracking. Stock is reserved per-vendor.
 """
+import time
+
 import frappe
 from frappe import _
 from frappe.utils import flt
@@ -96,13 +98,220 @@ def checkout(session_id, customer_name, customer_phone, delivery_address,
     from saathimart.api.utils import check_request_size
     check_request_size()
     """
-    Convert an active Cart into a submitted Order.
+    Convert an active Cart into a submitted Order (synchronous).
+
+    Blocks until the Order exists. Kept for the test suite and for callers
+    that need the order id immediately — the storefront should prefer
+    `checkout_async`, which returns instantly and builds the Order in the
+    background queue.
+    """
+    guest_rate_limit("orders.checkout", limit=20, window_seconds=60)
+    return _execute_checkout(
+        session_id=session_id,
+        customer_name=customer_name,
+        customer_phone=customer_phone,
+        delivery_address=delivery_address,
+        payment_method=payment_method,
+        delivery_zone=delivery_zone,
+        coupon_code=coupon_code,
+        loyalty_points=loyalty_points,
+        notes=notes,
+        customer_email=customer_email,
+        customer_lat=customer_lat,
+        customer_lng=customer_lng,
+    )
+
+
+# ── Async checkout ─────────────────────────────────────────────────────────
+# Under load the sync path serialises every checkout behind a full write
+# transaction (totals + stock reservation + insert + coupon + email).
+# At 1000 concurrent users that queue turned into multi-minute response
+# times. checkout_async validates the cart cheaply, hands the heavy work to
+# the background queue and returns a job id the storefront polls.
+
+_CHECKOUT_INFLIGHT_TTL = 300   # seconds a session's in-flight guard lives
+_CHECKOUT_RESULT_TTL = 3600    # seconds a finished checkout's result stays pollable
+
+
+def _checkout_key(kind, token):
+    return f"sm_checkout_{kind}:{token}"
+
+
+def _set_checkout_state(kind, token, payload, ttl):
+    import json
+    frappe.cache().set_value(
+        _checkout_key(kind, token), json.dumps(payload, default=str), expires_in_sec=ttl
+    )
+
+
+def _get_checkout_state(kind, token):
+    import json
+    raw = frappe.cache().get_value(_checkout_key(kind, token))
+    if not raw:
+        return None
+    try:
+        return json.loads(raw) if isinstance(raw, str) else raw
+    except Exception:
+        return None
+
+
+@frappe.whitelist(allow_guest=True)
+@handle_api_errors
+def checkout_async(session_id, customer_name, customer_phone, delivery_address,
+                   payment_method="COD", delivery_zone=None, coupon_code=None,
+                   loyalty_points=0, notes=None, customer_email=None,
+                   customer_lat=None, customer_lng=None):
+    from saathimart.api.utils import check_request_size
+    check_request_size()
+    """
+    Convert an active Cart into a submitted Order — asynchronously.
+
+    Validates the cart, enqueues the heavy order build onto the background
+    queue and returns immediately with a job id. Poll `checkout_status` with
+    that id to pick up the created order. Repeat submissions for a session
+    that already has a checkout in flight return the same job id instead of
+    creating duplicate orders.
+    """
+    guest_rate_limit("orders.checkout_async", limit=30, window_seconds=60)
+
+    # Cheap pre-flight — same cart resolution the sync path uses. Fails fast
+    # (<2 queries) so garbage requests never reach the queue.
+    from saathimart.api.cart import find_active_cart
+    cart_name = find_active_cart(session_id)
+    if not cart_name:
+        frappe.throw(_("Cart not found or already checked out"))
+    cart = frappe.get_doc("Cart", cart_name)
+    if not cart.items:
+        frappe.throw(_("Cart is empty"))
+
+    # Idempotency: one in-flight checkout per session. If a previous job for
+    # this session is still queued/running, hand back its job id rather than
+    # queueing a duplicate order.
+    inflight = _get_checkout_state("inflight", session_id)
+    if inflight and inflight.get("job_id"):
+        prior_status = _get_checkout_state("result", inflight["job_id"])
+        if not prior_status or prior_status.get("status") in ("queued", "started"):
+            return {
+                "status": "queued",
+                "job_id": inflight["job_id"],
+                "order_id": prior_status.get("order_id") if prior_status else None,
+                "message": "Checkout already in progress for this session",
+                "poll_after_ms": 300,
+            }
+
+    import uuid
+    job_id = str(uuid.uuid4())
+    _set_checkout_state("inflight", session_id, {"job_id": job_id}, _CHECKOUT_INFLIGHT_TTL)
+    _set_checkout_state("result", job_id, {"status": "queued"}, _CHECKOUT_RESULT_TTL)
+
+    from saathimart.api.payments import validate_payment_method
+    canonical_payment = validate_payment_method(payment_method) or "COD"
+
+    frappe.enqueue(
+        "saathimart.api.orders._async_checkout_job",
+        queue="short",
+        timeout=600,
+        enqueue_after_commit=True,
+        job_id=job_id,             # RQ-level job id (dedup) — NOTE: stripped
+                                   # from the function args by frappe.enqueue
+        checkout_job_id=job_id,    # the value our worker actually receives
+        session_id=session_id,
+        customer_name=customer_name,
+        customer_phone=customer_phone,
+        delivery_address=delivery_address,
+        payment_method=canonical_payment,
+        delivery_zone=delivery_zone,
+        coupon_code=coupon_code,
+        loyalty_points=loyalty_points,
+        notes=notes,
+        customer_email=customer_email,
+        customer_lat=customer_lat,
+        customer_lng=customer_lng,
+    )
+
+    return {
+        "status": "queued",
+        "job_id": job_id,
+        "message": "Checkout accepted. Poll checkout_status for the order.",
+        "poll_after_ms": 300,
+    }
+
+
+def _async_checkout_job(checkout_job_id=None, **kwargs):
+    """Background worker: run the full checkout, cache the outcome for
+    checkout_status polling. Never raises — failures are recorded so the
+    storefront can show them."""
+    job_id = checkout_job_id
+    try:
+        _set_checkout_state(
+            "result", job_id,
+            {"status": "started", "ts": time.time()},
+            _CHECKOUT_RESULT_TTL,
+        )
+        result = _execute_checkout(**kwargs)
+        result["status"] = "done"
+        result["job_id"] = job_id
+        _set_checkout_state("result", job_id, result, _CHECKOUT_RESULT_TTL)
+        frappe.db.commit()
+    except Exception:
+        frappe.db.rollback()
+        _set_checkout_state(
+            "result", job_id,
+            {"status": "failed", "job_id": job_id,
+             "error": frappe.get_traceback()[-500:]},
+            _CHECKOUT_RESULT_TTL,
+        )
+        frappe.log_error(frappe.get_traceback(), f"Async checkout failed ({job_id})")
+
+
+@frappe.whitelist(allow_guest=True)
+@handle_api_errors
+def checkout_status(job_id):
+    """Poll an async checkout. Returns the queued/started/done/failed state
+    plus the full order payload once the job finishes.
+
+    Every in-progress response carries `poll_after_ms` — a server-driven
+    backoff schedule (1s -> 2s -> 5s based on how long the job has been
+    running). Clients that honour it converge on a small, roughly constant
+    global poll rate instead of 1 req/s per waiting user, which is what
+    saturated the web tier during the 1000-VU flash test.
+    """
+    state = _get_checkout_state("result", job_id or "")
+    if not state:
+        return {"status": "unknown", "job_id": job_id,
+                "message": "No such checkout job (or result expired)"}
+
+    if state.get("status") in ("queued", "started"):
+        elapsed = 0.0
+        ts = state.get("ts")
+        if ts:
+            try:
+                elapsed = max(0.0, time.time() - float(ts))
+            except (TypeError, ValueError):
+                elapsed = 0.0
+        if elapsed < 10:
+            state["poll_after_ms"] = 1000
+        elif elapsed < 30:
+            state["poll_after_ms"] = 2000
+        else:
+            state["poll_after_ms"] = 5000
+    return state
+
+
+def _execute_checkout(session_id, customer_name, customer_phone, delivery_address,
+                      payment_method="COD", delivery_zone=None, coupon_code=None,
+                      loyalty_points=0, notes=None, customer_email=None,
+                      customer_lat=None, customer_lng=None):
+    """
+    Heavy checkout body, shared by the sync endpoint and the async job.
 
     Supports multi-vendor carts: items from different vendors are grouped
     into separate Vendor Fulfillment rows, each with its own subtotal.
     Stock is reserved atomically per vendor.
     """
-    guest_rate_limit("orders.checkout", limit=20, window_seconds=60)
+    from saathimart.api.payments import validate_payment_method
+    from saathimart.api.totals import calculate_taxes_and_totals
+    from saathimart.saathimart.doctype.coupon.coupon import increment_coupon_usage
     from saathimart.api.payments import validate_payment_method
     from saathimart.api.totals import calculate_taxes_and_totals
     from saathimart.saathimart.doctype.coupon.coupon import increment_coupon_usage
@@ -617,7 +826,7 @@ def apply_partial_payment(order_id, amount, gateway, reference="", transaction_u
 
 def expire_pending_payment_orders():
     """Cron: cancel orders that have been Unpaid beyond the configured expiry hours."""
-    settings = frappe.get_single("Settings")
+    settings = frappe.get_single("SaathiMart Settings")
     expiry_hours = getattr(settings, "payment_pending_order_expiry_hours", 24) or 24
 
     pending = frappe.get_list(

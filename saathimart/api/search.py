@@ -209,7 +209,7 @@ def search_products(query="", page=1, page_size=20, category=None, brand=None,
     }
 
 
-@frappe.whitelist()
+@frappe.whitelist(allow_guest=True)
 @handle_api_errors
 def search_suggestions(query="", limit=8):
     """Return autocomplete suggestions for a search query."""
@@ -340,7 +340,7 @@ def record_search_term(key, term, result_count):
 
 def _record_search(query, result_count):
     """Queue analytics write for this search (background job)."""
-    settings = frappe.get_single("Settings")
+    settings = frappe.get_single("SaathiMart Settings")
     if not getattr(settings, "search_tracking_enabled", 1):
         return
 

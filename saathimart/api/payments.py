@@ -29,7 +29,7 @@ from saathimart.api.responses import handle_api_errors
 # ── Settings helpers ──────────────────────────────────────────────────────────
 
 def _settings():
-    return frappe.get_single("Settings")
+    return frappe.get_single("SaathiMart Settings")
 
 
 def _get_password(settings, field):

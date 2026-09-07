@@ -81,7 +81,7 @@ def free_delivery_threshold(vendor_doc):
     per_vendor = flt(getattr(vendor_doc, "free_delivery_above", 0) or 0)
     if per_vendor > 0:
         return per_vendor
-    settings = frappe.get_single("Settings")
+    settings = frappe.get_single("SaathiMart Settings")
     return flt(getattr(settings, "free_delivery_above", 0) or 0)
 
 

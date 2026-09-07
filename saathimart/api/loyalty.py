@@ -87,7 +87,7 @@ def earn_points(customer_email: str, order_name: str, order_amount: float) -> fl
     Calculate and record points earned for a delivered/paid order.
     Returns points earned.
     """
-    s = frappe.get_single("Settings")
+    s = frappe.get_single("SaathiMart Settings")
     if not s.enable_loyalty or not s.loyalty_program:
         return 0.0
 
@@ -131,7 +131,7 @@ def earn_points_preview(customer_email: str, order_amount: float) -> float:
     actually credit.
     """
     import math
-    s = frappe.get_single("Settings")
+    s = frappe.get_single("SaathiMart Settings")
     if not s.enable_loyalty or not s.loyalty_program:
         return 0.0
 
@@ -164,7 +164,7 @@ def calculate_redemption_discount(customer_email: str, points_to_redeem: float,
     Validate and calculate the discount for redeeming points.
     Returns {"ok": bool, "discount": float, "points_used": float, "error": str}
     """
-    s = frappe.get_single("Settings")
+    s = frappe.get_single("SaathiMart Settings")
     if not s.enable_loyalty or not s.loyalty_program:
         # Canonical error shape (see api/responses.py); discount/points_used
         # zeros stay so callers can keep doing arithmetic on the result.
@@ -199,7 +199,7 @@ def calculate_redemption_discount(customer_email: str, points_to_redeem: float,
 
 def redeem_points(customer_email: str, order_name: str, points: float, discount: float):
     """Record a redemption entry after order is placed."""
-    s = frappe.get_single("Settings")
+    s = frappe.get_single("SaathiMart Settings")
     if not s.loyalty_program:
         frappe.throw(_("Loyalty program not configured"))
 
@@ -261,7 +261,7 @@ def get_loyalty_balance(customer_email=None):
     if email == "Guest":
         frappe.throw(_("Not logged in"), frappe.PermissionError)
 
-    s = frappe.get_single("Settings")
+    s = frappe.get_single("SaathiMart Settings")
     if not s.enable_loyalty or not s.loyalty_program:
         return {"enabled": False, "balance": 0}
 
@@ -290,7 +290,7 @@ def apply_referral(referrer_email: str, new_customer_email: str):
     if not referrer_email or not new_customer_email:
         return
 
-    s = frappe.get_single("Settings")
+    s = frappe.get_single("SaathiMart Settings")
     if not s.enable_loyalty or not s.loyalty_program:
         return
     if not frappe.db.get_value("Loyalty Program", s.loyalty_program, "is_active"):
@@ -330,26 +330,27 @@ def check_birthday_rewards():
     today = getdate()
     month_day = today.strftime("%m-%d")
 
-    s = frappe.get_single("Settings")
+    s = frappe.get_single("SaathiMart Settings")
     if not s.enable_loyalty or not s.loyalty_program:
         return
     if not frappe.db.get_value("Loyalty Program", s.loyalty_program, "is_active"):
         return
 
-    customers = frappe.db.sql("""
-        SELECT name, email_id
-        FROM   `tabUser`
-        WHERE  DATE_FORMAT(birthday, '%%m-%%d') = %s
-          AND  email_id IS NOT NULL
-          AND  email_id != ''
-    """, (month_day,), as_dict=True)
+    customers = frappe.get_all(
+        "User",
+        filters={
+            "birthday": ("is", "set"),
+            "enabled": 1,
+        },
+        fields=["name", "birthday"],
+    )
+    # Frappe's User PK *is* the email address — match on the date itself.
+    customers = [c for c in customers if getdate(c.birthday).strftime("%m-%d") == month_day]
 
     for c in customers:
-        if not c.email_id:
-            continue
         marker = f"birthday:{today.year}"
         if frappe.db.exists("Loyalty Point Entry", {
-            "customer_email": c.email_id,
+            "customer_email": c.name,
             "source": "birthday",
             "remarks": marker,
         }):
@@ -357,7 +358,7 @@ def check_birthday_rewards():
 
         try:
             entry = frappe.new_doc("Loyalty Point Entry")
-            entry.customer_email = c.email_id
+            entry.customer_email = c.name
             entry.program = s.loyalty_program
             entry.points = 50
             entry.entry_type = "Earned"
@@ -391,7 +392,7 @@ def get_loyalty_dashboard(customer_email: str = None):
     if email == "Guest":
         frappe.throw(_("Login required"), frappe.PermissionError)
 
-    s = frappe.get_single("Settings")
+    s = frappe.get_single("SaathiMart Settings")
     if not s.enable_loyalty or not s.loyalty_program:
         return {"enabled": False, "balance": 0, "tier": "Bronze"}
 

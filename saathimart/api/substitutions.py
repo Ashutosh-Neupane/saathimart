@@ -10,8 +10,9 @@ Endpoints:
 """
 import frappe
 from frappe import _
-from frappe.utils import flt
+from frappe.utils import cint, flt
 from saathimart.api.responses import handle_api_errors
+from saathimart.api.products import get_effective_price
 
 
 # ── API Endpoints ──────────────────────────────────────────────────────────
@@ -163,11 +164,13 @@ def get_similar_products(product_name, limit=5):
 
     original = frappe.get_doc("Product", product_name)
     category = original.category
-    price = flt(original.price or 0)
+    price = flt(get_effective_price(original))
     price_min = price * 0.5 if price > 0 else 0
     price_max = price * 2.0 if price > 0 else 999999
 
-    # Find products in same category, excluding original
+    # Find products in same category, excluding original. Price lives on
+    # Vendor Listing / Product Price rows, not the Product table, so it is
+    # resolved per result row below (same as list_products does).
     similar = frappe.get_all(
         "Product",
         filters={
@@ -175,17 +178,16 @@ def get_similar_products(product_name, limit=5):
             "status": "Active",
             "name": ["!=", product_name],
         },
-        fields=["name", "product_name", "slug", "price", "category", "thumbnail",
+        fields=["name", "product_name", "slug", "category", "thumbnail",
                 "avg_rating", "review_count"],
         order_by="avg_rating desc, review_count desc",
         limit_page_length=limit + 5,  # Get extras for filtering
     )
 
-    # Enrich with vendor listing availability
+    # Enrich with vendor listing availability + effective price (from the
+    # cheapest active Vendor Listing, matching list_products' behavior)
     result = []
     for p in similar:
-        p_price = flt(p.price or 0)
-
         # Check if product has active vendor listing
         has_stock = frappe.db.exists(
             "Vendor Listing",
@@ -193,6 +195,15 @@ def get_similar_products(product_name, limit=5):
         )
 
         if has_stock:
+            listing_price = frappe.get_list(
+                "Vendor Listing",
+                filters={"product": p.name, "status": "Active"},
+                fields=["price"],
+                order_by="price ASC",
+                limit_page_length=1,
+            )
+            p_price = flt(listing_price[0].price) if listing_price else 0.0
+
             result.append({
                 "product": p.name,
                 "product_name": p.product_name,
@@ -211,7 +222,3 @@ def get_similar_products(product_name, limit=5):
         "original_product": product_name,
         "similar_products": result,
     }
-
-
-# Import cint at module level
-from frappe.utils import cint

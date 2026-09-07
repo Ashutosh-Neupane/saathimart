@@ -5,6 +5,7 @@ Requires login.
 import frappe
 from frappe import _
 from saathimart.api.responses import handle_api_errors
+from saathimart.api.get_commit_guard import commit_on_get
 
 
 @frappe.whitelist()
@@ -29,6 +30,7 @@ def get_wishlist():
 
 @frappe.whitelist()
 @handle_api_errors
+@commit_on_get
 def toggle_wishlist(product_slug):
     """Toggle product in wishlist. Returns updated slug list."""
     if frappe.session.user == "Guest":
@@ -46,11 +48,12 @@ def toggle_wishlist(product_slug):
     if existing:
         frappe.db.delete("Wishlist", existing)
     else:
-        frappe.new_doc({
-            "doctype": "Wishlist",
-            "user": frappe.session.user,
-            "product": product_name,
-            "created_at": frappe.utils.now_datetime(),
-        }).insert(ignore_permissions=True)
+        # new_doc takes the doctype NAME (a string), not a dict — passing a
+        # dict raised "unhashable type: dict" on every add-to-wishlist.
+        doc = frappe.new_doc("Wishlist")
+        doc.user = frappe.session.user
+        doc.product = product_name
+        doc.created_at = frappe.utils.now_datetime()
+        doc.insert(ignore_permissions=True)
 
     return get_wishlist()

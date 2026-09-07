@@ -90,7 +90,7 @@ class TestLoyaltyEnhanced(unittest.TestCase):
                 "program_name": self.TEST_PROGRAM,
                 "is_active": 1,
             }).insert(ignore_permissions=True)
-        s = frappe.get_single("Settings")
+        s = frappe.get_single("SaathiMart Settings")
         self._orig_enable = s.enable_loyalty
         self._orig_program = s.loyalty_program
         s.enable_loyalty = 1
@@ -106,7 +106,7 @@ class TestLoyaltyEnhanced(unittest.TestCase):
         )
         for r in rows:
             frappe.delete_doc("Loyalty Point Entry", r, force=True, ignore_permissions=True)
-        s = frappe.get_single("Settings")
+        s = frappe.get_single("SaathiMart Settings")
         s.enable_loyalty = self._orig_enable
         s.loyalty_program = self._orig_program
         s.save(ignore_permissions=True)

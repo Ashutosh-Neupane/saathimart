@@ -10,7 +10,7 @@ from frappe import _
 
 def _get_site_name():
     try:
-        s = frappe.get_single("Settings")
+        s = frappe.get_single("SaathiMart Settings")
         return getattr(s, "site_name", None) or "SaathiMart"
     except Exception:
         return "SaathiMart"
@@ -49,7 +49,8 @@ def send_order_confirmation(email, order_id, grand_total, items):
 <p style="color:#6b7280;">Thank you for shopping with {site_name}!</p>
 """
 
-    _send(email, f"Order {order_id} — Confirmed", content)
+    _send(email, f"Order {order_id} — Confirmed", content, 
+          reference_doctype="Order", reference_name=order_id)
 
 
 def send_password_reset_email(email, otp):
@@ -57,14 +58,26 @@ def send_password_reset_email(email, otp):
     send_otp_email(email, otp, purpose="password_reset")
 
 
-def _send(email, subject, content_html):
-    """Send an email using Frappe's sendmail."""
+def _send(email, subject, content_html, reference_doctype=None, reference_name=None):
+    """Send an email using Frappe's sendmail.
+    
+    Uses queue=True for better performance under load:
+    - Returns immediately instead of blocking on SMTP
+    - Automatic retries on failure
+    - Respects SMTP rate limits
+    - Survives server restarts
+    
+    For critical emails that must send immediately (e.g., OTP),
+    callers can override with send_now=True.
+    """
     try:
         frappe.sendmail(
             recipients=[email],
             subject=subject,
             content=content_html,
-            now=True,
+            queue=True,  # Better for high volume - processes in background
+            reference_doctype=reference_doctype,
+            reference_name=reference_name,
         )
     except Exception as e:
         frappe.log_error(

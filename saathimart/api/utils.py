@@ -10,6 +10,7 @@ Single source of truth for:
 import hashlib
 import hmac
 import json
+import os
 from datetime import datetime, timezone
 
 import frappe
@@ -41,6 +42,11 @@ def rate_limit(key, limit=10, window_seconds=60):
     Rate limit by a cache key (e.g. IP or vendor ID).
     Raises frappe.ValidationError when limit is exceeded.
 
+    SM_DISABLE_RATE_LIMIT=1 turns every limiter into a no-op — a load-test
+    escape hatch (k6 hammers from one IP, which would otherwise trip the
+    per-IP buckets long before the system is actually saturated). Never set
+    it in production.
+
     No-ops under frappe.flags.in_test: outside a real HTTP request there's
     no client IP, so guest_rate_limit's caller falls back to a fixed
     "unknown" key — every guest-facing call across the entire test suite
@@ -50,6 +56,9 @@ def rate_limit(key, limit=10, window_seconds=60):
     limit and silently failing calls that have nothing to do with what's
     actually being tested.
     """
+    if os.environ.get("SM_DISABLE_RATE_LIMIT") == "1":
+        return True
+
     if frappe.flags.in_test:
         return True
 
@@ -118,7 +127,7 @@ def verify_hub_secret(endpoint):
     if not check_rate_limit(client_ip):
         frappe.throw(_("Too many failed attempts. Try again later."), frappe.AuthenticationError)
 
-    settings_secret = frappe.get_single("Settings").get_password(
+    settings_secret = frappe.get_single("SaathiMart Settings").get_password(
         "webhook_secret", raise_exception=False
     ) or ""
 

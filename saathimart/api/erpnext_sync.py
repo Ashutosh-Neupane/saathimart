@@ -45,7 +45,7 @@ def _get_config():
     Never raises — callers treat None as "skip".
     """
     try:
-        s = frappe.get_single("Settings")
+        s = frappe.get_single("SaathiMart Settings")
     except Exception:
         return None
 

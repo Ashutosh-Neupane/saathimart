@@ -55,7 +55,7 @@ def register_vendor(vendor_name, contact_email, contact_phone,
     # Notify admin
     try:
         frappe.sendmail(
-            recipients=frappe.db.get_single_value("Settings", "admin_email") or "admin@example.com",
+            recipients=frappe.db.get_single_value("SaathiMart Settings", "admin_email") or "admin@example.com",
             subject="New Vendor Registration: {0}".format(vendor_name),
             message="<p>A new vendor <strong>{0}</strong> has registered and needs approval.</p>"
                     "<p>Contact: {1} ({2})</p>"

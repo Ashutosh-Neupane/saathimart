@@ -1,6 +1,6 @@
 {
  "charts": [],
- "content": "[{\"id\":\"sm-header\",\"type\":\"header\",\"data\":{\"text\":\"<span class=\\\"h4\\\">SaathiMart</span>\",\"col\":12}},{\"id\":\"sm-card-catalog\",\"type\":\"card\",\"data\":{\"card_name\":\"Catalog\",\"col\":4}},{\"id\":\"sm-card-sales\",\"type\":\"card\",\"data\":{\"card_name\":\"Sales\",\"col\":4}},{\"id\":\"sm-card-cms\",\"type\":\"card\",\"data\":{\"card_name\":\"Content\",\"col\":4}},{\"id\":\"sm-card-settings\",\"type\":\"card\",\"data\":{\"card_name\":\"Settings\",\"col\":4}}]",
+ "content": "[{\"id\":\"sm-header\",\"type\":\"header\",\"data\":{\"text\":\"<span class=\\\"h4\\\">SaathiMart</span>\",\"col\":12}},{\"id\":\"sm-card-catalog\",\"type\":\"card\",\"data\":{\"card_name\":\"Catalog\",\"col\":4}},{\"id\":\"sm-card-sales\",\"type\":\"card\",\"data\":{\"card_name\":\"Sales\",\"col\":4}},{\"id\":\"sm-card-fulfillment\",\"type\":\"card\",\"data\":{\"card_name\":\"Fulfillment\",\"col\":4}},{\"id\":\"sm-card-marketing\",\"type\":\"card\",\"data\":{\"card_name\":\"Marketing & Loyalty\",\"col\":4}},{\"id\":\"sm-card-content\",\"type\":\"card\",\"data\":{\"card_name\":\"Content\",\"col\":4}},{\"id\":\"sm-card-webpages\",\"type\":\"card\",\"data\":{\"card_name\":\"Web Pages\",\"col\":4}},{\"id\":\"sm-card-engagement\",\"type\":\"card\",\"data\":{\"card_name\":\"Engagement\",\"col\":4}},{\"id\":\"sm-card-system\",\"type\":\"card\",\"data\":{\"card_name\":\"System\",\"col\":4}}]",
  "creation": "2026-08-06 00:00:00.000000",
  "custom_blocks": [],
  "docstatus": 0,
@@ -16,7 +16,7 @@
    "hidden": 0,
    "is_query_report": 0,
    "label": "Catalog",
-   "link_count": 3,
+   "link_count": 7,
    "link_type": "DocType",
    "onboard": 0,
    "type": "Card Break"
@@ -44,9 +44,49 @@
   {
    "hidden": 0,
    "is_query_report": 0,
-   "label": "Vendor",
+   "label": "Brand",
    "link_count": 0,
-   "link_to": "Vendor",
+   "link_to": "Brand",
+   "link_type": "DocType",
+   "onboard": 0,
+   "type": "Link"
+  },
+  {
+   "hidden": 0,
+   "is_query_report": 0,
+   "label": "Product Media",
+   "link_count": 0,
+   "link_to": "Product Media",
+   "link_type": "DocType",
+   "onboard": 0,
+   "type": "Link"
+  },
+  {
+   "hidden": 0,
+   "is_query_report": 0,
+   "label": "Product Price",
+   "link_count": 0,
+   "link_to": "Product Price",
+   "link_type": "DocType",
+   "onboard": 0,
+   "type": "Link"
+  },
+  {
+   "hidden": 0,
+   "is_query_report": 0,
+   "label": "Product Specification",
+   "link_count": 0,
+   "link_to": "Product Specification",
+   "link_type": "DocType",
+   "onboard": 0,
+   "type": "Link"
+  },
+  {
+   "hidden": 0,
+   "is_query_report": 0,
+   "label": "Product Variant Attribute",
+   "link_count": 0,
+   "link_to": "Product Variant Attribute",
    "link_type": "DocType",
    "onboard": 0,
    "type": "Link"
@@ -55,7 +95,7 @@
    "hidden": 0,
    "is_query_report": 0,
    "label": "Sales",
-   "link_count": 3,
+   "link_count": 10,
    "link_type": "DocType",
    "onboard": 0,
    "type": "Card Break"
@@ -73,12 +113,180 @@
   {
    "hidden": 0,
    "is_query_report": 0,
+   "label": "Order Item",
+   "link_count": 0,
+   "link_to": "Order Item",
+   "link_type": "DocType",
+   "onboard": 0,
+   "type": "Link"
+  },
+  {
+   "hidden": 0,
+   "is_query_report": 0,
+   "label": "Order Tax",
+   "link_count": 0,
+   "link_to": "Order Tax",
+   "link_type": "DocType",
+   "onboard": 0,
+   "type": "Link"
+  },
+  {
+   "hidden": 0,
+   "is_query_report": 0,
+   "label": "Order Event Log",
+   "link_count": 0,
+   "link_to": "Order Event Log",
+   "link_type": "DocType",
+   "onboard": 0,
+   "type": "Link"
+  },
+  {
+   "hidden": 0,
+   "is_query_report": 0,
    "label": "Cart",
    "link_count": 0,
    "link_to": "Cart",
    "link_type": "DocType",
    "onboard": 0,
    "type": "Link"
+  },
+  {
+   "hidden": 0,
+   "is_query_report": 0,
+   "label": "Cart Item",
+   "link_count": 0,
+   "link_to": "Cart Item",
+   "link_type": "DocType",
+   "onboard": 0,
+   "type": "Link"
+  },
+  {
+   "hidden": 0,
+   "is_query_report": 0,
+   "label": "Payment Log",
+   "link_count": 0,
+   "link_to": "Payment Log",
+   "link_type": "DocType",
+   "onboard": 0,
+   "type": "Link"
+  },
+  {
+   "hidden": 0,
+   "is_query_report": 0,
+   "label": "Payment Mode",
+   "link_count": 0,
+   "link_to": "Payment Mode",
+   "link_type": "DocType",
+   "onboard": 0,
+   "type": "Link"
+  },
+  {
+   "hidden": 0,
+   "is_query_report": 0,
+   "label": "Delivery Zone",
+   "link_count": 0,
+   "link_to": "Delivery Zone",
+   "link_type": "DocType",
+   "onboard": 0,
+   "type": "Link"
+  },
+  {
+   "hidden": 0,
+   "is_query_report": 0,
+   "label": "Address",
+   "link_count": 0,
+   "link_to": "Address",
+   "link_type": "DocType",
+   "onboard": 0,
+   "type": "Link"
+  },
+  {
+   "hidden": 0,
+   "is_query_report": 0,
+   "label": "Fulfillment",
+   "link_count": 7,
+   "link_type": "DocType",
+   "onboard": 0,
+   "type": "Card Break"
+  },
+  {
+   "hidden": 0,
+   "is_query_report": 0,
+   "label": "Vendor",
+   "link_count": 0,
+   "link_to": "Vendor",
+   "link_type": "DocType",
+   "onboard": 0,
+   "type": "Link"
+  },
+  {
+   "hidden": 0,
+   "is_query_report": 0,
+   "label": "Vendor Listing",
+   "link_count": 0,
+   "link_to": "Vendor Listing",
+   "link_type": "DocType",
+   "onboard": 0,
+   "type": "Link"
+  },
+  {
+   "hidden": 0,
+   "is_query_report": 0,
+   "label": "Vendor Stock",
+   "link_count": 0,
+   "link_to": "Vendor Stock",
+   "link_type": "DocType",
+   "onboard": 0,
+   "type": "Link"
+  },
+  {
+   "hidden": 0,
+   "is_query_report": 0,
+   "label": "Vendor Warehouse",
+   "link_count": 0,
+   "link_to": "Vendor Warehouse",
+   "link_type": "DocType",
+   "onboard": 0,
+   "type": "Link"
+  },
+  {
+   "hidden": 0,
+   "is_query_report": 0,
+   "label": "Vendor Fulfillment",
+   "link_count": 0,
+   "link_to": "Vendor Fulfillment",
+   "link_type": "DocType",
+   "onboard": 0,
+   "type": "Link"
+  },
+  {
+   "hidden": 0,
+   "is_query_report": 0,
+   "label": "Vendor Payout",
+   "link_count": 0,
+   "link_to": "Vendor Payout",
+   "link_type": "DocType",
+   "onboard": 0,
+   "type": "Link"
+  },
+  {
+   "hidden": 0,
+   "is_query_report": 0,
+   "label": "Stock Ledger Entry",
+   "link_count": 0,
+   "link_to": "Stock Ledger Entry",
+   "link_type": "DocType",
+   "onboard": 0,
+   "type": "Link"
+  },
+  {
+   "hidden": 0,
+   "is_query_report": 0,
+   "label": "Marketing & Loyalty",
+   "link_count": 12,
+   "link_type": "DocType",
+   "onboard": 0,
+   "type": "Card Break"
   },
   {
    "hidden": 0,
@@ -93,8 +301,118 @@
   {
    "hidden": 0,
    "is_query_report": 0,
+   "label": "Coupon Usage",
+   "link_count": 0,
+   "link_to": "Coupon Usage",
+   "link_type": "DocType",
+   "onboard": 0,
+   "type": "Link"
+  },
+  {
+   "hidden": 0,
+   "is_query_report": 0,
+   "label": "Offer",
+   "link_count": 0,
+   "link_to": "Offer",
+   "link_type": "DocType",
+   "onboard": 0,
+   "type": "Link"
+  },
+  {
+   "hidden": 0,
+   "is_query_report": 0,
+   "label": "Loyalty Program",
+   "link_count": 0,
+   "link_to": "Loyalty Program",
+   "link_type": "DocType",
+   "onboard": 0,
+   "type": "Link"
+  },
+  {
+   "hidden": 0,
+   "is_query_report": 0,
+   "label": "Loyalty Tier",
+   "link_count": 0,
+   "link_to": "Loyalty Tier",
+   "link_type": "DocType",
+   "onboard": 0,
+   "type": "Link"
+  },
+  {
+   "hidden": 0,
+   "is_query_report": 0,
+   "label": "Loyalty Point Entry",
+   "link_count": 0,
+   "link_to": "Loyalty Point Entry",
+   "link_type": "DocType",
+   "onboard": 0,
+   "type": "Link"
+  },
+  {
+   "hidden": 0,
+   "is_query_report": 0,
+   "label": "Customer Membership",
+   "link_count": 0,
+   "link_to": "Customer Membership",
+   "link_type": "DocType",
+   "onboard": 0,
+   "type": "Link"
+  },
+  {
+   "hidden": 0,
+   "is_query_report": 0,
+   "label": "Membership Plan",
+   "link_count": 0,
+   "link_to": "Membership Plan",
+   "link_type": "DocType",
+   "onboard": 0,
+   "type": "Link"
+  },
+  {
+   "hidden": 0,
+   "is_query_report": 0,
+   "label": "Membership Benefit",
+   "link_count": 0,
+   "link_to": "Membership Benefit",
+   "link_type": "DocType",
+   "onboard": 0,
+   "type": "Link"
+  },
+  {
+   "hidden": 0,
+   "is_query_report": 0,
+   "label": "Membership Saving Entry",
+   "link_count": 0,
+   "link_to": "Membership Saving Entry",
+   "link_type": "DocType",
+   "onboard": 0,
+   "type": "Link"
+  },
+  {
+   "hidden": 0,
+   "is_query_report": 0,
+   "label": "Hero Slide",
+   "link_count": 0,
+   "link_to": "Hero Slide",
+   "link_type": "DocType",
+   "onboard": 0,
+   "type": "Link"
+  },
+  {
+   "hidden": 0,
+   "is_query_report": 0,
+   "label": "Seasonal Banner",
+   "link_count": 0,
+   "link_to": "Seasonal Banner",
+   "link_type": "DocType",
+   "onboard": 0,
+   "type": "Link"
+  },
+  {
+   "hidden": 0,
+   "is_query_report": 0,
    "label": "Content",
-   "link_count": 3,
+   "link_count": 8,
    "link_type": "DocType",
    "onboard": 0,
    "type": "Card Break"
@@ -132,8 +450,58 @@
   {
    "hidden": 0,
    "is_query_report": 0,
-   "label": "Settings",
-   "link_count": 2,
+   "label": "Navigation Item",
+   "link_count": 0,
+   "link_to": "Navigation Item",
+   "link_type": "DocType",
+   "onboard": 0,
+   "type": "Link"
+  },
+  {
+   "hidden": 0,
+   "is_query_report": 0,
+   "label": "Homepage Settings",
+   "link_count": 0,
+   "link_to": "Homepage Settings",
+   "link_type": "DocType",
+   "onboard": 0,
+   "type": "Link"
+  },
+  {
+   "hidden": 0,
+   "is_query_report": 0,
+   "label": "Product Rail Heading",
+   "link_count": 0,
+   "link_to": "Product Rail Heading",
+   "link_type": "DocType",
+   "onboard": 0,
+   "type": "Link"
+  },
+  {
+   "hidden": 0,
+   "is_query_report": 0,
+   "label": "Trust Badge",
+   "link_count": 0,
+   "link_to": "Trust Badge",
+   "link_type": "DocType",
+   "onboard": 0,
+   "type": "Link"
+  },
+  {
+   "hidden": 0,
+   "is_query_report": 0,
+   "label": "Website Content",
+   "link_count": 0,
+   "link_to": "Website Content",
+   "link_type": "DocType",
+   "onboard": 0,
+   "type": "Link"
+  },
+  {
+   "hidden": 0,
+   "is_query_report": 0,
+   "label": "Web Pages",
+   "link_count": 10,
    "link_type": "DocType",
    "onboard": 0,
    "type": "Card Break"
@@ -141,9 +509,197 @@
   {
    "hidden": 0,
    "is_query_report": 0,
-   "label": "Settings",
+   "label": "About Us",
    "link_count": 0,
-   "link_to": "Settings",
+   "link_to": "About Us",
+   "link_type": "DocType",
+   "onboard": 0,
+   "type": "Link"
+  },
+  {
+   "hidden": 0,
+   "is_query_report": 0,
+   "label": "About Feature",
+   "link_count": 0,
+   "link_to": "About Feature",
+   "link_type": "DocType",
+   "onboard": 0,
+   "type": "Link"
+  },
+  {
+   "hidden": 0,
+   "is_query_report": 0,
+   "label": "About Stat",
+   "link_count": 0,
+   "link_to": "About Stat",
+   "link_type": "DocType",
+   "onboard": 0,
+   "type": "Link"
+  },
+  {
+   "hidden": 0,
+   "is_query_report": 0,
+   "label": "About Value",
+   "link_count": 0,
+   "link_to": "About Value",
+   "link_type": "DocType",
+   "onboard": 0,
+   "type": "Link"
+  },
+  {
+   "hidden": 0,
+   "is_query_report": 0,
+   "label": "Careers Page",
+   "link_count": 0,
+   "link_to": "Careers Page",
+   "link_type": "DocType",
+   "onboard": 0,
+   "type": "Link"
+  },
+  {
+   "hidden": 0,
+   "is_query_report": 0,
+   "label": "Partner Page",
+   "link_count": 0,
+   "link_to": "Partner Page",
+   "link_type": "DocType",
+   "onboard": 0,
+   "type": "Link"
+  },
+  {
+   "hidden": 0,
+   "is_query_report": 0,
+   "label": "Privacy Page",
+   "link_count": 0,
+   "link_to": "Privacy Page",
+   "link_type": "DocType",
+   "onboard": 0,
+   "type": "Link"
+  },
+  {
+   "hidden": 0,
+   "is_query_report": 0,
+   "label": "Terms Page",
+   "link_count": 0,
+   "link_to": "Terms Page",
+   "link_type": "DocType",
+   "onboard": 0,
+   "type": "Link"
+  },
+  {
+   "hidden": 0,
+   "is_query_report": 0,
+   "label": "Cookies Page",
+   "link_count": 0,
+   "link_to": "Cookies Page",
+   "link_type": "DocType",
+   "onboard": 0,
+   "type": "Link"
+  },
+  {
+   "hidden": 0,
+   "is_query_report": 0,
+   "label": "Rider Page",
+   "link_count": 0,
+   "link_to": "Rider Page",
+   "link_type": "DocType",
+   "onboard": 0,
+   "type": "Link"
+  },
+  {
+   "hidden": 0,
+   "is_query_report": 0,
+   "label": "Engagement",
+   "link_count": 7,
+   "link_type": "DocType",
+   "onboard": 0,
+   "type": "Card Break"
+  },
+  {
+   "hidden": 0,
+   "is_query_report": 0,
+   "label": "Review",
+   "link_count": 0,
+   "link_to": "Review",
+   "link_type": "DocType",
+   "onboard": 0,
+   "type": "Link"
+  },
+  {
+   "hidden": 0,
+   "is_query_report": 0,
+   "label": "Wishlist",
+   "link_count": 0,
+   "link_to": "Wishlist",
+   "link_type": "DocType",
+   "onboard": 0,
+   "type": "Link"
+  },
+  {
+   "hidden": 0,
+   "is_query_report": 0,
+   "label": "FAQ Category",
+   "link_count": 0,
+   "link_to": "FAQ Category",
+   "link_type": "DocType",
+   "onboard": 0,
+   "type": "Link"
+  },
+  {
+   "hidden": 0,
+   "is_query_report": 0,
+   "label": "FAQ Item",
+   "link_count": 0,
+   "link_to": "FAQ Item",
+   "link_type": "DocType",
+   "onboard": 0,
+   "type": "Link"
+  },
+  {
+   "hidden": 0,
+   "is_query_report": 0,
+   "label": "Contact Submission",
+   "link_count": 0,
+   "link_to": "Contact Submission",
+   "link_type": "DocType",
+   "onboard": 0,
+   "type": "Link"
+  },
+  {
+   "hidden": 0,
+   "is_query_report": 0,
+   "label": "Popular Location",
+   "link_count": 0,
+   "link_to": "Popular Location",
+   "link_type": "DocType",
+   "onboard": 0,
+   "type": "Link"
+  },
+  {
+   "hidden": 0,
+   "is_query_report": 0,
+   "label": "Search Term",
+   "link_count": 0,
+   "link_to": "SM Search Term",
+   "link_type": "DocType",
+   "onboard": 0,
+   "type": "Link"
+  },
+  {
+   "hidden": 0,
+   "is_query_report": 0,
+   "label": "System",
+   "link_count": 12,
+   "link_type": "DocType",
+   "onboard": 0,
+   "type": "Card Break"
+  },
+  {
+   "hidden": 0,
+   "is_query_report": 0,
+   "label": "SaathiMart Settings",
+   "link_count": 0,
+   "link_to": "SaathiMart Settings",
    "link_type": "DocType",
    "onboard": 0,
    "type": "Link"
@@ -154,6 +710,106 @@
    "label": "Site Config",
    "link_count": 0,
    "link_to": "Site Config",
+   "link_type": "DocType",
+   "onboard": 0,
+   "type": "Link"
+  },
+  {
+   "hidden": 0,
+   "is_query_report": 0,
+   "label": "Webhook Event",
+   "link_count": 0,
+   "link_to": "Webhook Event",
+   "link_type": "DocType",
+   "onboard": 0,
+   "type": "Link"
+  },
+  {
+   "hidden": 0,
+   "is_query_report": 0,
+   "label": "Dead Letter Log",
+   "link_count": 0,
+   "link_to": "Dead Letter Log",
+   "link_type": "DocType",
+   "onboard": 0,
+   "type": "Link"
+  },
+  {
+   "hidden": 0,
+   "is_query_report": 0,
+   "label": "Audit Log",
+   "link_count": 0,
+   "link_to": "SM Audit Log",
+   "link_type": "DocType",
+   "onboard": 0,
+   "type": "Link"
+  },
+  {
+   "hidden": 0,
+   "is_query_report": 0,
+   "label": "Feature Flag",
+   "link_count": 0,
+   "link_to": "SM Feature Flag",
+   "link_type": "DocType",
+   "onboard": 0,
+   "type": "Link"
+  },
+  {
+   "hidden": 0,
+   "is_query_report": 0,
+   "label": "Notification",
+   "link_count": 0,
+   "link_to": "SM Notification",
+   "link_type": "DocType",
+   "onboard": 0,
+   "type": "Link"
+  },
+  {
+   "hidden": 0,
+   "is_query_report": 0,
+   "label": "Notification Device",
+   "link_count": 0,
+   "link_to": "SM Notification Device",
+   "link_type": "DocType",
+   "onboard": 0,
+   "type": "Link"
+  },
+  {
+   "hidden": 0,
+   "is_query_report": 0,
+   "label": "Pending Verification",
+   "link_count": 0,
+   "link_to": "Pending Verification",
+   "link_type": "DocType",
+   "onboard": 0,
+   "type": "Link"
+  },
+  {
+   "hidden": 0,
+   "is_query_report": 0,
+   "label": "Delivery Time Slot",
+   "link_count": 0,
+   "link_to": "Delivery Time Slot",
+   "link_type": "DocType",
+   "onboard": 0,
+   "type": "Link"
+  },
+  {
+   "hidden": 0,
+   "is_query_report": 0,
+   "label": "Delivery Slot Booking",
+   "link_count": 0,
+   "link_to": "Delivery Slot Booking",
+   "link_type": "DocType",
+   "onboard": 0,
+   "type": "Link"
+  },
+  {
+   "hidden": 0,
+   "is_query_report": 0,
+   "label": "Vendor Barcode Index",
+   "link_count": 0,
+   "link_to": "Vendor Barcode Index",
    "link_type": "DocType",
    "onboard": 0,
    "type": "Link"
@@ -168,6 +824,43 @@
  "quick_lists": [],
  "roles": [],
  "sequence_id": 25.0,
- "shortcuts": [],
- "title": "saathimart"
+ "shortcuts": [
+  {
+   "color": "Blue",
+   "label": "Orders",
+   "link_to": "/app/order",
+   "type": "URL"
+  },
+  {
+   "color": "Green",
+   "label": "Products",
+   "link_to": "/app/product",
+   "type": "URL"
+  },
+  {
+   "color": "Orange",
+   "label": "Vendors",
+   "link_to": "/app/vendor",
+   "type": "URL"
+  },
+  {
+   "color": "Purple",
+   "label": "Coupons",
+   "link_to": "/app/coupon",
+   "type": "URL"
+  },
+  {
+   "color": "Red",
+   "label": "Payouts",
+   "link_to": "/app/vendor-payout",
+   "type": "URL"
+  },
+  {
+   "color": "Yellow",
+   "label": "Settings",
+   "link_to": "/app/saathi-mart-settings",
+   "type": "URL"
+  }
+ ],
+ "title": "SaathiMart"
 }

@@ -98,8 +98,33 @@ class TestEventPriority(unittest.TestCase):
 
 
 class TestEventOrdering(unittest.TestCase):
-    def setUp(self):
+    VENDOR = "test-ordering-seq-vendor"
+
+    @classmethod
+    def setUpClass(cls):
+        """The watermark tests persist last_processed_event_seq onto a Vendor
+        row, and verify_sequence()'s phantom-gap escape queries both Vendor
+        and Webhook Event — so a fixture Vendor must exist for them to run.
+        Vendor has a unique `slug`, so reuse by slug/vendor_name across runs
+        instead of colliding on re-insert.
+        """
         frappe.set_user("Administrator")
+        cls.VENDOR = (
+            frappe.db.get_value("Vendor", {"slug": "event-ordering-test-vendor"}, "name")
+            or frappe.db.get_value("Vendor", {"vendor_name": "Event Ordering Test Vendor"}, "name")
+        )
+        if not cls.VENDOR:
+            doc = frappe.get_doc({
+                "doctype": "Vendor", "vendor_name": "Event Ordering Test Vendor",
+                "status": "Active",
+            }).insert(ignore_permissions=True)
+            cls.VENDOR = doc.name
+            frappe.db.commit()
+
+    @classmethod
+    def tearDownClass(cls):
+        frappe.db.delete("Webhook Event", {"target_vendor": cls.VENDOR, "event_type": "test.gap"})
+        frappe.db.commit()
 
     def test_get_next_sequence_delegates_to_atomic_counter(self):
         """
@@ -130,9 +155,38 @@ class TestEventOrdering(unittest.TestCase):
 
     def test_verify_sequence_holds_on_gap(self):
         from saathimart.api.event_ordering import verify_sequence, mark_processed
-        vendor = "test-ordering-gap-vendor"
+        vendor = self.VENDOR
         mark_processed(vendor, 5)
-        self.assertFalse(verify_sequence(vendor, 8))  # gap: 6, 7 missing
+        # A real gap: an earlier queued event exists that can fill it, so
+        # this event must wait its turn.
+        if not frappe.db.exists("Webhook Event", {"target_vendor": vendor, "status": "Queued", "event_seq": ["<", 8]}):
+            frappe.get_doc({
+                "doctype": "Webhook Event", "event_type": "test.gap", "event_id": f"{vendor}-gapfill",
+                "event_seq": 6, "target_site": "https://gapfill.example.com",
+                "target_vendor": vendor, "payload": "{}",
+            }).insert(ignore_permissions=True)
+        try:
+            self.assertFalse(verify_sequence(vendor, 8))  # gap: 6 queued, 7 missing
+        finally:
+            frappe.db.delete("Webhook Event", {"target_vendor": vendor, "event_type": "test.gap"})
+            frappe.db.commit()
+
+    def test_verify_sequence_escapes_phantom_gap(self):
+        """A gap nothing can ever fill must not stall the vendor forever.
+
+        Regression: the watermark lived ONLY in Redis (24h TTL); a Redis
+        restart/flush reset it to 0 while sequence counters kept climbing,
+        and every verify_sequence() saw a permanent phantom gap — all of
+        the vendor's events sat Queued forever, silently. If no earlier
+        queued event exists to fill the gap, the missing events were
+        already delivered before the reset, so delivery must proceed.
+        """
+        from saathimart.api.event_ordering import verify_sequence, mark_processed
+        vendor = self.VENDOR
+        mark_processed(vendor, 5)
+        # No queued event below seq 8 for this vendor → nothing can fill
+        # the 6/7 gap → the event must NOT be held.
+        self.assertTrue(verify_sequence(vendor, 8))
 
     def test_verify_sequence_idempotent_on_replay(self):
         from saathimart.api.event_ordering import verify_sequence, mark_processed

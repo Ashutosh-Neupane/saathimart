@@ -91,6 +91,21 @@ def _enqueue(event_type, payload, target_site=None, target_vendor=None, event_id
     if doc.target_site:
         _schedule_immediate_delivery(doc.name)
 
+    # Durable second transport: mirror critical events into the vendor's
+    # Redis Stream. Fail-safe by contract (see mirror_event_to_stream) —
+    # the webhook path above is never affected by stream problems. The
+    # vendor consumes both transports through the same idempotent
+    # dispatch_event, so whichever arrives first wins and duplicates are
+    # no-ops. The mirror carries the SAME event_id as the Webhook Event
+    # row — that key is what the vendor's dedup layer matches on.
+    try:
+        from saathimart.api.event_priority import get_priority
+        if get_priority(event_type) == 1:
+            from saathimart.streams.publisher import mirror_event_to_stream
+            mirror_event_to_stream(event_type, payload, target_vendor or "", event_id=event_id)
+    except Exception:
+        pass
+
 
 def _schedule_immediate_delivery(event_name):
     """
@@ -652,7 +667,12 @@ def _deliver_event(evt, secret, max_retries):
             if vendor_site_url:
                 host_header = urllib.parse.urlparse(vendor_site_url).hostname
             parsed = urllib.parse.urlparse(target_url)
-            if parsed.hostname in ("localhost", "vendor1.localhost", "vendor2.localhost", "vendor3.localhost"):
+            # Dev containers: the vendor bench is reachable at the docker
+            # service name, while the site URL carries the site hostname.
+            # Any *.localhost vendor site rewrites to vendors:8000 + Host.
+            if parsed.hostname in ("localhost",) or (
+                parsed.hostname and parsed.hostname.endswith(".localhost")
+            ):
                 target_url = parsed._replace(netloc="vendors:8000").geturl()
 
         # Sign the exact bytes we send: HMAC-SHA256(secret, "<ts>.<body>").

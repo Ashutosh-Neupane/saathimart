@@ -7,8 +7,98 @@ Provides endpoints for:
 - Stream metrics and monitoring
 """
 import frappe
+import json
 from frappe import _
 from typing import Dict, Any, List
+from frappe.utils import now_datetime
+
+
+@frappe.whitelist()
+def get_full_health_snapshot() -> Dict[str, Any]:
+    """
+    One call for the Stream Health desk page: mirror status, per-vendor
+    stream/pending/dead-letter counts, and the DLQ contents. Everything is
+    wrapped per-section so a Redis hiccup degrades one widget instead of
+    erroring the whole page.
+    """
+    snapshot = {
+        "checked_at": now_datetime().isoformat(),
+        "mirror_enabled": bool(frappe.db.get_single_value(
+            "SaathiMart Settings", "stream_mirror_enabled")),
+        "mirror_note": _("Webhooks stay primary; streams are the durable second transport."),
+        "vendors": [],
+        "dead_letters": [],
+    }
+
+    # Discover vendor streams (hub:vendor:*:events) on the SAME Redis the
+    # mirror publishes to — Settings.stream_redis_url when set, else this
+    # site's cache Redis. Using a different client here would show an empty
+    # dashboard while events flow happily on the other DB.
+    try:
+        from saathimart.streams.publisher import StreamPublisher
+        redis_client = StreamPublisher("__probe__").redis
+        keys = redis_client.scan_iter(match="hub:vendor:*:events", count=200)
+        vendors = sorted({
+            k.decode() if isinstance(k, bytes) else k
+            for k in keys
+        })
+    except Exception:
+        vendors = []
+
+    from saathimart.streams.monitor import StreamMonitor
+    from saathimart.streams.dead_letter import DeadLetterQueue
+
+    for key in vendors:
+        vendor_id = key.split(":")[2]
+        entry = {"vendor": vendor_id, "length": 0, "pending": 0,
+                 "dead_letters": 0, "consumers": []}
+        try:
+            m = StreamMonitor(vendor_id, redis=redis_client)
+            health = m.check_health()
+            entry["length"] = health.get("stream_length", 0)
+            entry["pending"] = health.get("pending_count", 0)
+        except Exception:
+            pass
+        try:
+            dlq = DeadLetterQueue(vendor_id, redis=redis_client)
+            entry["dead_letters"] = len(dlq.get_dead_letters(count=200))
+        except Exception:
+            pass
+        snapshot["vendors"].append(entry)
+
+    # DLQ contents across vendors (bounded). get_dead_letters returns
+    # [{"msg_id", "data": {event fields...}}] — pull the event type out of
+    # data for display.
+    for v in snapshot["vendors"]:
+        if not v["dead_letters"]:
+            continue
+        try:
+            dlq = DeadLetterQueue(v["vendor"], redis=redis_client)
+            for d in dlq.get_dead_letters(count=20):
+                data = d.get("data") or {}
+                event_type = data.get("event_type", "")
+                try:
+                    payload = json.loads(data.get("payload", "{}"))
+                    event_type = event_type or payload.get("event_type", "")
+                except Exception:
+                    pass
+                snapshot["dead_letters"].append({
+                    "vendor": v["vendor"],
+                    "msg_id": d.get("msg_id", ""),
+                    "event_type": event_type,
+                })
+        except Exception:
+            pass
+
+    return snapshot
+
+
+@frappe.whitelist()
+def acknowledge_dead_letter(vendor_id: str, msg_id: str) -> Dict[str, Any]:
+    """Discard a dead letter permanently (admin judged it unprocessable)."""
+    from saathimart.streams.dead_letter import DeadLetterQueue
+    DeadLetterQueue(vendor_id).acknowledge(msg_id)
+    return {"ok": True}
 
 
 @frappe.whitelist()

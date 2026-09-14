@@ -38,16 +38,25 @@ class DeadLetterQueue:
     DEAD_LETTER_SUFFIX = ":dead-letter"
     MAX_RETRIES = 5  # Move to DLQ after 5 failed attempts
     
-    def __init__(self, vendor_id: str):
+    def __init__(self, vendor_id: str, redis=None):
         self.vendor_id = vendor_id
         self.main_stream = f"hub:vendor:{vendor_id}:events"
         self.dead_letter_stream = f"{self.DEAD_LETTER_STREAM_PREFIX}:{vendor_id}{self.DEAD_LETTER_SUFFIX}"
-        self._redis = None
+        self._redis = redis
     
     @property
     def redis(self):
         if self._redis is None:
-            self._redis = frappe.cache()
+            # Same stream Redis the mirror publishes to — Settings override,
+            # else this site's cache Redis.
+            url = frappe.db.get_single_value("SaathiMart Settings", "stream_redis_url")
+            if url:
+                import redis as redis_mod
+                self._redis = redis_mod.Redis.from_url(
+                    url, decode_responses=False, socket_timeout=5, socket_connect_timeout=5
+                )
+            else:
+                self._redis = frappe.cache()
         return self._redis
     
     def check_and_move_to_dlq(self) -> int:

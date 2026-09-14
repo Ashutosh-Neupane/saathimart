@@ -99,7 +99,7 @@ def compute_hmac_signature(secret, timestamp, body):
     return hmac.new(secret.encode(), msg, hashlib.sha256).hexdigest()
 
 
-def verify_hub_secret(endpoint):
+def verify_hub_secret(endpoint, allow_bootstrap=False):
     """
     Authenticate an inbound vendor push.
 
@@ -109,6 +109,16 @@ def verify_hub_secret(endpoint):
 
     Requests without a valid HMAC signature are rejected. The legacy bare
     X-SM-Secret header fallback has been removed.
+
+    allow_bootstrap: for the registration handshake only — when the
+    per-vendor signature fails, also accept the platform-level
+    SaathiMart Settings secret. This exists because a restarted vendor site
+    that never received its per-vendor secret can only sign with the shared
+    bootstrap value; register_vendor then issues the per-vendor secret so
+    every later push verifies per-vendor. Registration is the one endpoint
+    where this is safe: it can only claim/refresh a Vendor row's own
+    site_url + secret, which is exactly what the shared secret already
+    authorizes in update_vendor_location.
 
     No-ops when there is no active HTTP request — i.e. when the caller is
     invoked internally after the true entry point (events.receive) already
@@ -171,6 +181,12 @@ def verify_hub_secret(endpoint):
         if expected_old:
             computed_old = compute_hmac_signature(expected_old, ts, raw_body)
             if hmac.compare_digest(signature.strip(), computed_old):
+                clear_failures(client_ip)
+                return
+        if allow_bootstrap and settings_secret and settings_secret != expected:
+            # Bootstrap fallback for register_vendor only (see docstring).
+            computed_boot = compute_hmac_signature(settings_secret, ts, raw_body)
+            if hmac.compare_digest(signature.strip(), computed_boot):
                 clear_failures(client_ip)
                 return
         record_failure(client_ip)

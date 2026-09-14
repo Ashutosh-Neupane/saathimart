@@ -33,21 +33,33 @@ def get_next_sequence(vendor_name):
     return _get_next_vendor_event_seq(vendor_name)
 
 
+def _get_watermark(vendor_name):
+    """Durable per-vendor watermark.
+
+    The DB column is the source of truth; the Redis copy only accelerates
+    reads. mark_processed() writes both, but the Redis key carries an expiry
+    and any Redis restart/flush drops it sooner — so a cache MISS (None) must
+    fall back to the DB exactly like an error does. Treating a miss as 0 made
+    verify_sequence() see a phantom gap against sequence counters that kept
+    climbing and held every future event for the vendor FOREVER — a total,
+    silent sync stall (events stayed Queued, nothing logged).
+    """
+    try:
+        cached = frappe.cache().get_value(f"sm_last_processed_seq:{vendor_name}")
+        if cached is not None:
+            return cached
+    except Exception:
+        pass
+    return frappe.db.get_value("Vendor", vendor_name, "last_processed_event_seq") or 0
+
+
 def verify_sequence(vendor_name, expected_seq):
     """Check if an event with this sequence can be processed.
 
     Returns True if processing should proceed (no gap).
-    Returns False if there's a gap (hold this event).
+    Returns False if there is a gap another queued event can still fill.
     """
-    key = f"sm_last_processed_seq:{vendor_name}"
-
-    try:
-        cache = frappe.cache()
-        last_processed = cache.get_value(key) or 0
-    except Exception:
-        last_processed = frappe.db.get_value(
-            "Vendor", vendor_name, "last_processed_event_seq"
-        ) or 0
+    last_processed = _get_watermark(vendor_name)
 
     if expected_seq <= last_processed:
         # Already processed (duplicate) — skip
@@ -57,24 +69,37 @@ def verify_sequence(vendor_name, expected_seq):
         # Exactly the next expected sequence — process it
         return True
 
-    # Gap detected — hold this event
-    return False
+    # Gap detected. But if no queued event for this vendor carries an
+    # earlier sequence, nothing can EVER fill the gap — the missing events
+    # were delivered before a watermark reset (Redis flush/restart) and are
+    # gone from the queue. Holding on a phantom gap stalls the vendor's
+    # entire queue permanently, so deliver; a real out-of-order window
+    # always has an earlier Queued event holding the door open.
+    earlier_queued = frappe.db.count(
+        "Webhook Event",
+        {
+            "target_vendor": vendor_name,
+            "status": "Queued",
+            "event_seq": ["<", expected_seq],
+        },
+    )
+    return earlier_queued == 0
 
 
 def mark_processed(vendor_name, seq):
     """Mark a sequence as processed, advancing the watermark."""
-    key = f"sm_last_processed_seq:{vendor_name}"
-
-    try:
-        cache = frappe.cache()
-        cache.set_value(key, seq, expires_in_sec=86400)
-    except Exception:
-        pass
-
-    # Also persist to DB for crash recovery
+    # DB first: it is the authoritative watermark (see _get_watermark).
     try:
         frappe.db.set_value(
             "Vendor", vendor_name, "last_processed_event_seq", seq
+        )
+    except Exception:
+        pass
+    # Cache copy only accelerates reads; _get_watermark() falls back to the
+    # DB row on miss, so expiry or a Redis flush can never rewind progress.
+    try:
+        frappe.cache().set_value(
+            f"sm_last_processed_seq:{vendor_name}", seq, expires_in_sec=604800
         )
     except Exception:
         pass
@@ -89,12 +114,7 @@ def get_held_events(vendor_name):
     Queued event for the vendor regardless of ordering, not the held ones
     it's named for.
     """
-    try:
-        last_seq = frappe.cache().get_value(f"sm_last_processed_seq:{vendor_name}") or 0
-    except Exception:
-        last_seq = frappe.db.get_value(
-            "Vendor", vendor_name, "last_processed_event_seq"
-        ) or 0
+    last_seq = _get_watermark(vendor_name)
 
     return frappe.get_all(
         "Webhook Event",

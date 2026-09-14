@@ -30,15 +30,24 @@ class StreamMonitor:
     MAX_IDLE_TIME_MINUTES = 10   # Alert if oldest pending > 10 minutes
     MAX_STREAM_LENGTH = 10000    # Alert if stream length > 10k
     
-    def __init__(self, vendor_id: str):
+    def __init__(self, vendor_id: str, redis=None):
         self.vendor_id = vendor_id
         self.stream_name = f"{self.STREAM_PREFIX}:{vendor_id}:events"
-        self._redis = None
+        self._redis = redis
     
     @property
     def redis(self):
         if self._redis is None:
-            self._redis = frappe.cache()
+            # Same stream Redis the mirror publishes to — Settings override,
+            # else this site's cache Redis.
+            url = frappe.db.get_single_value("SaathiMart Settings", "stream_redis_url")
+            if url:
+                import redis as redis_mod
+                self._redis = redis_mod.Redis.from_url(
+                    url, decode_responses=False, socket_timeout=5, socket_connect_timeout=5
+                )
+            else:
+                self._redis = frappe.cache()
         return self._redis
     
     def check_health(self) -> Dict[str, Any]:

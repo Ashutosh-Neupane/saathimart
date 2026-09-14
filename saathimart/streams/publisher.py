@@ -35,16 +35,31 @@ class StreamPublisher:
     STREAM_PREFIX = "hub:vendor"
     MAX_STREAM_LENGTH = 10000  # Trim old messages (~10k events per vendor)
     
-    def __init__(self, vendor_id: str):
+    def __init__(self, vendor_id: str, redis=None):
         self.vendor_id = vendor_id
         self.stream_name = f"{self.STREAM_PREFIX}:{vendor_id}:events"
-        self._redis = None
+        self._redis = redis
     
     @property
     def redis(self):
-        """Lazy-load Redis client from Frappe's cache."""
+        """Lazy-load Redis client.
+
+        Default is this site's cache Redis (frappe.cache()). A caller may
+        pass an explicit client — SaathiMart Settings.stream_redis_url lets
+        an operator point the mirror at a different Redis/DB (e.g. when the
+        vendor site consumes on its own redis db) so publisher and consumer
+        always talk to the SAME stream.
+        """
         if self._redis is None:
-            self._redis = frappe.cache()
+            import frappe.utils
+            url = frappe.db.get_single_value("SaathiMart Settings", "stream_redis_url")
+            if url:
+                import redis as redis_mod
+                self._redis = redis_mod.Redis.from_url(
+                    url, decode_responses=False, socket_timeout=5, socket_connect_timeout=5
+                )
+            else:
+                self._redis = frappe.cache()
         return self._redis
     
     def publish(self, event_type: str, payload: Dict[str, Any], 
@@ -175,7 +190,8 @@ class StreamPublisher:
             return 0
 
 
-def publish_to_vendor(vendor_id: str, event_type: str, payload: Dict[str, Any]) -> str:
+def publish_to_vendor(vendor_id: str, event_type: str, payload: Dict[str, Any],
+                      event_id: Optional[str] = None) -> str:
     """
     Convenience function to publish a single event to a vendor.
     
@@ -185,6 +201,7 @@ def publish_to_vendor(vendor_id: str, event_type: str, payload: Dict[str, Any]) 
         vendor_id: Target vendor ID
         event_type: Event type (e.g., "order.new")
         payload: Event data
+        event_id: Optional idempotency key (the vendor dedups on it)
     
     Returns:
         Message ID
@@ -195,7 +212,36 @@ def publish_to_vendor(vendor_id: str, event_type: str, payload: Dict[str, Any]) 
         "1526569495631-0"
     """
     publisher = StreamPublisher(vendor_id)
-    return publisher.publish(event_type, payload)
+    return publisher.publish(event_type, payload, event_id=event_id)
+
+
+def mirror_event_to_stream(event_type: str, payload: Dict[str, Any],
+                           target_vendor: str, event_id: Optional[str] = None) -> bool:
+    """
+    Mirror a webhook event into the vendor's Redis Stream — the durable
+    second transport behind SaathiMart Settings.stream_mirror_enabled.
+
+    Strictly fail-safe: ANY problem (flag off, Redis down, missing vendor)
+    logs at most one Error Log entry and returns False. The webhook path
+    is primary; a stream failure must never break or delay it.
+    """
+    try:
+        if not frappe.db.get_single_value("SaathiMart Settings", "stream_mirror_enabled"):
+            return False
+        if not target_vendor:
+            return False
+        publisher = StreamPublisher(target_vendor)
+        publisher.publish(event_type, payload, event_id=event_id)
+        return True
+    except Exception:
+        try:
+            frappe.log_error(
+                frappe.get_traceback(),
+                f"Stream mirror failed for {event_type} → {target_vendor}"
+            )
+        except Exception:
+            pass  # even logging failed — never raise from the mirror
+        return False
 
 
 def publish_order_created(order) -> str:

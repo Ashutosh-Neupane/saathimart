@@ -176,8 +176,21 @@ def search_products(query="", page=1, page_size=20, category=None, brand=None,
         results = _filter_results_by_semantic_order(results, semantic_ids)
 
     # Enrich with the best active vendor listing for this location, rather
-    # than whichever listing the database happens to return first.
+    # than whichever listing the database happens to return first. Stock
+    # totals come from Vendor Stock (per-vendor rows batch-loaded once) —
+    # the removed Vendor Listing qty mirror columns drifted from truth.
     from saathimart.api.products import _resolve_best_listing
+    product_names = [r.name for r in results]
+    stock_totals = {}
+    if product_names:
+        for r in frappe.db.sql("""
+            SELECT product, COALESCE(SUM(available_qty), 0) AS total
+            FROM `tabVendor Stock`
+            WHERE product IN %s
+              AND (is_default_warehouse = 1 OR warehouse = 'default' OR warehouse IS NULL)
+            GROUP BY product
+        """, (tuple(product_names),), as_dict=True):
+            stock_totals[r.product] = flt(r.total or 0)
     enriched = []
     for r in results:
         best = _resolve_best_listing(
@@ -189,7 +202,8 @@ def search_products(query="", page=1, page_size=20, category=None, brand=None,
         if best:
             r["price"] = best.price
             r["compare_price"] = best.compare_price
-            r["in_stock"] = (best.available_qty or 0) > 0
+            r["stock_qty"] = stock_totals.get(r.name, 0)
+            r["in_stock"] = r["stock_qty"] > 0
             r["vendor"] = best.vendor
         else:
             r["price"] = 0

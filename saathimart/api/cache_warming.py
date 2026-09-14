@@ -173,18 +173,20 @@ def warm_cache_vendors():
 
         warmed = 0
         for p in top_products:
-            listings = frappe.get_all(
-                "Vendor Listing",
-                filters={"product": p.name, "status": "Active"},
-                fields=["vendor", "price", "available_qty"],
-                order_by="priority desc",
+            # Stock truth lives in Vendor Stock (per vendor+product default
+            # warehouse) — warming from the old Vendor Listing mirror columns
+            # wrote stale numbers into the same sm_stock: keys the cart reads.
+            stock_rows = frappe.get_all(
+                "Vendor Stock",
+                filters={"product": p.name, "is_default_warehouse": 1},
+                fields=["vendor", "available_qty", "reserved_qty", "physical_qty"],
             )
-            for l in listings:
-                cache_key = f"sm_stock:{l.vendor}:{p.name}"
+            for s in stock_rows:
+                cache_key = f"sm_stock:{s.vendor}:{p.name}"
                 cache.set_value(cache_key, {
-                    "available_qty": flt(l.available_qty or 0),
-                    "reserved_qty": 0,
-                    "physical_qty": flt(l.available_qty or 0),
+                    "available_qty": flt(s.available_qty or 0),
+                    "reserved_qty": flt(s.reserved_qty or 0),
+                    "physical_qty": flt(s.physical_qty or 0),
                 }, expires_in_sec=30)
                 warmed += 1
 

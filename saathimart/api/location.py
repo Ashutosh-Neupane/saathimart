@@ -98,7 +98,7 @@ def nearest_vendor_for_product(product, lat, lng, radius_km=5):
     radius_m = radius_km * 1000
 
     listings = frappe.db.sql("""
-        SELECT vl.vendor, vl.price, vl.available_qty, vl.reserved_qty,
+        SELECT vl.vendor, vl.price, vs.available_qty, vs.reserved_qty,
                vl.delivery_zone, vl.estimated_delivery_minutes, vl.priority,
                v.vendor_name, v.lat, v.lng,
                COALESCE(NULLIF(v.service_radius_km, 0), 5) AS service_radius_km,
@@ -108,6 +108,10 @@ def nearest_vendor_for_product(product, lat, lng, radius_km=5):
                ) AS distance_meters
         FROM `tabVendor Listing` vl
         JOIN `tabVendor` v ON vl.vendor = v.name
+        LEFT JOIN `tabVendor Stock` vs
+               ON vs.vendor = vl.vendor AND vs.product = vl.product
+              AND (vs.is_default_warehouse = 1 OR vs.warehouse = 'default'
+                   OR vs.warehouse IS NULL)
         WHERE vl.product = %s
           AND vl.status = 'Active'
           AND v.lat IS NOT NULL AND v.lng IS NOT NULL
@@ -173,7 +177,6 @@ def update_vendor_location(vendor_id, lat, lng, service_radius_km=5, address="")
         doc.flags.name_set = True
         doc.vendor_name = _humanize_vendor_id(vendor_id)
         doc.status = "Pending"
-        doc.commission_pct = 0
     else:
         doc = frappe.get_doc("Vendor", vendor_id)
 
@@ -198,4 +201,91 @@ def update_vendor_location(vendor_id, lat, lng, service_radius_km=5, address="")
         "lat": doc.lat,
         "lng": doc.lng,
         "service_radius_km": doc.service_radius_km,
+    }
+
+
+@frappe.whitelist(allow_guest=True)
+@handle_api_errors
+def register_vendor(vendor_id, site_url, lat=None, lng=None,
+                    service_radius_km=5, address=""):
+    """
+    Full self-registration handshake for a saathimart-vendor site.
+
+    update_vendor_location() only pushes coordinates — the hub was left with
+    no `frappe_site_url` to deliver events to and no per-vendor webhook
+    secret to sign them with, so hub→vendor delivery never worked for
+    self-registered sites. This endpoint closes the loop:
+
+      1. Authenticates the caller. A brand-new vendor_id proves itself with
+         the shared bootstrap secret (SaathiMart Settings.webhook_secret);
+         an already-registered one must sign with its own per-vendor secret
+         (rotation flow unchanged).
+      2. Persists `frappe_site_url` — the delivery address the hub's event
+         publisher targets (Host header comes from this URL).
+      3. Issues (or re-issues) a per-vendor webhook secret and returns it —
+         over HTTPS in production — so the vendor stores it in Vendor Config
+         and every subsequent push verifies per-vendor, not globally.
+
+    Returns {vendor, secret} on success.
+    """
+    from saathimart.api.utils import verify_hub_secret
+    verify_hub_secret("location.register_vendor", allow_bootstrap=True)
+
+    if not vendor_id:
+        frappe.throw(_("vendor_id is required"))
+    if not site_url:
+        frappe.throw(_("site_url is required"))
+
+    site_url = site_url.strip().rstrip("/")
+    vendor_id = vendor_id.strip()
+
+    is_new = not frappe.db.exists("Vendor", vendor_id)
+    if is_new:
+        doc = frappe.new_doc("Vendor")
+        doc.name = vendor_id
+        doc.flags.name_set = True
+        doc.vendor_name = _humanize_vendor_id(vendor_id)
+        doc.status = "Pending"
+    else:
+        doc = frappe.get_doc("Vendor", vendor_id)
+
+    doc.frappe_site_url = site_url
+    if lat is not None:
+        doc.lat = flt(lat)
+    if lng is not None:
+        doc.lng = flt(lng)
+    if service_radius_km:
+        doc.service_radius_km = flt(service_radius_km) or 5
+    if address:
+        doc.address = address
+    doc.hub_status = "Active"
+    doc.last_sync_at = now_datetime()
+
+    if is_new:
+        doc.insert(ignore_permissions=True)
+    else:
+        doc.save(ignore_permissions=True)
+
+    # Issue a per-vendor secret. Overwrite only when the vendor has none (or
+    # explicitly asked for rotation) — otherwise leave the existing one so
+    # re-registration from a restarted container doesn't invalidate a secret
+    # the vendor may still be propagating to other workers.
+    from frappe.utils.password import get_decrypted_password, set_encrypted_password
+    import secrets as _secrets
+
+    current = get_decrypted_password(
+        "Vendor", doc.name, "webhook_secret", raise_exception=False
+    ) or ""
+    if not current:
+        current = f"smwh-{_secrets.token_urlsafe(32)}"
+        set_encrypted_password("Vendor", doc.name, current, "webhook_secret")
+    doc.add_comment("Edit", f"Registered vendor site {site_url}")
+    frappe.db.commit()
+
+    return {
+        "ok": True,
+        "vendor": doc.name,
+        "newly_registered": is_new,
+        "status": doc.status,
+        "secret": current,
     }

@@ -164,9 +164,11 @@ doc_events = {
 scheduler_events = {
     # 00:00 sharp — the nightly promotional close: the day's redeemed coupons
     # and loyalty points hit accounting as per-vendor liability JEs.
-    "0 0 * * *": [
-        "saathimart.api.daily_promotions.consolidate_daily_promotions",
-    ],
+    "cron": {
+        "0 0 * * *": [
+            "saathimart.api.daily_promotions.consolidate_daily_promotions",
+        ],
+    },
     "daily": [
         "saathimart.api.loyalty.expire_old_points",
         "saathimart.api.loyalty.check_birthday_rewards",
@@ -201,9 +203,10 @@ scheduler_events = {
         # Stock snapshot sync: send full stock state to each vendor
         # (reconciliation checks individual products; snapshot sends everything)
         "saathimart.api.stock_snapshot.sync_all_stock_snapshots",
-        # Keep Vendor Listing's cached qty fields from drifting away from
-        # the authoritative Vendor Stock table.
-        "saathimart.api.stock.sync_vendor_listing_stock",
+        # (removed) saathimart.api.stock.sync_vendor_listing_stock — the
+        # Vendor Listing qty columns it kept refreshed are gone; Vendor
+        # Stock is the single source of truth and all readers join it
+        # directly.
     ],
     "weekly": [
         # Archive old dead-letter events older than 30 days

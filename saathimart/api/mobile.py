@@ -80,18 +80,32 @@ def list_products_light(category=None, search=None, page=1, page_size=20,
         as_dict=True
     )
 
-    # Enrich with price (lightweight — only price and in_stock)
+    # Enrich with price (lightweight — only price and in_stock) + the
+    # marketplace-wide stock total, batch-loaded for the whole page.
+    from saathimart.api.products import _attach_vendor_stock
+    product_names = [p.name for p in products]
+    stock_totals = {}
+    if product_names:
+        for r in frappe.db.sql("""
+            SELECT product, COALESCE(SUM(available_qty), 0) AS total
+            FROM `tabVendor Stock`
+            WHERE product IN %s
+              AND (is_default_warehouse = 1 OR warehouse = 'default' OR warehouse IS NULL)
+            GROUP BY product
+        """, (tuple(product_names),), as_dict=True):
+            stock_totals[r.product] = flt(r.total or 0)
     for p in products:
         best = frappe.db.get_value(
             "Vendor Listing",
             {"product": p.name, "status": "Active"},
-            ["price", "compare_price", "available_qty"],
+            ["price", "compare_price", "vendor"],
             as_dict=True,
         )
         if best:
             p["price"] = best.price
             p["compare_price"] = best.compare_price
-            p["in_stock"] = (best.available_qty or 0) > 0
+            p["stock_qty"] = stock_totals.get(p.name, 0)
+            p["in_stock"] = p["stock_qty"] > 0
         else:
             p["price"] = 0
             p["in_stock"] = False

@@ -19,7 +19,7 @@ import frappe
 from frappe.utils import flt, today, add_days, now_datetime
 
 
-def seed_all():
+def seed_all(count=200):
     """Create all demo data."""
     print("Seeding demo data...")
 
@@ -29,7 +29,7 @@ def seed_all():
     categories = seed_categories()
     print(f"  Created {len(categories)} categories")
 
-    products = seed_products(categories)
+    products = seed_products(categories, count=count)
     print(f"  Created {len(products)} products")
 
     orders = seed_orders(vendors, products)
@@ -52,8 +52,14 @@ def seed_vendors():
     ]
 
     for vdata in vendor_data:
-        if frappe.db.exists("Vendor", vdata["name"]):
-            vendors.append(vdata["name"])
+        # Vendor autonames by hash with a unique `slug` (auto-derived from
+        # vendor_name), so idempotency must key on slug — checking by name
+        # always missed existing rows and crashed re-seeds with a
+        # UniqueValidationError on `slug`.
+        slug = frappe.scrub(vdata["vendor_name"]).replace("_", "-")
+        existing = frappe.db.exists("Vendor", {"slug": slug})
+        if existing:
+            vendors.append(existing)
             continue
 
         vendor = frappe.new_doc("Vendor")
@@ -91,11 +97,16 @@ def seed_categories():
         {"name": "cat-snacks", "category_name": "Snacks & Beverages", "slug": "snacks-beverages"},
         {"name": "cat-personal", "category_name": "Personal Care", "slug": "personal-care"},
         {"name": "cat-household", "category_name": "Household Essentials", "slug": "household-essentials"},
+        {"name": "cat-staples", "category_name": "Staples", "slug": "staples"},
     ]
 
     for cdata in cat_data:
-        if frappe.db.exists("Category", cdata["name"]):
-            categories.append(cdata["name"])
+        # Category autonames by field:slug, so the row's name is the slug
+        # ("dairy-bakery"), never the legacy "cat-dairy" — idempotency must
+        # key on slug or every re-seed dies on the unique slug.
+        existing = frappe.db.exists("Category", {"slug": cdata["slug"]})
+        if existing:
+            categories.append(existing)
             continue
 
         cat = frappe.new_doc("Category")
@@ -109,62 +120,133 @@ def seed_categories():
     return categories
 
 
-def seed_products(categories):
-    """Create 20 demo products."""
+def seed_products(categories, count=200):
+    """Create demo products with per-vendor listings AND per-vendor stock.
+
+    Stock truth lives on Vendor Stock (checkout reserves from it);
+    Vendor Listing.available_qty is display-only. Each product is listed
+    by 1-3 active vendors with its own price and stock pool so the
+    marketplace-wide total on browse cards aggregates real per-vendor rows.
+    """
     products = []
 
-    product_data = [
-        # Dairy & Bakery
-        {"name": "prod-milk-1l", "product_name": "Fresh Milk 1L", "category": "cat-dairy", "price": 85, "sku": "MLK-001"},
-        {"name": "prod-butter-200g", "product_name": "Amul Butter 200g", "category": "cat-dairy", "price": 120, "sku": "BTR-001"},
-        {"name": "prod-bread-white", "product_name": "White Bread 400g", "category": "cat-dairy", "price": 45, "sku": "BRD-001"},
-        {"name": "prod-eggs-12", "product_name": "Farm Fresh Eggs (12)", "category": "cat-dairy", "price": 150, "sku": "EGG-001"},
-        # Fruits & Vegetables
-        {"name": "prod-apple-1kg", "product_name": "Apple 1kg", "category": "cat-fruit", "price": 180, "sku": "APL-001"},
-        {"name": "prod-banana-1kg", "product_name": "Banana 1kg", "category": "cat-fruit", "price": 60, "sku": "BNN-001"},
-        {"name": "prod-tomato-1kg", "product_name": "Tomato 1kg", "category": "cat-fruit", "price": 50, "sku": "TMT-001"},
-        {"name": "prod-potato-1kg", "product_name": "Potato 1kg", "category": "cat-fruit", "price": 40, "sku": "PTT-001"},
-        # Snacks & Beverages
-        {"name": "prod-chips-lays", "product_name": "Lay's Classic 52g", "category": "cat-snacks", "price": 35, "sku": "CHP-001"},
-        {"name": "prod-cola-1l", "product_name": "Coca-Cola 1L", "category": "cat-snacks", "price": 65, "sku": "COL-001"},
-        {"name": "prod-biscuit-parle", "product_name": "Parle-G 80g", "category": "cat-snacks", "price": 15, "sku": "BSC-001"},
-        {"name": "prod-juice-tropicana", "product_name": "Tropicana 1L", "category": "cat-snacks", "price": 95, "sku": "JUC-001"},
-        # Personal Care
-        {"name": "prod-shampoo-head-shoulders", "product_name": "Head & Shoulders 180ml", "category": "cat-personal", "price": 175, "sku": "SHP-001"},
-        {"name": "prod-soap-dove", "product_name": "Dove Soap 100g", "category": "cat-personal", "price": 45, "sku": "SOP-001"},
-        {"name": "prod-toothpaste-colgate", "product_name": "Colgate 150g", "category": "cat-personal", "price": 85, "sku": "TPT-001"},
-        {"name": "prod-handwash-dettol", "product_name": "Dettol Handwash 250ml", "category": "cat-personal", "price": 99, "sku": "HDW-001"},
-        # Household
-        {"name": "prod-detergent-tide", "product_name": "Tide 1kg", "category": "cat-household", "price": 145, "sku": "DET-001"},
-        {"name": "prod-dishwash-vim", "product_name": "Vim Dishwash 500ml", "category": "cat-household", "price": 75, "sku": "DSW-001"},
-        {"name": "prod-floor-cleaner-lizol", "product_name": "Lizol 500ml", "category": "cat-household", "price": 120, "sku": "FLC-001"},
-        {"name": "prod-paper-tissue", "product_name": "Paper Napkins (100)", "category": "cat-household", "price": 55, "sku": "PPR-001"},
+    # Realistic mart catalogue: base items expanded into pack-size variants.
+    base_items = [
+        # (name, category, base price NPR, unit)
+        ("Fresh Milk", "dairy-bakery", 85, "1L"),
+        ("Amul Butter", "dairy-bakery", 120, "200g"),
+        ("White Bread", "dairy-bakery", 45, "400g"),
+        ("Farm Fresh Eggs", "dairy-bakery", 150, "(12)"),
+        ("Yogurt", "dairy-bakery", 60, "500g"),
+        ("Cheese Slices", "dairy-bakery", 180, "(10)"),
+        ("Paneer", "dairy-bakery", 160, "200g"),
+        ("Apple", "fruits-vegetables", 180, "1kg"),
+        ("Banana", "fruits-vegetables", 60, "1kg"),
+        ("Tomato", "fruits-vegetables", 50, "1kg"),
+        ("Potato", "fruits-vegetables", 40, "1kg"),
+        ("Onion", "fruits-vegetables", 55, "1kg"),
+        ("Carrot", "fruits-vegetables", 70, "1kg"),
+        ("Cabbage", "fruits-vegetables", 45, "pc"),
+        ("Orange", "fruits-vegetables", 120, "1kg"),
+        ("Grapes", "fruits-vegetables", 220, "500g"),
+        ("Mango", "fruits-vegetables", 250, "1kg"),
+        ("Lay's Classic", "snacks-beverages", 35, "52g"),
+        ("Coca-Cola", "snacks-beverages", 65, "1L"),
+        ("Parle-G", "snacks-beverages", 15, "80g"),
+        ("Tropicana", "snacks-beverages", 95, "1L"),
+        ("Sprite", "snacks-beverages", 65, "1L"),
+        ("Fanta", "snacks-beverages", 65, "1L"),
+        ("Instant Noodles", "snacks-beverages", 30, "70g"),
+        ("Head & Shoulders", "personal-care", 175, "180ml"),
+        ("Dove Soap", "personal-care", 45, "100g"),
+        ("Colgate", "personal-care", 85, "150g"),
+        ("Dettol Handwash", "personal-care", 99, "250ml"),
+        ("Lifebuoy Soap", "personal-care", 40, "100g"),
+        ("Patanjali Toothpaste", "personal-care", 75, "100g"),
+        ("Nivea Cream", "personal-care", 190, "100ml"),
+        ("Tide", "household-essentials", 145, "1kg"),
+        ("Vim Dishwash", "household-essentials", 75, "500ml"),
+        ("Lizol", "household-essentials", 120, "500ml"),
+        ("Paper Napkins", "household-essentials", 55, "(100)"),
+        ("Harpic", "household-essentials", 130, "500ml"),
+        ("Surf Excel", "household-essentials", 155, "1kg"),
+        ("Colin Glass Cleaner", "household-essentials", 85, "250ml"),
+        ("Basmati Rice", "staples", 320, "5kg"),
+        ("Sunflower Oil", "staples", 280, "1L"),
+        ("Red Lentils", "staples", 150, "1kg"),
+        ("Chickpeas", "staples", 140, "1kg"),
+        ("Sugar", "staples", 90, "1kg"),
+        ("Salt", "staples", 25, "1kg"),
+        ("Tea Leaves", "staples", 240, "500g"),
+        ("Coffee Powder", "staples", 350, "200g"),
+        ("Chiwda", "snacks-beverages", 45, "200g"),
+        ("Churpi", "snacks-beverages", 60, "100g"),
+        ("Sel Roti Mix", "staples", 120, "1kg"),
+        ("Momo", "dairy-bakery", 180, "(10 pc frozen)"),
     ]
 
+    # Expand to ~200 unique products: base item × pack variant where useful.
+    product_data = []
+    seen = set()
+    for name, cat, price, unit in base_items:
+        for variant, mult in (("", 1.0), (" Family Pack", 2.5), (" Combo", 4.0)):
+            if len(product_data) >= count:
+                break
+            pname = f"{name} {unit}{variant}".strip()
+            if pname in seen:
+                continue
+            seen.add(pname)
+            product_data.append({
+                "product_name": pname,
+                "category": cat,
+                "price": round(price * mult, 0),
+            })
+        if len(product_data) >= count:
+            break
+
+    # Top up with numbered staples if still short (idempotent-safe names).
+    i = 1
+    while len(product_data) < count:
+        pname = f"Mart Essentials Combo #{i}"
+        if pname not in seen:
+            seen.add(pname)
+            product_data.append({"product_name": pname, "category": "household-essentials", "price": 100 + i * 5})
+        i += 1
+
     vendors = frappe.get_all("Vendor", filters={"status": "Active"}, pluck="name")
+    if not vendors:
+        print("  No active vendors — skipping product seeding")
+        return products
 
     for pdata in product_data:
-        if frappe.db.exists("Product", pdata["name"]):
-            products.append(pdata["name"])
+        # Product autonames by field:product_name (with -N suffixes for
+        # duplicates) — key idempotency on product_name to keep re-seeds
+        # from piling up "...-1" copies.
+        existing = frappe.db.exists("Product", {"product_name": pdata["product_name"]})
+        if existing:
+            products.append(existing)
             continue
 
         product = frappe.new_doc("Product")
         product.product_name = pdata["product_name"]
-        product.slug = pdata["name"].replace("prod-", "")
+        product.slug = frappe.scrub(pdata["product_name"]).replace("_", "-")
         product.category = pdata["category"]
         product.status = "Active"
-        product.price = pdata["price"]
-        product.sku = pdata["sku"]
+        # NOTE: Product.price is a read-only computed property (min price
+        # across active Vendor Listings). The seed price lives on the
+        # Vendor Listing created below — setting it here raised
+        # AttributeError after the listing-based pricing refactor.
+        product.sku = f"SM-{random.randint(100000, 999999)}"
         product.short_description = f"Fresh {pdata['product_name']} from local vendors"
         product.insert(ignore_permissions=True)
 
-        # Create vendor listings for 2-3 random vendors
-        num_vendors = random.randint(2, min(3, len(vendors)))
+        # 1-3 vendors list each product; stock truth goes on Vendor Stock.
+        num_vendors = random.randint(1, min(3, len(vendors)))
         selected_vendors = random.sample(vendors, num_vendors)
 
         for i, vendor in enumerate(selected_vendors):
-            # Price varies slightly by vendor
             vendor_price = pdata["price"] * random.uniform(0.9, 1.1)
+            qty = random.randint(15, 120)
 
             vl = frappe.new_doc("Vendor Listing")
             vl.product = product.name
@@ -172,17 +254,19 @@ def seed_products(categories):
             vl.price = round(vendor_price, 2)
             vl.compare_price = round(vendor_price * 1.2, 2) if random.random() > 0.5 else 0
             vl.track_inventory = 1
-            vl.available_qty = random.randint(10, 100)
             vl.status = "Active"
-            vl.priority = 10 - i  # First vendor gets higher priority
+            vl.priority = 10 - i
+            vl.warehouse = "default"
             vl.insert(ignore_permissions=True)
 
-            # Create vendor stock
+            # Stock truth: one default-warehouse pool per vendor+product.
             vs = frappe.new_doc("Vendor Stock")
             vs.product = product.name
             vs.vendor = vendor
-            vs.physical_qty = vl.available_qty
-            vs.available_qty = vl.available_qty
+            vs.warehouse = "default"
+            vs.is_default_warehouse = 1
+            vs.physical_qty = qty
+            vs.available_qty = qty
             vs.reserved_qty = 0
             vs.insert(ignore_permissions=True)
 
@@ -195,6 +279,32 @@ def seed_products(categories):
 def seed_orders(vendors, products, count=50):
     """Create sample orders."""
     orders = []
+
+    # seed_orders (and checkout) link a Delivery Zone; nothing else in the
+    # seed flow created one. Delivery Zone autonames by field:zone_name, so
+    # the row's primary key IS "Kathmandu" — resolve the real name instead
+    # of assuming a "zone-kathmandu" slug.
+    if not frappe.db.exists("Delivery Zone", {"zone_name": "Kathmandu"}):
+        zone_fields = [f.fieldname for f in frappe.get_meta("Delivery Zone").fields]
+        zone = {"doctype": "Delivery Zone", "zone_name": "Kathmandu", "is_active": 1}
+        if "delivery_charge" in zone_fields:
+            zone["delivery_charge"] = 100
+        if "base_delivery_charge" in zone_fields:
+            zone["base_delivery_charge"] = 100
+        if "latitude" in zone_fields:
+            zone["latitude"] = 27.7172
+        if "longitude" in zone_fields:
+            zone["longitude"] = 85.3240
+        if "radius_km" in zone_fields:
+            zone["radius_km"] = 10
+        zdoc = frappe.get_doc(zone)
+        zdoc.flags.ignore_permissions = True
+        zdoc.flags.ignore_links = True
+        try:
+            zdoc.insert()
+            frappe.db.commit()
+        except Exception:
+            frappe.db.rollback()
 
     customer_names = [
         "Ram Shrestha", "Sita Gurung", "Hari Thapa", "Gita Magar",
@@ -223,7 +333,9 @@ def seed_orders(vendors, products, count=50):
         order.customer_phone = customer_phone
         order.customer_email = f"{customer_name.lower().replace(' ', '.')}@demo.com"
         order.delivery_address = f"House {random.randint(1, 100)}, Kathmandu, Nepal"
-        order.delivery_zone = "zone-kathmandu"
+        order.delivery_zone = frappe.db.get_value(
+            "Delivery Zone", {"zone_name": "Kathmandu"}, "name"
+        )
         order.payment_method = random.choice(payment_methods)
         order.status = random.choice(statuses)
         order.payment_status = "Paid" if order.status in ["Delivered", "Preparing"] else "Unpaid"

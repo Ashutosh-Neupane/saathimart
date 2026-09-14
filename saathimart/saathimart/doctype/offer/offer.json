@@ -134,9 +134,10 @@
   },
   {
    "fieldname": "coupon_code",
-   "fieldtype": "Data",
+   "fieldtype": "Link",
+   "options": "Coupon",
    "label": "Coupon Code",
-   "description": "Associate this promotional offer with a Coupon code so clicking 'Shop Now' on the offer page applies the discount automatically."
+   "description": "Coupon applied when the customer clicks 'Shop Now' on the offer page. Coupons autoname from their code, so the link value is the code itself."
   },
   {
    "fieldname": "col_break_link",

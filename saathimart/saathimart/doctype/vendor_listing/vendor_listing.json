@@ -93,28 +93,6 @@
    "fieldtype": "Column Break"
   },
   {
-   "fieldname": "available_qty",
-   "fieldtype": "Float",
-   "label": "Available Qty",
-   "default": "0",
-   "read_only": 1,
-   "in_list_view": 1
-  },
-  {
-   "fieldname": "reserved_qty",
-   "fieldtype": "Float",
-   "label": "Reserved Qty",
-   "default": "0",
-   "read_only": 1
-  },
-  {
-   "fieldname": "physical_qty",
-   "fieldtype": "Float",
-   "label": "Physical Qty",
-   "default": "0",
-   "read_only": 1
-  },
-  {
    "fieldname": "section_delivery",
    "fieldtype": "Section Break",
    "label": "Delivery"
@@ -228,10 +206,6 @@
   "warehouse",
   "track_inventory",
   "allow_backorder",
-  "col_break_3",
-  "available_qty",
-  "reserved_qty",
-  "physical_qty",
   "section_delivery",
   "delivery_zone",
   "estimated_delivery_minutes",

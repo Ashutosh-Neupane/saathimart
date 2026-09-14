@@ -50,6 +50,99 @@ def _load_vendor_locations_sql(vendor_names, customer_lat, customer_lng):
     return result
 
 
+def _total_stock_for(product_name, stock_map):
+    """Total available stock for a product across ALL vendors.
+
+    The per-vendor Vendor Stock row is the reservation pool (checkout
+    reserves against one vendor), while the number a shopper sees on a
+    browse card must not depend on which vendor won the best-listing
+    contest — if the winning vendor is low, the card should still show the
+    marketplace-wide pool (other vendors sell the same product too).
+    Sums the default-warehouse row per vendor (the reservation pool each
+    vendor fulfills from), mirroring _preload_listing_data's preference.
+    """
+    per_vendor = stock_map.get(product_name) if stock_map else None
+    if per_vendor:
+        return sum(flt(s.get("available_qty") or 0) for s in per_vendor.values())
+    # Fallback: single-product lookups with no preloaded map — one query.
+    return flt(frappe.db.sql("""
+        SELECT COALESCE(SUM(available_qty), 0)
+        FROM `tabVendor Stock`
+        WHERE product = %s AND (is_default_warehouse = 1 OR warehouse = 'default' OR warehouse IS NULL)
+    """, (product_name,))[0][0])
+
+
+LISTING_FIELDS = [
+    "name", "product", "vendor", "price", "compare_price",
+    "track_inventory", "allow_backorder", "delivery_zone",
+    "estimated_delivery_minutes", "priority", "sku",
+    "vendor_product_id", "warehouse", "status", "last_updated", "last_sync_at",
+]
+
+
+def _attach_vendor_stock(listings):
+    """Attach authoritative stock to listings from Vendor Stock.
+
+    Vendor Stock is the single source of truth for quantities — the Vendor
+    Listing qty mirror columns were removed as drifted display caches (7 of
+    442 rows had drifted, and one location API was serving the stale
+    numbers). Every listing gets live available/reserved/physical from its
+    vendor's default-warehouse row plus the marketplace-wide
+    total_stock_qty, batch-loaded in two queries for the whole set.
+    """
+    if not listings:
+        return
+    products = {l.get("product") for l in listings if l.get("product")}
+    vendors = {l.vendor for l in listings if l.vendor}
+    stock = {}
+    totals = {}
+    if products and vendors:
+        rows = frappe.db.sql("""
+            SELECT product, vendor, available_qty, reserved_qty, physical_qty,
+                   warehouse, is_default_warehouse
+            FROM `tabVendor Stock`
+            WHERE product IN %(products)s AND vendor IN %(vendors)s
+        """, {"products": tuple(products), "vendors": tuple(vendors)}, as_dict=True)
+        for r in rows:
+            is_default = bool(r.is_default_warehouse) or (r.warehouse or "") == "default"
+            bucket = stock.setdefault(r.product, {})
+            cur = bucket.get(r.vendor)
+            if cur is None or (is_default and not cur.get("_is_default")):
+                bucket[r.vendor] = {
+                    "available_qty": flt(r.available_qty or 0),
+                    "reserved_qty": flt(r.reserved_qty or 0),
+                    "physical_qty": flt(r.physical_qty or 0),
+                    "_is_default": is_default,
+                }
+    if products:
+        for r in frappe.db.sql("""
+            SELECT product, COALESCE(SUM(available_qty), 0) AS total
+            FROM `tabVendor Stock`
+            WHERE product IN %(products)s
+              AND (is_default_warehouse = 1 OR warehouse = 'default' OR warehouse IS NULL)
+            GROUP BY product
+        """, {"products": tuple(products)}, as_dict=True):
+            totals[r.product] = flt(r.total or 0)
+    for l in listings:
+        s = stock.get(l.get("product"), {}).get(l.vendor) or \
+            {"available_qty": 0, "reserved_qty": 0, "physical_qty": 0}
+        l["available_qty"] = s["available_qty"]
+        l["reserved_qty"] = s["reserved_qty"]
+        l["physical_qty"] = s["physical_qty"]
+        l["total_stock_qty"] = totals.get(l.get("product"), 0)
+
+
+def _listings_with_stock(filters, order_by):
+    """Load Vendor Listings with live Vendor Stock attached (see
+    _attach_vendor_stock). Replaces direct get_list reads that used the
+    removed listing qty columns."""
+    listings = frappe.get_list(
+        "Vendor Listing", filters=filters, fields=LISTING_FIELDS, order_by=order_by,
+    )
+    _attach_vendor_stock(listings)
+    return listings
+
+
 def _preload_listing_data(product_names, customer_lat=None, customer_lng=None):
     """
     Batch-load Vendor Listing, Vendor Stock, and Vendor location data
@@ -217,6 +310,10 @@ def _get_best_vendor_listing(product_name, vendor=None, delivery_zone=None,
         listing.available_qty = s.get("available_qty", 0)
         listing.reserved_qty = s.get("reserved_qty", 0)
         listing.physical_qty = s.get("physical_qty", 0)
+        # Marketplace-wide pool across every vendor selling this product —
+        # attached on every enriched listing so list + detail + fallback
+        # paths all expose it without extra queries.
+        listing.total_stock_qty = _total_stock_for(product_name, stock_map)
         loc = vendor_location_map.get(listing.vendor)
         if loc:
             listing.vendor_name = loc.get("vendor_name") or listing.vendor_name or ""
@@ -295,22 +392,45 @@ def _get_best_vendor_listing(product_name, vendor=None, delivery_zone=None,
                 return result
 
     mode = frappe.db.get_single_value("SaathiMart Settings", "vendor_selection_mode") or "Highest Priority"
+
+    def _listing_stock(l):
+        return flt((stock_map.get(l.vendor) or {}).get("available_qty") or 0)
+
+    def _prefer_in_stock(ranked):
+        # Marketplace-wide picks must not be shadowed by an out-of-stock
+        # best-ranked vendor: prefer candidates that can actually fulfil,
+        # falling back to the ranked order only when nobody has stock.
+        # The location-aware tiers above encode this same preference; the
+        # template resolver does too (in_stock or candidates). An explicit
+        # vendor= request deliberately bypasses this — the customer chose
+        # that store, so they see that store's real (possibly zero) stock.
+        in_stock = [l for l in ranked
+                    if not l.track_inventory or _listing_stock(l) > 0]
+        return in_stock or ranked
+
     if mode == "Lowest Price":
         listings.sort(key=lambda l: flt(l.price))
+        pool = _prefer_in_stock(listings)
     elif mode == "Lowest Delivery Time":
         listings.sort(key=lambda l: flt(l.estimated_delivery_minutes))
+        pool = _prefer_in_stock(listings)
     elif mode == "Nearest" and vendor_location_map:
         listings_with_loc = [_enrich(l) for l in listings if l.vendor in vendor_location_map]
         if listings_with_loc:
-            listings_with_loc.sort(key=lambda l: flt(getattr(l, "distance_km", 9999)))
-            result = listings_with_loc[0]
+            in_stock = [l for l in listings_with_loc
+                        if not l.track_inventory or flt(getattr(l, "available_qty", 0) or 0) > 0]
+            pool = in_stock or listings_with_loc
+            pool.sort(key=lambda l: flt(getattr(l, "distance_km", 9999)))
+            result = pool[0]
             if _listings_map is None:
                 frappe.cache().set_value(cache_key, result, expires_in_sec=300)
             return result
+        pool = _prefer_in_stock(listings)
     else:
         listings.sort(key=lambda l: flt(l.priority), reverse=True)
+        pool = _prefer_in_stock(listings)
 
-    result = _enrich(listings[0])
+    result = _enrich(pool[0])
     if _listings_map is None:
         frappe.cache().set_value(cache_key, result, expires_in_sec=300)
     return result
@@ -364,7 +484,12 @@ def _get_best_template_listing(template_name, vendor=None, delivery_zone=None,
                 if not c.track_inventory or flt(getattr(c, "available_qty", 0) or 0) > 0]
     pool = in_stock or candidates
     result = min(pool, key=lambda c: flt(c.price))
-    
+
+    # Template cards aggregate marketplace-wide stock across every variant
+    # and every vendor — each candidate already carries its own variant's
+    # total_stock_qty from _enrich, so one sum covers variant × vendor.
+    result.total_stock_qty = sum(flt(getattr(c, "total_stock_qty", 0) or 0) for c in candidates)
+
     # Cache result
     frappe.cache().set_value(cache_key, result, expires_in_sec=300)
     return result
@@ -621,6 +746,18 @@ def _serialize_product(doc, _listings_map=None, _stock_map=None, _vendor_locatio
     vendor_product_id = best_listing.vendor_product_id if best_listing else ""
     barcode = best_listing.barcode if best_listing else ""
     delivery_zone = best_listing.delivery_zone if best_listing else ""
+    # Marketplace-wide stock across all vendors selling this product.
+    # stock_qty itself stays best-vendor-scoped (it's what checkout can
+    # reserve from THAT vendor); total_stock_qty is the display pool.
+    total_stock_qty = flt(getattr(best_listing, "total_stock_qty", 0) or 0)
+    if not total_stock_qty and not getattr(doc, "has_variants", 0):
+        # Plain product whose best listing lacked the precomputed total
+        # (e.g. home-rail callers passing synthetic maps) — one query.
+        total_stock_qty = _total_stock_for(doc.name, None)
+    # Variant templates: total arrives precomputed from
+    # _get_best_template_listing (variant × vendor aggregate); the
+    # fallback above must NOT run for them — stock rows live on
+    # variants, never on the template name.
 
     variant_attributes = [
         {"attribute": r.attribute, "value": r.value}
@@ -635,6 +772,7 @@ def _serialize_product(doc, _listings_map=None, _stock_map=None, _vendor_locatio
         "compare_price": compare,
         "thumbnail": primary_media or doc.thumbnail,
         "stock_qty": stock_qty,
+        "total_stock_qty": total_stock_qty,
         "track_inventory": track_inventory,
         "allow_backorder": allow_backorder,
         "category": doc.category,
@@ -842,6 +980,9 @@ def list_products(category=None, vendor=None, search=None, page=1, page_size=20,
         p["price"] = price
         p["compare_price"] = compare
         p["stock_qty"] = stock
+        # Marketplace-wide pool across all vendors (display); stock_qty above
+        # stays scoped to the best vendor (what checkout can reserve there).
+        p["total_stock_qty"] = _total_stock_for(p["name"], stock_map)
         p["track_inventory"] = best.track_inventory
         p["vendor"] = best.vendor
         p["vendor_name"] = getattr(best, "vendor_name", "") or ""
@@ -1005,15 +1146,8 @@ def get_product(slug, vendor=None, delivery_zone=None, lat=None, lng=None, radiu
         data["nearest_warehouse"] = None
 
     # Add all vendor listings
-    listings = frappe.get_list(
-        "Vendor Listing",
-        filters={"product": name},
-        fields=["name", "vendor", "price", "compare_price", "available_qty",
-                "reserved_qty", "track_inventory", "allow_backorder",
-                "delivery_zone", "estimated_delivery_minutes", "priority",
-                "sku", "vendor_product_id", "warehouse", "status",
-                "last_updated", "last_sync_at"],
-        order_by="priority desc, price asc",
+    listings = _listings_with_stock(
+        filters={"product": name}, order_by="priority desc, price asc",
     )
 
     # Enrich with vendor location if customer location provided
@@ -1455,11 +1589,8 @@ def select_best_vendor(product_name, delivery_zone=None, customer_lat=None, cust
         if best:
             return best
 
-    listings = frappe.get_list(
-        "Vendor Listing",
+    listings = _listings_with_stock(
         filters={"product": product_name, "status": "Active", "track_inventory": 1},
-        fields=["name", "vendor", "price", "available_qty", "delivery_zone",
-                "estimated_delivery_minutes", "priority"],
         order_by="priority desc, price asc",
     )
     if not listings:
@@ -1483,15 +1614,8 @@ def get_vendor_listings(product_slug):
     if not name:
         frappe.throw(_("Product not found"), frappe.DoesNotExistError)
 
-    listings = frappe.get_list(
-        "Vendor Listing",
-        filters={"product": name},
-        fields=["name", "vendor", "price", "compare_price", "available_qty",
-                "reserved_qty", "track_inventory", "allow_backorder",
-                "delivery_zone", "estimated_delivery_minutes", "priority",
-                "sku", "vendor_product_id", "warehouse", "status",
-                "last_updated", "last_sync_at"],
-        order_by="priority desc, price asc",
+    listings = _listings_with_stock(
+        filters={"product": name}, order_by="priority desc, price asc",
     )
 
     # Resolve vendor names
@@ -1531,11 +1655,10 @@ def get_vendor_listings_by_location(product_slug, lat=None, lng=None, radius_km=
     listings = frappe.get_list(
         "Vendor Listing",
         filters={"product": name, "status": "Active"},
-        fields=["name", "vendor", "price", "compare_price", "available_qty",
-                "track_inventory", "delivery_zone", "estimated_delivery_minutes",
-                "warehouse"],
+        fields=LISTING_FIELDS,
         order_by="price asc",
     )
+    _attach_vendor_stock(listings)
 
     if not listings:
         return []
@@ -1573,6 +1696,7 @@ def get_vendor_listings_by_location(product_slug, lat=None, lng=None, radius_km=
             "price": flt(l.price),
             "compare_price": flt(l.compare_price or 0),
             "available_qty": flt(l.available_qty or 0),
+            "total_stock_qty": flt(l.get("total_stock_qty") or 0),
             "in_stock": (not l.track_inventory) or flt(l.available_qty or 0) > 0,
             "delivery_zone": l.delivery_zone or "",
             "estimated_delivery_minutes": l.estimated_delivery_minutes or 30,

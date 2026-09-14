@@ -101,9 +101,6 @@ def _make_product(name, price=100, stock=50, prices=None, variant_of=None, varia
     base_listing.compare_price = 0
     base_listing.track_inventory = 1
     base_listing.allow_backorder = 0
-    base_listing.available_qty = stock
-    base_listing.reserved_qty = 0
-    base_listing.physical_qty = stock
     base_listing.priority = 1
     base_listing.estimated_delivery_minutes = 20
     base_listing.status = "Active"
@@ -127,9 +124,6 @@ def _make_product(name, price=100, stock=50, prices=None, variant_of=None, varia
             vl.compare_price = flt(p.get("compare_price") or 0)
             vl.track_inventory = 1
             vl.allow_backorder = 0
-            vl.available_qty = stock
-            vl.reserved_qty = 0
-            vl.physical_qty = stock
             vl.delivery_zone = p.get("delivery_zone") or ""
             vl.priority = 1
             vl.estimated_delivery_minutes = 20
@@ -2477,8 +2471,11 @@ class TestVendorCommissionReconciliationReport(unittest.TestCase):
         suffix = frappe.generate_hash(length=6)
         self.vendor_a = _make_vendor(f"Commission Vendor A {suffix}", slug=f"commission-vendor-a-{suffix}")
         self.vendor_b = _make_vendor(f"Commission Vendor B {suffix}", slug=f"commission-vendor-b-{suffix}")
-        frappe.db.set_value("Vendor", self.vendor_a.name, "commission_pct", 10)
-        frappe.db.set_value("Vendor", self.vendor_b.name, "commission_pct", 20)
+        # Commission is platform-wide now (SaathiMart Settings). Save + restore
+        # the singleton value so other tests' expectations are unaffected.
+        self._saved_pct = frappe.db.get_single_value("SaathiMart Settings", "default_commission_pct")
+        frappe.db.set_single_value("SaathiMart Settings", "default_commission_pct", 10)
+        self.platform_pct = 10
         self.product_a = _make_product("Commission Product A", price=1000)
         self.product_b = _make_product("Commission Product B", price=500)
 
@@ -2546,9 +2543,9 @@ class TestVendorCommissionReconciliationReport(unittest.TestCase):
         row_a = next(r for r in data if r["vendor"] == self.vendor_a.name)
         row_b = next(r for r in data if r["vendor"] == self.vendor_b.name)
         self.assertEqual(row_a["settled_sales"], 1000)
-        self.assertEqual(row_a["commission_amount"], 100)   # 10% of 1000
+        self.assertEqual(row_a["commission_amount"], 100)   # platform 10% of 1000
         self.assertEqual(row_b["settled_sales"], 500)
-        self.assertEqual(row_b["commission_amount"], 100)   # 20% of 500
+        self.assertEqual(row_b["commission_amount"], 50)    # platform 10% of 500
 
     def test_cancelled_fulfillment_excluded(self):
         order = self._make_order(self.vendor_a.name, self.product_a.name, 1000, "Paid")
@@ -2588,7 +2585,7 @@ class TestVendorPayout(unittest.TestCase):
         # (or being polluted by) other methods' exact SUM(...) assertions.
         suffix = frappe.generate_hash(length=6)
         self.vendor = _make_vendor(f"Payout Test Vendor {suffix}", slug=f"payout-test-vendor-{suffix}")
-        frappe.db.set_value("Vendor", self.vendor.name, "commission_pct", 10)
+        frappe.db.set_single_value("SaathiMart Settings", "default_commission_pct", 10)
         self.product = _make_product("Payout Test Product", price=1000)
 
     def _make_paid_order(self, subtotal=1000, status="Confirmed"):

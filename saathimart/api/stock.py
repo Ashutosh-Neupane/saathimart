@@ -507,34 +507,21 @@ def check_negative_vendor_stock():
         )
 
 
-def sync_vendor_listing_stock():
+def ensure_vendor_stock_row(vendor, product, warehouse=None):
+    """Guarantee a Vendor Stock row exists for (vendor, product).
+
+    Vendor Stock is the single source of truth for quantities (the Vendor
+    Listing qty mirror columns were removed as drifted display caches).
+    Events that land before the vendor pushes its first stock receipt —
+    e.g. price.update creating a brand-new listing — need a zero-qty row so
+    their first stock.deduct delta has a pool to apply against instead of
+    erroring with "no Vendor Stock row".
     """
-    Sync Vendor Listing stock fields from Vendor Stock.
-
-    Vendor Stock is the authoritative source for inventory. Vendor Listing
-    caches stock data for quick reads in product listings.
-    Run this periodically (cron) or after stock events.
-    """
-    rows = frappe.db.sql("""
-        SELECT vl.name, vs.available_qty, vs.reserved_qty, vs.physical_qty
-        FROM `tabVendor Listing` vl
-        INNER JOIN `tabVendor Stock` vs ON vs.vendor = vl.vendor AND vs.product = vl.product
-        WHERE vl.status = 'Active'
-          AND (vl.available_qty != IFNULL(vs.available_qty, 0)
-               OR vl.reserved_qty != IFNULL(vs.reserved_qty, 0)
-               OR vl.physical_qty != IFNULL(vs.physical_qty, 0))
-    """, as_dict=True)
-
-    updated = 0
-    for r in rows:
-        frappe.db.set_value("Vendor Listing", r.name, {
-            "available_qty": flt(r.available_qty or 0),
-            "reserved_qty": flt(r.reserved_qty or 0),
-            "physical_qty": flt(r.physical_qty or 0),
-        }, update_modified=False)
-        updated += 1
-
-    return updated
+    existing = frappe.db.get_value("Vendor Stock", {"vendor": vendor, "product": product}, "name")
+    if existing:
+        return existing
+    doc = get_or_create(vendor, product, warehouse=warehouse)
+    return doc.name
 
 
 @frappe.whitelist()

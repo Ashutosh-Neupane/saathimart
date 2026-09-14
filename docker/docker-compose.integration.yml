@@ -1,14 +1,18 @@
-# Hub + vendor integration stack — brings up one saathimart hub and TWO
-# saathimart-vendor sites (vendor1.localhost + vendor2.localhost) in a
-# single multi-site vendor bench container with a shared MariaDB/Redis so
-# the full sync surface (order.new, payment.received, stock, mapping,
-# nearest-vendor routing) can be exercised end-to-end locally.
+# Hub + vendor integration stack — brings up one saathimart hub and FOUR
+# saathimart-vendor sites in a single multi-site vendor bench container with
+# a shared MariaDB/Redis so the full sync surface (order.new,
+# payment.received, stock, mapping, nearest-vendor routing) can be exercised
+# end-to-end locally. vendor1-3.localhost are third-party vendors;
+# main.localhost is the platform's OWN store (the "main-account vendor") —
+# it books the platform's accounting GL exactly like any other vendor site.
 #
 #   docker compose -f docker/docker-compose.integration.yml up -d
 #
 # Hub:      http://localhost:8000  (Host: saathimart.localhost)
 # Vendor 1: http://localhost:8001  (Host: vendor1.localhost)
 # Vendor 2: http://localhost:8001  (Host: vendor2.localhost)
+# Vendor 3: http://localhost:8001  (Host: vendor3.localhost)
+# Main acct: http://localhost:8001 (Host: main.localhost) — platform store
 #
 # WEBHOOK_SECRET must match on both sides — it is what hub→vendor pushes
 # (order.new, payment.received) authenticate with, and vendor→hub pushes
@@ -40,6 +44,11 @@ services:
     image: redis:7-alpine
     container_name: sm-int-redis-cache
     restart: unless-stopped
+    # AOF: the cache Redis also carries Redis Streams (hub→vendor event log).
+    # Without persistence a Redis restart silently drops undelivered stream
+    # events — exactly the class of silent sync stall the event-ordering
+    # watermark fix addressed. everysec: at most 1s of writes lost.
+    command: redis-server --appendonly yes --appendfsync everysec --loglevel warning
     healthcheck:
       test: ["CMD", "redis-cli", "ping"]
       interval: 10s
@@ -53,7 +62,10 @@ services:
     image: redis:7-alpine
     container_name: sm-int-redis-queue
     restart: unless-stopped
-    command: redis-server --save 60 1 --loglevel warning
+    # AOF + RDB: queue Redis holds RQ jobs (async checkouts, webhook
+    # deliveries). RDB alone can lose up to 60s of queued jobs on a crash;
+    # AOF everysec caps that at 1s.
+    command: redis-server --appendonly yes --appendfsync everysec --save 60 1 --loglevel warning
     healthcheck:
       test: ["CMD", "redis-cli", "ping"]
       interval: 10s
@@ -109,7 +121,7 @@ services:
     ports:
       - "8001:8000"
     environment:
-      VENDOR_SITES: "vendor1.localhost vendor2.localhost"
+      VENDOR_SITES: "vendor1.localhost vendor2.localhost vendor3.localhost main.localhost"
       VENDOR_PORT: "8000"
       DB_HOST: mariadb
       DB_PORT: 3306

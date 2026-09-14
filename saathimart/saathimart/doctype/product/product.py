@@ -48,9 +48,8 @@ class Product(Document):
             "Vendor Listing",
             filters={"product": self.name, "status": "Active"},
             fields=["vendor", "price", "compare_price", "track_inventory",
-                    "allow_backorder", "available_qty", "reserved_qty",
-                    "sku", "vendor_product_id", "delivery_zone",
-                    "barcode", "status"],
+                    "allow_backorder", "sku", "vendor_product_id",
+                    "delivery_zone", "barcode", "status"],
         )
 
     @property

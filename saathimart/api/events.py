@@ -528,9 +528,6 @@ def _apply_price_update(payload):
         doc.status = "Active"
         doc.track_inventory = 1
         doc.allow_backorder = 0
-        doc.available_qty = 0
-        doc.reserved_qty = 0
-        doc.physical_qty = 0
         doc.priority = 0
         doc.estimated_delivery_minutes = 20
         doc.last_updated = now_datetime()
@@ -538,6 +535,11 @@ def _apply_price_update(payload):
         doc.last_event_id = event_id or ""
         doc.last_event_seq = event_seq or 0
         doc.insert(ignore_permissions=True)
+        # Price events carry no stock; give the vendor a zero-qty reservation
+        # pool so their first stock.* delta has a Vendor Stock row to land on
+        # instead of failing with "no Vendor Stock row".
+        from saathimart.api.stock import ensure_vendor_stock_row
+        ensure_vendor_stock_row(vendor, product_id)
 
 
 def _apply_barcode_register(payload):

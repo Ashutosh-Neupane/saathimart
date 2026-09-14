@@ -326,12 +326,17 @@ def sync_listing_to_vendor(listing_name):
     # Publish product.new event to this specific vendor
     from saathimart.events.publisher import _enqueue
     product = frappe.get_doc("Product", listing.product)
+    stock_qty = flt(frappe.db.get_value(
+        "Vendor Stock",
+        {"vendor": listing.vendor, "product": listing.product},
+        "physical_qty",
+    ) or 0)
     payload = {
         "product_id": product.name,
         "barcode": listing.barcode,
         "product_name": product.product_name,
         "price": listing.price,
-        "stock_qty": listing.available_qty,
+        "stock_qty": stock_qty,
     }
     _enqueue("product.new", payload,
              target_site=vendor_url, target_vendor=listing.vendor,

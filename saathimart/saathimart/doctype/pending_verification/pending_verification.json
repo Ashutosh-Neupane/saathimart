@@ -23,9 +23,16 @@
    "fieldname": "purpose",
    "fieldtype": "Select",
    "label": "Purpose",
-   "options": "signup\npassword_reset",
+   "options": "signup\npassword_reset\nemail_change",
    "default": "signup",
    "in_list_view": 1
+  },
+  {
+   "fieldname": "new_email",
+   "fieldtype": "Data",
+   "label": "New Email",
+   "options": "Email",
+   "depends_on": "eval:doc.purpose=='email_change'"
   },
   {
    "fieldname": "expires_at",
@@ -59,6 +66,7 @@
   "user",
   "otp",
   "purpose",
+  "new_email",
   "expires_at"
  ],
  "sort_field": "modified",

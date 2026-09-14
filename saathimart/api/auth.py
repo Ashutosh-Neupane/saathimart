@@ -185,14 +185,28 @@ def get_profile():
 @frappe.whitelist()
 @handle_api_errors
 def update_profile(full_name=None, phone=None):
-    """Update the logged-in user's name and phone."""
+    """Update the logged-in user's name and phone.
+
+    The name is written to `first_name`, not `full_name` — Frappe recomputes
+    full_name from first_name on save, so setting full_name directly was
+    silently discarded (middleware's update_profile has the same shape).
+    Email is deliberately not accepted here: it is the User's login id and
+    changes go through auth_full.request_email_change/verify_email_change,
+    which verify the new address with an OTP first.
+    """
     if frappe.session.user == "Guest":
         frappe.throw(_("Not logged in"), frappe.PermissionError)
 
     user_doc = frappe.get_doc("User", frappe.session.user)
     if full_name:
-        user_doc.full_name = full_name
+        user_doc.first_name = full_name
     if phone:
         user_doc.mobile_no = phone
     user_doc.save(ignore_permissions=True)
-    return {"ok": True, "message": _("Profile updated")}
+    return {
+        "ok": True,
+        "message": _("Profile updated"),
+        "email": user_doc.name,
+        "full_name": user_doc.full_name or user_doc.first_name or "",
+        "phone": user_doc.mobile_no or "",
+    }

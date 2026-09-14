@@ -389,13 +389,27 @@ def resend_otp(email, purpose="signup"):
 
 @frappe.whitelist()
 @handle_api_errors
-def change_password(old_password, new_password):
+def change_password(old_password=None, new_password=None):
     """Change password for logged-in user."""
     from frappe.utils.password import check_password, update_password
     user = frappe.session.user
+    if not old_password:
+        frappe.throw(_("Current password is required"), frappe.ValidationError)
     _require_password(new_password, "New Password", email=user,
                       user_inputs=_user_inputs_for(user))
-    check_password(user, old_password, delete_tracker_cache=False)
+    if new_password == old_password:
+        frappe.throw(
+            _("New password must be different from your current password"),
+            frappe.ValidationError,
+        )
+    try:
+        check_password(user, old_password, delete_tracker_cache=False)
+    except frappe.AuthenticationError:
+        # handle_api_errors would map the raw AuthenticationError to
+        # UNAUTHORIZED / "Please sign in to continue." — misleading here:
+        # the user IS signed in, they just mistyped their current password.
+        frappe.clear_messages()
+        frappe.throw(_("Current password is incorrect"), frappe.ValidationError)
     update_password(user=user, pwd=new_password)
     return {"message": _("Password changed successfully")}
 
@@ -438,3 +452,110 @@ def _validate_otp_record(email, otp, purpose):
         frappe.throw(_("Invalid or expired verification code"))
 
     return record.name
+
+
+@frappe.whitelist()
+@handle_api_errors
+def request_email_change(new_email=None):
+    """Start an email change. The OTP goes to `new_email`, not the current
+    address — that is what proves the shopper actually owns the mailbox
+    before verify_email_change renames the account onto it.
+
+    Ported from saathi_middleware (the demo app): the hub's Pending
+    Verification row carries the target address in `new_email` for the
+    email_change purpose.
+    """
+    from frappe.utils import validate_email_address
+
+    user = frappe.session.user
+    new_email = (new_email or "").strip().lower()
+    if not new_email:
+        frappe.throw(_("New email is required"), frappe.ValidationError)
+    if not validate_email_address(new_email):
+        frappe.throw(_("Please enter a valid email address"), frappe.ValidationError)
+    if new_email == user:
+        frappe.throw(_("This is already your current email"))
+    if frappe.db.exists("User", new_email):
+        frappe.throw(_("This email is already in use"))
+
+    _rate_limit(f"email_change:{user}", limit=5, window_seconds=600)
+
+    otp = _otp(6)
+    expires_at = add_to_date(now(), minutes=15)
+
+    existing = frappe.db.get_value(
+        "Pending Verification", {"user": user, "purpose": "email_change"}, "name"
+    )
+    if existing:
+        frappe.db.set_value("Pending Verification", existing, {
+            "otp": _hash_otp(otp),
+            "new_email": new_email,
+            "expires_at": expires_at,
+        })
+    else:
+        frappe.get_doc({
+            "doctype": "Pending Verification",
+            "user": user,
+            "otp": _hash_otp(otp),
+            "purpose": "email_change",
+            "new_email": new_email,
+            "expires_at": expires_at,
+        }).insert(ignore_permissions=True)
+
+    _dispatch_otp_email(new_email, otp, purpose="email_change")
+    return {"message": _("Verification code sent to your new email"), "new_email": new_email}
+
+
+@frappe.whitelist()
+@handle_api_errors
+def verify_email_change(otp=None):
+    """Confirm an email change with the OTP sent to the new address.
+
+    Renames the User (login id) onto the verified address, re-establishes
+    the session under the new name and hands back a fresh token — the old
+    session died with the rename.
+    """
+    old_email = frappe.session.user
+    otp = (otp or "").strip()
+    if not otp:
+        frappe.throw(_("OTP is required"), frappe.ValidationError)
+    _rate_limit(f"verify_email_change:{old_email}", limit=10, window_seconds=600)
+
+    record_name = _validate_otp_record(old_email, otp, "email_change")
+    new_email = frappe.db.get_value("Pending Verification", record_name, "new_email")
+    frappe.db.delete("Pending Verification", {"name": record_name})
+
+    if not new_email:
+        frappe.throw(_("Verification record is missing the new email"))
+    # Re-checked here: the address could have been claimed by another
+    # signup in the 15 minutes between requesting and verifying this OTP.
+    if frappe.db.exists("User", new_email):
+        frappe.throw(_("This email is already in use"))
+
+    # The top-level frappe.rename_doc alias doesn't forward
+    # ignore_permissions; the real implementation in
+    # frappe.model.rename_doc does. Renaming a User normally needs
+    # System Manager rights, which a shopper renaming their own account
+    # doesn't hold, so this goes through the implementation directly.
+    from frappe.model.rename_doc import rename_doc
+    rename_doc(doctype="User", old=old_email, new=new_email, force=True, ignore_permissions=True)
+    frappe.db.commit()
+
+    # The rename moved the account out from under the current session's
+    # user — re-establish the session and return a fresh token, the same
+    # pattern login() uses. login_manager only exists in HTTP context;
+    # fall back to set_user so the endpoint also works from workers/tests.
+    if hasattr(frappe.local, "login_manager") and frappe.local.login_manager:
+        frappe.local.login_manager.login_as(new_email)
+    else:
+        frappe.set_user(new_email)
+    token_payload = get_user_token(new_email)
+    user_doc = frappe.get_doc("User", new_email)
+
+    return {
+        "message": _("Email updated successfully"),
+        "email": new_email,
+        "full_name": user_doc.full_name or user_doc.first_name or new_email,
+        "mobile_no": user_doc.mobile_no or "",
+        **token_payload,
+    }

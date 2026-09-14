@@ -5,10 +5,20 @@
  "issingle": 1,
  "fields": [
   {
+   "fieldname": "section_general",
+   "fieldtype": "Section Break",
+   "label": "General"
+  },
+  {
    "fieldname": "site_name",
    "fieldtype": "Data",
    "label": "Site Name",
    "default": "SaathiMart"
+  },
+  {
+   "fieldname": "col_break_general",
+   "fieldtype": "Column Break",
+   "label": ""
   },
   {
    "fieldname": "currency",
@@ -101,6 +111,11 @@
    "default": "EPAYTEST"
   },
   {
+   "fieldname": "col_break_payments",
+   "fieldtype": "Column Break",
+   "label": ""
+  },
+  {
    "fieldname": "esewa_secret_key",
    "fieldtype": "Password",
    "label": "eSewa Secret Key"
@@ -114,9 +129,9 @@
   {
    "fieldname": "esewa_mode_of_payment",
    "fieldtype": "Link",
-   "label": "eSewa Mode of Payment",
-   "options": "Mode of Payment",
-   "description": "Mode of Payment to use for eSewa transactions"
+   "label": "eSewa Payment Mode",
+   "options": "Payment Mode",
+   "description": "App Payment Mode entry to use for eSewa transactions (the app's own Payment Mode doctype \u2014 the hub has no ERPNext, so ERPNext's Mode of Payment does not exist here)"
   },
   {
    "fieldname": "section_payment_portal",
@@ -216,14 +231,14 @@
    "description": "Shared secret for validating inbound vendor webhooks"
   },
   {
+   "fieldname": "col_break_webhook",
+   "fieldtype": "Column Break"
+  },
+  {
    "fieldname": "max_webhook_retries",
    "fieldtype": "Int",
    "label": "Max Webhook Retries",
    "default": "3"
-  },
-  {
-   "fieldname": "col_break_webhook",
-   "fieldtype": "Column Break"
   },
   {
    "fieldname": "section_redis",
@@ -235,6 +250,11 @@
    "fieldtype": "Data",
    "label": "Redis Queue URL",
    "default": "redis://redis-queue:6379"
+  },
+  {
+   "fieldname": "col_break_redis",
+   "fieldtype": "Column Break",
+   "label": ""
   },
   {
    "fieldname": "event_channel",
@@ -260,6 +280,11 @@
    "label": "Retain Sync Outbox (days)",
    "default": "30",
    "description": "Delete Sent/Dead Sync Outbox entries older than this"
+  },
+  {
+   "fieldname": "col_break_retention",
+   "fieldtype": "Column Break",
+   "label": ""
   },
   {
    "fieldname": "retain_cart_days",
@@ -294,19 +319,19 @@
    "description": "API Key from ERPNext user (User > API Access)"
   },
   {
-   "fieldname": "erpnext_api_secret",
-   "fieldtype": "Password",
-   "label": "ERPNext API Secret"
+   "fieldname": "erpnext_company",
+   "fieldtype": "Data",
+   "label": "ERPNext Company",
+   "description": "Company name in ERPNext, e.g. SaathiMart Pvt. Ltd."
   },
   {
    "fieldname": "col_break_erpnext",
    "fieldtype": "Column Break"
   },
   {
-   "fieldname": "erpnext_company",
-   "fieldtype": "Data",
-   "label": "ERPNext Company",
-   "description": "Company name in ERPNext, e.g. SaathiMart Pvt. Ltd."
+   "fieldname": "erpnext_api_secret",
+   "fieldtype": "Password",
+   "label": "ERPNext API Secret"
   },
   {
    "fieldname": "erpnext_default_warehouse",
@@ -320,6 +345,11 @@
    "label": "ERPNext Selling Price List",
    "default": "Standard Selling",
    "description": "Price list to use on Sales Orders"
+  },
+  {
+   "fieldname": "col_break_erpnext_2",
+   "fieldtype": "Column Break",
+   "label": ""
   },
   {
    "fieldname": "erpnext_taxes_template",
@@ -339,6 +369,28 @@
    "label": "Enable Daily Sync",
    "default": "0",
    "description": "Enable the daily batch sync from saathimart to ERPNext. Disable to pause syncing."
+  },
+  {
+   "fieldname": "section_streams",
+   "fieldtype": "Section Break",
+   "label": "Streams (Redis Mirror)"
+  },
+  {
+   "fieldname": "stream_mirror_enabled",
+   "fieldtype": "Check",
+   "label": "Mirror Critical Events to Redis Streams",
+   "default": "0",
+   "description": "Also publish payment/order events to the vendor Redis Stream (durable second transport). The webhook path stays primary; the vendor consumes both idempotently. Requires Redis on the shared cache instance."
+  },
+  {
+   "fieldname": "col_break_streams",
+   "fieldtype": "Column Break"
+  },
+  {
+   "fieldname": "stream_redis_url",
+   "fieldtype": "Data",
+   "label": "Stream Redis URL",
+   "description": "Override only when the vendor consumes on a different Redis than this site's cache, e.g. redis://redis-cache:6379/1. Empty = use this site's cache Redis (same instance, same DB)."
   }
  ],
  "permissions": [
@@ -356,12 +408,15 @@
  "states": [],
  "naming_rule": "Expression (old style)",
  "field_order": [
+  "section_general",
   "site_name",
+  "col_break_general",
   "currency",
   "section_marketplace",
   "vendor_selection_mode",
   "col_break_marketplace",
   "default_commission_pct",
+  "tds_rate",
   "section_cart",
   "cart_expiry_days",
   "abandoned_cart_hours",
@@ -371,6 +426,7 @@
   "section_payments",
   "enable_esewa",
   "esewa_merchant_code",
+  "col_break_payments",
   "esewa_secret_key",
   "esewa_base_url",
   "esewa_mode_of_payment",
@@ -391,27 +447,34 @@
   "max_coupon_uses_per_user",
   "section_webhook",
   "webhook_secret",
-  "max_webhook_retries",
   "col_break_webhook",
+  "max_webhook_retries",
   "section_redis",
   "redis_queue_url",
+  "col_break_redis",
   "event_channel",
   "section_retention",
   "retain_webhook_events_days",
   "retain_sync_outbox_days",
+  "col_break_retention",
   "retain_cart_days",
   "retain_orders_days",
   "section_erpnext",
   "erpnext_site_url",
   "erpnext_api_key",
-  "erpnext_api_secret",
-  "col_break_erpnext",
   "erpnext_company",
+  "col_break_erpnext",
+  "erpnext_api_secret",
   "erpnext_default_warehouse",
   "erpnext_selling_price_list",
+  "col_break_erpnext_2",
   "erpnext_taxes_template",
   "erpnext_delivery_charge_account",
-  "erpnext_sync_enabled"
+  "erpnext_sync_enabled",
+  "section_streams",
+  "stream_mirror_enabled",
+  "col_break_streams",
+  "stream_redis_url"
  ],
  "sort_field": "modified",
  "sort_order": "DESC",

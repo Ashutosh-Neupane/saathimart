@@ -51,7 +51,6 @@ def execute(filters=None):
         SELECT
             vf.vendor,
             v.vendor_name,
-            v.commission_pct,
             COUNT(DISTINCT vf.parent) as order_count,
             SUM(vf.subtotal) as gross_sales,
             SUM(CASE WHEN o.payment_status = 'Paid' THEN vf.subtotal ELSE 0 END) as settled_sales,
@@ -67,8 +66,14 @@ def execute(filters=None):
         ORDER BY gross_sales DESC
     """, values, as_dict=True)
 
+    # Platform-wide commission rate (SaathiMart Settings) — one rate for all
+    # vendors, so it's stamped on every row after the aggregate query instead
+    # of being selected from the (now nonexistent) per-vendor column.
+    from saathimart.api.commission import get_default_commission_pct
+    platform_pct = get_default_commission_pct()
     for row in data:
-        commission_pct = flt(row.commission_pct)
+        row.commission_pct = platform_pct
+        commission_pct = platform_pct
         settled_sales = flt(row.settled_sales)
         paid_out_sales = flt(row.paid_out_sales)
         unpaid_settled_sales = settled_sales - paid_out_sales

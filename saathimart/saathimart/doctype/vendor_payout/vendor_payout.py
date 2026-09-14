@@ -14,9 +14,12 @@ class VendorPayout(Document):
         if not self.vendor_name and self.vendor:
             self.vendor_name = frappe.db.get_value("Vendor", self.vendor, "vendor_name") or ""
 
-        # Auto-calculate commission
+        # Auto-calculate commission from the platform-wide rate
+        # (SaathiMart Settings.default_commission_pct) — commission is the
+        # platform's charge to every vendor, not a per-vendor field.
         if self.vendor:
-            commission_pct = frappe.db.get_value("Vendor", self.vendor, "commission_pct") or 0
+            from saathimart.api.commission import get_commission_pct_for_vendor
+            commission_pct = get_commission_pct_for_vendor(self.vendor)
             self.commission_pct = commission_pct
             self.commission_amount = flt(self.total_sales) * flt(commission_pct) / 100
             self.payout_amount = flt(self.total_sales) - flt(self.commission_amount)

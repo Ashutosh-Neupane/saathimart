@@ -22,6 +22,8 @@ import frappe
 from frappe import _
 from frappe.utils import flt, nowdate, getdate, rounded
 
+from saathimart.api.commission import get_commission_pct_for_vendor
+
 
 # ── Chart of Accounts Structure ──────────────────────────────────────────────
 # These accounts MUST exist in the ERPNext Chart of Accounts for the platform.
@@ -347,7 +349,7 @@ def record_order_payment_gl(order_id, amount, gateway="", reference=""):
         vendor_gross = flt(f.subtotal) - (
             flt(coupon_absorption.get("vendor_absorbs", 0)) * flt(f.subtotal) / total_subtotal
         )
-        pct = flt(frappe.db.get_value("Vendor", f.vendor, "commission_pct") or 0) if f.vendor else 0
+        pct = get_commission_pct_for_vendor(f.vendor) if f.vendor else 0
         commission_v = rounded(vendor_gross * pct / 100.0, 2)
         if commission_v > 0:
             commission_detail.append(f"{f.vendor}: {vendor_gross}x{pct}%={commission_v}")
@@ -531,7 +533,7 @@ def _calculate_vendor_clearing_amount(order, coupon_absorption):
         fields=["vendor"],
     )):
         if vendor_name:
-            pct = frappe.db.get_value("Vendor", vendor_name, "commission_pct") or 0
+            pct = get_commission_pct_for_vendor(vendor_name)
             commission_pct = max(commission_pct, pct)  # Use highest commission
 
     vendor_gross = total_vendor_subtotal - vendor_coupon_absorption
@@ -861,8 +863,9 @@ def generate_settlement_statement(vendor_name, from_date, to_date):
           AND DATE(vf.modified) BETWEEN %s AND %s
     """, (vendor_name, from_date, to_date), as_dict=True)
 
-    # Get vendor commission rate
-    commission_pct = flt(frappe.db.get_value("Vendor", vendor_name, "commission_pct") or 0)
+    # Platform-wide commission rate (SaathiMart Settings) — commission is
+    # charged by the platform to every vendor, not stored per vendor.
+    commission_pct = get_commission_pct_for_vendor(vendor_name)
 
     # Calculate totals
     total_sales = sum(flt(f.subtotal) for f in fulfillments)

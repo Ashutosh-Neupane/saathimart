@@ -88,7 +88,7 @@ def _seed_vendors():
         doc = frappe.new_doc("Vendor")
         doc.update(v)
         doc.status = "Active"
-        doc.commission_pct = 10
+        # commission_pct is platform-wide now (SaathiMart Settings), not per vendor
         doc.insert(ignore_permissions=True)
     print(f"  {len(VENDORS)} vendors")
 

@@ -17,6 +17,10 @@
    "unique": 1
   },
   {
+   "fieldname": "col_break_1",
+   "fieldtype": "Column Break"
+  },
+  {
    "fieldname": "status",
    "fieldtype": "Select",
    "label": "Status",
@@ -25,8 +29,15 @@
    "in_list_view": 1
   },
   {
-   "fieldname": "col_break_1",
-   "fieldtype": "Column Break"
+   "fieldname": "delivery_zone",
+   "fieldtype": "Link",
+   "label": "Default Delivery Zone",
+   "options": "Delivery Zone"
+  },
+  {
+   "fieldname": "section_connection",
+   "fieldtype": "Section Break",
+   "label": "Connection"
   },
   {
    "fieldname": "frappe_site_url",
@@ -40,9 +51,43 @@
    "label": "API Key"
   },
   {
+   "fieldname": "col_break_conn",
+   "fieldtype": "Column Break",
+   "label": ""
+  },
+  {
    "fieldname": "api_secret",
    "fieldtype": "Password",
    "label": "API Secret"
+  },
+  {
+   "fieldname": "webhook_secret",
+   "fieldtype": "Password",
+   "label": "Webhook Secret",
+   "description": "Per-vendor HMAC secret for inbound webhook authentication. Leave blank to use the global Settings secret."
+  },
+  {
+   "fieldname": "section_webhook_meta",
+   "fieldtype": "Section Break",
+   "label": "Webhook Sync State"
+  },
+  {
+   "fieldname": "webhook_secret_old",
+   "fieldtype": "Password",
+   "label": "Previous Webhook Secret",
+   "description": "Accepted (never sent) during rotation so the secret can be swapped with zero downtime."
+  },
+  {
+   "fieldname": "webhook_secret_rotated_at",
+   "fieldtype": "Datetime",
+   "label": "Webhook Secret Last Rotated",
+   "read_only": 1,
+   "description": "Set by api/secret_rotation.py:rotate_vendor_secret on success. Blank means never rotated since this field was added \u2014 api/secret_rotation.py:check_stale_secrets treats that as due, using the vendor's creation date as the baseline."
+  },
+  {
+   "fieldname": "col_break_whmeta",
+   "fieldtype": "Column Break",
+   "label": ""
   },
   {
    "fieldname": "last_event_seq",
@@ -56,52 +101,45 @@
    "fieldtype": "Int",
    "label": "Last Processed Event Seq",
    "read_only": 1,
-   "description": "Highest event_seq successfully delivered to this vendor, in order. Used to hold later-sequenced events until earlier gaps are filled — see api/event_ordering.py."
+   "description": "Highest event_seq successfully delivered to this vendor, in order. Used to hold later-sequenced events until earlier gaps are filled \u2014 see api/event_ordering.py."
+  },
+  {
+   "fieldname": "section_sync_health",
+   "fieldtype": "Section Break",
+   "label": "Sync Health"
   },
   {
    "fieldname": "clock_skew_seconds",
    "fieldtype": "Float",
    "label": "Clock Skew (seconds)",
    "read_only": 1,
-   "description": "Measured difference between this vendor's clock and the hub's, from inbound request timestamps. Positive = vendor ahead. Widens the HMAC timestamp tolerance for this vendor — see api/clock_sync.py."
+   "description": "Measured difference between this vendor's clock and the hub's, from inbound request timestamps. Positive = vendor ahead. Widens the HMAC timestamp tolerance for this vendor \u2014 see api/clock_sync.py."
   },
   {
    "fieldname": "error_count",
    "fieldtype": "Int",
    "label": "Error Count (DB Fallback)",
    "read_only": 1,
-   "description": "Delivery error counter used only when Redis is unavailable — see api/partial_failure.py._db_record_error. Not the live error-budget counter (that lives in cache)."
+   "description": "Delivery error counter used only when Redis is unavailable \u2014 see api/partial_failure.py._db_record_error. Not the live error-budget counter (that lives in cache)."
   },
   {
-   "fieldname": "webhook_secret",
-   "fieldtype": "Password",
-   "label": "Webhook Secret",
-   "description": "Per-vendor HMAC secret for inbound webhook authentication. Leave blank to use the global Settings secret."
+   "fieldname": "col_break_health",
+   "fieldtype": "Column Break",
+   "label": ""
   },
   {
-   "fieldname": "webhook_secret_old",
-   "fieldtype": "Password",
-   "label": "Previous Webhook Secret",
-   "description": "Accepted (never sent) during rotation so the secret can be swapped with zero downtime."
+   "fieldname": "hub_status",
+   "fieldtype": "Select",
+   "label": "Hub Status",
+   "options": "Active\nUnreachable\nSuspended",
+   "default": "Active",
+   "read_only": 1
   },
   {
-   "fieldname": "webhook_secret_rotated_at",
+   "fieldname": "last_sync_at",
    "fieldtype": "Datetime",
-   "label": "Webhook Secret Last Rotated",
-   "read_only": 1,
-   "description": "Set by api/secret_rotation.py:rotate_vendor_secret on success. Blank means never rotated since this field was added — api/secret_rotation.py:check_stale_secrets treats that as due, using the vendor's creation date as the baseline."
-  },
-  {
-   "fieldname": "section_credentials_info",
-   "fieldtype": "Section Break",
-   "label": "Credentials Info"
-  },
-  {
-   "fieldname": "credentials_info",
-   "fieldtype": "Small Text",
-   "label": "Setup Instructions",
-   "read_only": 1,
-   "description": "Auto-generated on creation. Copy these values to the vendor's Frappe site: Site URL, API Key, API Secret, and Webhook Secret."
+   "label": "Last Stock Sync At",
+   "read_only": 1
   },
   {
    "fieldname": "section_contact",
@@ -120,49 +158,19 @@
    "label": "Contact Phone"
   },
   {
+   "fieldname": "col_break_contact",
+   "fieldtype": "Column Break",
+   "label": ""
+  },
+  {
    "fieldname": "address",
    "fieldtype": "Small Text",
    "label": "Address"
   },
   {
-   "fieldname": "section_delivery",
+   "fieldname": "section_location",
    "fieldtype": "Section Break",
-   "label": "Delivery"
-  },
-  {
-   "fieldname": "delivery_zone",
-   "fieldtype": "Link",
-   "label": "Default Delivery Zone",
-   "options": "Delivery Zone"
-  },
-  {
-   "fieldname": "commission_pct",
-   "fieldtype": "Float",
-   "label": "Commission %",
-   "default": "0"
-  },
-  {
-   "fieldname": "section_stock",
-   "fieldtype": "Section Break",
-   "label": "Stock & Location"
-  },
-  {
-   "fieldname": "warehouses",
-   "fieldtype": "Table",
-   "label": "Warehouses",
-   "description": "Physical warehouse locations for this vendor. Used for multi-location stock and nearest-warehouse routing.",
-   "options": "Vendor Warehouse"
-  },
-  {
-   "fieldname": "col_break_wh",
-   "fieldtype": "Column Break"
-  },
-  {
-   "fieldname": "default_warehouse_name",
-   "fieldtype": "Data",
-   "label": "Default Warehouse Name",
-   "description": "Read-only: auto-populated from the warehouse marked as default. Fallback when no warehouse is specified.",
-   "read_only": 1
+   "label": "Location & Delivery"
   },
   {
    "fieldname": "lat",
@@ -173,6 +181,11 @@
    "fieldname": "lng",
    "fieldtype": "Float",
    "label": "Longitude"
+  },
+  {
+   "fieldname": "col_break_loc",
+   "fieldtype": "Column Break",
+   "label": ""
   },
   {
    "fieldname": "service_radius_km",
@@ -187,9 +200,32 @@
    "options": "Warehouse"
   },
   {
+   "fieldname": "section_stock",
+   "fieldtype": "Section Break",
+   "label": "Stock & Location"
+  },
+  {
+   "fieldname": "warehouses",
+   "fieldtype": "Table",
+   "label": "Warehouses",
+   "description": "Physical warehouse locations for this vendor. Used for multi-location stock and nearest-warehouse routing.",
+   "options": "Vendor Warehouse"
+  },
+  {
    "fieldname": "total_available_qty",
    "fieldtype": "Float",
    "label": "Total Available Qty (All Products)",
+   "read_only": 1
+  },
+  {
+   "fieldname": "col_break_wh",
+   "fieldtype": "Column Break"
+  },
+  {
+   "fieldname": "default_warehouse_name",
+   "fieldtype": "Data",
+   "label": "Default Warehouse Name",
+   "description": "Read-only: auto-populated from the warehouse marked as default. Fallback when no warehouse is specified.",
    "read_only": 1
   },
   {
@@ -199,18 +235,16 @@
    "read_only": 1
   },
   {
-   "fieldname": "last_sync_at",
-   "fieldtype": "Datetime",
-   "label": "Last Stock Sync At",
-   "read_only": 1
+   "fieldname": "section_credentials_info",
+   "fieldtype": "Section Break",
+   "label": "Credentials Info"
   },
   {
-   "fieldname": "hub_status",
-   "fieldtype": "Select",
-   "label": "Hub Status",
-   "options": "Active\nUnreachable\nSuspended",
-   "default": "Active",
-   "read_only": 1
+   "fieldname": "credentials_info",
+   "fieldtype": "Small Text",
+   "label": "Setup Instructions",
+   "read_only": 1,
+   "description": "Auto-generated on creation. Copy these values to the vendor's Frappe site: Site URL, API Key, API Secret, and Webhook Secret."
   },
   {
    "fieldname": "section_meta",
@@ -248,39 +282,46 @@
  "field_order": [
   "vendor_name",
   "slug",
-  "status",
   "col_break_1",
+  "status",
+  "delivery_zone",
+  "section_connection",
   "frappe_site_url",
   "api_key",
+  "col_break_conn",
   "api_secret",
-  "last_event_seq",
-  "last_processed_event_seq",
-  "clock_skew_seconds",
-  "error_count",
   "webhook_secret",
+  "section_webhook_meta",
   "webhook_secret_old",
   "webhook_secret_rotated_at",
-  "section_credentials_info",
-  "credentials_info",
+  "col_break_whmeta",
+  "last_event_seq",
+  "last_processed_event_seq",
+  "section_sync_health",
+  "clock_skew_seconds",
+  "error_count",
+  "col_break_health",
+  "hub_status",
+  "last_sync_at",
   "section_contact",
   "contact_email",
   "contact_phone",
+  "col_break_contact",
   "address",
-  "section_delivery",
-  "delivery_zone",
-  "commission_pct",
-  "section_stock",
-  "warehouses",
-  "col_break_wh",
-  "default_warehouse_name",
+  "section_location",
   "lat",
   "lng",
+  "col_break_loc",
   "service_radius_km",
   "default_warehouse",
+  "section_stock",
+  "warehouses",
   "total_available_qty",
+  "col_break_wh",
+  "default_warehouse_name",
   "total_physical_qty",
-  "last_sync_at",
-  "hub_status",
+  "section_credentials_info",
+  "credentials_info",
   "section_meta",
   "notes"
  ],

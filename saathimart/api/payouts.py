@@ -10,6 +10,7 @@ amount is only ever counted as owed once.
 import frappe
 from frappe import _
 from frappe.utils import flt, rounded
+from saathimart.api.commission import get_commission_pct_for_vendor
 from saathimart.api.responses import handle_api_errors
 
 
@@ -37,7 +38,7 @@ def get_outstanding_payout(vendor):
     """
     _require_vendor_access(vendor)
 
-    commission_pct = flt(frappe.db.get_value("Vendor", vendor, "commission_pct"))
+    commission_pct = get_commission_pct_for_vendor(vendor)
     row = frappe.db.sql("""
         SELECT COUNT(DISTINCT vf.parent) as order_count, SUM(vf.subtotal) as gross_sales
         FROM `tabVendor Fulfillment` vf

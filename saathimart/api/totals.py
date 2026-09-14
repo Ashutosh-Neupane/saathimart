@@ -205,6 +205,24 @@ def _calculate_coupon_discount(doc):
         _set(doc, "free_delivery", 0)
         return
 
+    # A persisted order's coupon discount is frozen accounting history: the
+    # coupon was validated and consumed at checkout, and this order's own
+    # Coupon Usage row now counts against the very limits validate_coupon
+    # enforces (used_count, max_uses_per_user). Re-validating on every later
+    # save (payment marking, status changes, admin edits) throws on those
+    # limits, the error is swallowed below, and the discount is silently
+    # zeroed on a PAID order — desyncing every reconciliation that compares
+    # the order to its Coupon Usage row. If the redemption row exists, trust
+    # it and skip re-validation entirely.
+    if doc.get("name") and not doc.get("__islocal") and \
+            frappe.db.exists("Coupon Usage", {"order": doc.name}):
+        usage_discount = frappe.db.get_value(
+            "Coupon Usage", {"order": doc.name}, "discount_amount"
+        )
+        if usage_discount is not None:
+            _set(doc, "coupon_discount", flt(usage_discount or 0))
+            return
+
     try:
         from saathimart.saathimart.doctype.coupon.coupon import validate_coupon
         # Phone is passed so max_uses_per_user is actually enforced here, not

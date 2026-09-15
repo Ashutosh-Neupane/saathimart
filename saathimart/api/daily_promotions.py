@@ -126,10 +126,7 @@ def consolidate_daily_promotions(posting_date=None):
 
 	Idempotent — safe to run manually for any historical date.
 	"""
-	from saathimart.api.accounting import (
-		_get_account,
-		create_gl_entries_batch,
-	)
+	from saathimart.api.accounting import publish_platform_ledger_entry
 
 	posting_date = getdate(posting_date) if posting_date else add_days(getdate(today()), -1)
 	posting_date = posting_date.isoformat()
@@ -152,22 +149,25 @@ def consolidate_daily_promotions(posting_date=None):
 			t["loyalty"] += loyalty * share
 
 	created = []
-	clearing = _get_account("clearing_vendor")
-	coupon_pay = _get_account("platform_coupon_payable")
-	loyalty_pay = _get_account("loyalty_payable")
 
-	if not clearing or not (coupon_pay or loyalty_pay):
-		# Standalone site (no ERPNext): GL recording is a no-op by design.
+	# The hub has no local chart of accounts — the reclassification lands on
+	# the Platform Ledger Vendor's site as a platform.ledger_entry batch
+	# (symbolic account keys, resolved/provisioned there). Without a
+	# designated Platform Ledger Vendor there is nowhere to book it; the
+	# settlement JE still balances either way (see its docstring), it just
+	# can't split promos out for separate clearing.
+	from saathimart.api.commission import get_platform_ledger_vendor
+	if not get_platform_ledger_vendor():
 		frappe.logger("daily_promotions").info(
-			f"Promotional consolidation for {posting_date}: GL accounts unavailable — "
-			f"aggregated {len(totals)} vendor(s), no Journal Entries booked."
+			f"Promotional consolidation for {posting_date}: no Platform Ledger "
+			f"Vendor configured — aggregated {len(totals)} vendor(s), nothing booked."
 		)
 		return {
 			"posting_date": posting_date,
 			"orders_reviewed": len(orders),
 			"vendors": len(totals),
 			"entries": [],
-			"skipped": "erpnext_not_installed",
+			"skipped": "no_platform_ledger_vendor",
 		}
 
 	for vendor, t in sorted(totals.items()):
@@ -184,12 +184,10 @@ def consolidate_daily_promotions(posting_date=None):
 			continue
 
 		vno = _voucher_no(posting_date, vendor)
-		if frappe.db.exists("GL Entry", {"voucher_no": vno, "voucher_type": "Journal Entry"}):
-			continue  # already booked — idempotent
 
 		entries = [
 			{
-				"account": clearing,
+				"account_key": "clearing_vendor",
 				"debit": rounded(coupon_amt + loyalty_amt, 2),
 				"credit": 0,
 				"party_type": "Supplier",
@@ -197,18 +195,18 @@ def consolidate_daily_promotions(posting_date=None):
 				"remarks": f"Promotional portion of vendor payable for {posting_date}",
 			}
 		]
-		if coupon_amt > 0 and coupon_pay:
+		if coupon_amt > 0:
 			entries.append({
-				"account": coupon_pay,
+				"account_key": "platform_coupon_payable",
 				"debit": 0,
 				"credit": coupon_amt,
 				"party_type": "Supplier",
 				"party": vendor,
 				"remarks": f"Platform coupons redeemed for {vendor} on {posting_date}",
 			})
-		if loyalty_amt > 0 and loyalty_pay:
+		if loyalty_amt > 0:
 			entries.append({
-				"account": loyalty_pay,
+				"account_key": "loyalty_payable",
 				"debit": 0,
 				"credit": loyalty_amt,
 				"party_type": "Supplier",
@@ -216,12 +214,11 @@ def consolidate_daily_promotions(posting_date=None):
 				"remarks": f"Loyalty points redeemed for {vendor} on {posting_date}",
 			})
 
-		create_gl_entries_batch(
-			entries,
+		publish_platform_ledger_entry(
 			voucher_type="Journal Entry",
 			voucher_no=vno,
+			entries=entries,
 			remarks=f"Daily promotional consolidation for {vendor} on {posting_date}",
-			posting_date=posting_date,
 		)
 		created.append({"vendor": vendor, "voucher_no": vno,
 						"coupon": coupon_amt, "loyalty": loyalty_amt})

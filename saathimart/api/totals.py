@@ -402,6 +402,7 @@ def _calculate_grand_total(doc):
         + loyalty_discount + manual_discount
     )
     grand_total = net_total + total_taxes - total_discount + delivery_charge
+    _set(doc, "net_after_discount", rounded(max(net_total - total_discount, 0), 2))
     _set(doc, "grand_total", rounded(max(grand_total, 0), 2))
     _set(doc, "total_discount", rounded(total_discount, 2))
 
@@ -409,7 +410,7 @@ def _calculate_grand_total(doc):
 # ── Step 8: rounding ──────────────────────────────────────────────────────────
 
 def _round_totals(doc):
-    for field in ("subtotal", "net_total", "total_taxes", "grand_total",
+    for field in ("subtotal", "net_total", "net_after_discount", "total_taxes", "grand_total",
                   "coupon_discount", "onboarding_discount", "membership_discount",
                   "loyalty_discount", "total_discount", "delivery_charge"):
         if doc.get(field) is not None:

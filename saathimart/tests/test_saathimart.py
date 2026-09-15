@@ -2626,7 +2626,12 @@ class TestVendorPayout(unittest.TestCase):
         result = create_vendor_payout(
             self.vendor.name, add_days(today(), -1), today(), payment_reference="TXN-001",
         )
-        self.assertEqual(result["payout_amount"], 900)
+        # payout_amount is the platform's NET cash obligation: gross −
+        # commission − 13% service VAT on the commission bill (the platform
+        # remits that VAT to IRD; it was never the vendor's receivable).
+        # payout_due (1000−100=900) is the vendor's clearing relief; TDS
+        # grosses the cash back up at payment time (887+15=902 sent).
+        self.assertEqual(result["payout_amount"], 887)
         self.assertEqual(result["fulfillments_count"], 1)
 
         after = get_outstanding_payout(self.vendor.name)

@@ -24,7 +24,12 @@ def record_delivery_failure(vendor_name):
     state["failures"] = state.get("failures", 0) + 1
     state["last_failure"] = str(now_datetime())
 
-    if state["failures"] >= FAILURE_THRESHOLD and state["state"] == "closed":
+    # Open from closed OR half_open. Gating the transition on "closed" only
+    # let a half-open vendor flap forever: every test request failure kept
+    # incrementing `failures` past the threshold while the state stayed
+    # half_open, so the vendor got unlimited unthrottled test requests
+    # instead of going back into a cooldown.
+    if state["failures"] >= FAILURE_THRESHOLD and state["state"] in ("closed", "half_open"):
         state["state"] = "open"
         state["opened_at"] = str(now_datetime())
         _log_circuit_event(vendor_name, "opened", state["failures"])

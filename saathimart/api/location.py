@@ -187,6 +187,14 @@ def update_vendor_location(vendor_id, lat, lng, service_radius_km=5, address="")
     doc.hub_status = "Active"
     doc.last_sync_at = now_datetime()
 
+    # Frappe's _save_passwords() deletes a Password field's __Auth row when
+    # its in-memory value is empty — and Password fields always load as None.
+    # A plain doc.save() here therefore silently wiped the per-vendor
+    # webhook_secret issued moments earlier by register_vendor (both run in
+    # the boot handshake), desyncing every hub→vendor signature. Locations
+    # never touch password fields, so skip password handling entirely.
+    doc.flags.ignore_save_passwords = True
+
     if is_new_vendor:
         doc.insert(ignore_permissions=True)
     else:
@@ -260,6 +268,9 @@ def register_vendor(vendor_id, site_url, lat=None, lng=None,
         doc.address = address
     doc.hub_status = "Active"
     doc.last_sync_at = now_datetime()
+
+    # Same password-wipe guard as update_vendor_location above.
+    doc.flags.ignore_save_passwords = True
 
     if is_new:
         doc.insert(ignore_permissions=True)

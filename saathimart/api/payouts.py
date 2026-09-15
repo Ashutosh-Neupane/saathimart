@@ -108,10 +108,14 @@ def create_vendor_payout(vendor, from_date, to_date, payment_reference="", notes
         # TDS certificate reconciles (s88).
         tds_rate = flt(frappe.db.get_single_value("SaathiMart Settings", "tds_rate") or 15.0)
         tds_amount = rounded(flt(doc.commission_amount) * tds_rate / 100.0, 2)
+        # amount = the NET payout; the settlement JE itself grosses the Bank
+        # credit up by tds_amount (vendor withheld s88 TDS from our commission
+        # bill — we pay the withheld sum out and hold the certificate as TDS
+        # Receivable; see settlement JE docstring).
         create_settlement_journal_entry(
             vendor_name=vendor,
             payout_id=doc.name,
-            amount=flt(doc.payout_amount) - tds_amount,
+            amount=flt(doc.payout_amount),
             commission=doc.commission_amount,
             tds_amount=tds_amount,
             coupon_reimbursement=statement.get("platform_coupon_discount", 0),
@@ -123,7 +127,9 @@ def create_vendor_payout(vendor, from_date, to_date, payment_reference="", notes
         publish_settlement(
             vendor_name=vendor,
             payout_id=doc.name,
-            amount=flt(doc.payout_amount) - tds_amount,
+            # GROSS (net + withheld s88 TDS): the vendor's clearing receivable
+            # nets to exactly this, so its settlement JE zeroes to the paisa.
+            amount=flt(doc.payout_amount) + tds_amount,
             commission=doc.commission_amount,
             tds_amount=tds_amount,
             coupon_reimbursement=statement.get("platform_coupon_discount", 0),

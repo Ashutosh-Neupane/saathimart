@@ -429,33 +429,31 @@ def create_settlement_journal_entry(vendor_name, payout_id, amount, commission,
     customer's payment was booked (record_order_payment_gl) — this entry
     only moves money:
 
-      DR: Clearing Account - Vendor    (relieves the payable)
+      DR: Clearing Account - Vendor    (relieves the sales receivable)
       DR: Platform Coupon Payable      (promotional funding reclassified
       DR: Loyalty Payable               out of clearing by the nightly job)
-      CR: Bank                         (cash actually transferred to vendor)
-      CR: TDS Payable                  (vendor withheld s88 TDS on the
-                                         commission; held in suspense until
-                                         the TDS certificate reconciles)
+      DR: TDS Receivable               (the vendor withheld s88 TDS from the
+                                         commission it pays US and deposited
+                                         it with IRD — its certificate is our
+                                         tax credit, claimed when we file)
+      CR: Bank                         (GROSS cash transferred to vendor:
+                                         net payout + the TDS it withheld)
 
-    Balanced by construction: DR = amount + tds regardless of how much of
-    the promotional payables exist (bounded clearing picks up the rest).
+    Balanced by construction: (amount − promos) + promos + tds = amount.
+    The vendor's own books mirror this exactly: its clearing receivable
+    nets to gross payout (sale at full base − commission bill + withheld
+    TDS), so paying gross zeroes it to the paisa. The promos must have
+    been reclassified out of clearing by the nightly
+    consolidate_daily_promotions job before this runs — settle after
+    midnight for same-day orders.
 
-    `commission`, `coupon_reimbursement` and `loyalty_reimbursement` are
-    accepted for backward compatibility with earlier callers.
-
-    The promotional payables used to be capped against
-    _get_party_balance(account, vendor_name) — a direct query against this
-    site's own `tabGL Entry` for what's actually still outstanding. That
-    table lives on the Platform Ledger Vendor's site now, not here, so the
-    hub can no longer verify the bound itself; the caller-supplied
-    coupon_reimbursement/loyalty_reimbursement amounts are trusted as-is
-    (payouts.py derives them from generate_settlement_statement, which is
-    the authoritative source for what's actually due).
+    `commission` is accepted for backward compatibility with earlier
+    callers; `amount` is the NET payout (Vendor Payout.payout_amount) and
+    `tds_amount` the s88 withholding — Bank credits amount + tds (gross).
     """
     tds = flt(tds_amount)
     promo_coupon = rounded(flt(coupon_reimbursement), 2)
     promo_loyalty = rounded(flt(loyalty_reimbursement), 2)
-    relieved = flt(amount) + tds
 
     # ── Debits: relieve the liabilities we owe the vendor ──
     entries = []
@@ -481,32 +479,34 @@ def create_settlement_journal_entry(vendor_name, payout_id, amount, commission,
 
     entries.append({
         "account_key": "clearing_vendor",
-        "debit": rounded(relieved - promo_coupon - promo_loyalty, 2),
+        "debit": rounded(flt(amount) - promo_coupon - promo_loyalty, 2),
         "credit": 0,
         "party_type": "Supplier",
         "party": vendor_name,
         "remarks": f"Clearing for {vendor_name} payout {payout_id}",
     })
 
-    # ── Credits: cash leaves, withheld TDS sits in suspense ──
+    # The vendor withheld s88 TDS from OUR commission bill and deposited it
+    # with IRD — its certificate is our tax credit (asset), not a liability.
+    if tds > 0:
+        entries.append({
+            "account_key": "tds_receivable",
+            "debit": tds,
+            "credit": 0,
+            "party_type": "Supplier",
+            "party": vendor_name,
+            "remarks": f"TDS withheld by {vendor_name} on our commission (s88 certificate) — payout {payout_id}",
+        })
+
+    # ── Credits: gross cash leaves (net payout + the withheld TDS) ──
     entries.append({
         "account_key": "cash_bank",
         "debit": 0,
-        "credit": flt(amount, 2),
+        "credit": rounded(flt(amount) + tds, 2),
         "party_type": "Supplier",
         "party": vendor_name,
         "remarks": f"Payout to {vendor_name} for {payout_id}",
     })
-
-    if tds > 0:
-        entries.append({
-            "account_key": "tds_payable",
-            "debit": 0,
-            "credit": tds,
-            "party_type": "Supplier",
-            "party": vendor_name,
-            "remarks": f"TDS withheld by {vendor_name} on commission (s88) — payout {payout_id}",
-        })
 
     publish_platform_ledger_entry(
         voucher_type="Journal Entry",
@@ -577,12 +577,17 @@ def generate_settlement_statement(vendor_name, from_date, to_date):
     commission_amount = commission_base * commission_pct / 100
 
     # Net payout
-    net_payout = (
-        commission_base
-        - commission_amount
-        + platform_coupon_absorbed  # Platform reimburses vendor
-        + total_loyalty_discount    # Platform reimburses vendor for loyalty
-    )
+    #
+    # Platform-coupon and loyalty amounts are deliberately NOT added back
+    # here. The vendor's sale GL is booked at the FULL VAT-inclusive product
+    # base (Sales + Output VAT), so platform-funded discounts are already
+    # inside the vendor's SaathiMart Clearing receivable — the platform
+    # covers that gap when it settles. Adding them again would pay the
+    # vendor twice. The platform's 13% service VAT on its commission bill
+    # is deducted: the platform collects it and remits it to IRD; it was
+    # never part of the vendor's receivable.
+    service_vat = rounded(commission_amount * 13.0 / 100.0, 2)
+    net_payout = commission_base - commission_amount - service_vat
 
     # Already paid
     already_paid = sum(
@@ -602,6 +607,7 @@ def generate_settlement_statement(vendor_name, from_date, to_date):
         "commission_pct": commission_pct,
         "commission_base": round(commission_base, 2),
         "commission_amount": round(commission_amount, 2),
+        "service_vat": round(service_vat, 2),
         "platform_reimbursement": round(platform_coupon_absorbed + total_loyalty_discount, 2),
         "net_payout": round(net_payout, 2),
         "already_paid": round(already_paid, 2),

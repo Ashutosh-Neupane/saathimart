@@ -841,15 +841,30 @@ def _deliver_event(evt, secret, max_retries):
             vendor_doc["webhook_secret"] = get_decrypted_password(
                 "Vendor", target_vendor, "webhook_secret", raise_exception=False
             ) or ""
-            ok, method, _err = deliver_with_fallback(evt, vendor_doc)
-            delivered_via_fallback = ok
+        ok, fallback_method, _err = deliver_with_fallback(evt, vendor_doc)
+        delivered_via_fallback = ok
 
         if delivered_via_fallback:
-            frappe.db.set_value("Webhook Event", evt.name, {
-                "status": "Sent",
-                "retry_count": retry_count,
-                "response": response_text,
-            })
+            if fallback_method == "pull":
+                # try_secondary_delivery marked the event Queued +
+                # delivery_method=Pull — the vendor still has to actually
+                # fetch it via events.poll. Marking it Sent here recorded
+                # events as delivered that no one ever delivered (observed:
+                # platform.ledger_entry batches "Sent" while the vendor's
+                # books had no GL rows). Leave it pull-eligible; the next
+                # drain also re-attempts the webhook since it stays Queued.
+                frappe.db.set_value("Webhook Event", evt.name, {
+                    "status": "Queued",
+                    "delivery_method": "Pull",
+                    "retry_count": retry_count,
+                    "response": "Webhook retries exhausted — available for pull delivery",
+                })
+            else:
+                frappe.db.set_value("Webhook Event", evt.name, {
+                    "status": "Sent",
+                    "retry_count": retry_count,
+                    "response": response_text,
+                })
         else:
             frappe.db.set_value("Webhook Event", evt.name, {
                 "status": "Dead",

@@ -34,3 +34,21 @@ def get_commission_pct_for_vendor(vendor: str | None) -> float:
 	vendors as sharing one rate).
 	"""
 	return get_default_commission_pct()
+
+
+def get_platform_ledger_vendor() -> str | None:
+	"""The one Vendor whose ERPNext site keeps SaathiMart's own books.
+
+	The hub runs plain Frappe with no ERPNext, so it cannot hold GL Entries
+	itself (see accounting.py's module docstring) — Entity A's accounting
+	(commission income, platform coupon/loyalty expense, delivery income,
+	TDS receivable) is pushed as platform.* events to this vendor's site
+	instead, the same way settlement/order events already go to any vendor.
+	Returns None (callers should log and skip, not throw) until an admin
+	sets SaathiMart Settings > Platform Ledger Vendor.
+	"""
+	if getattr(frappe.local, "sm_platform_ledger_vendor", None) is not None:
+		return frappe.local.sm_platform_ledger_vendor or None
+	vendor = frappe.db.get_single_value("SaathiMart Settings", "platform_ledger_vendor") or ""
+	frappe.local.sm_platform_ledger_vendor = vendor
+	return vendor or None

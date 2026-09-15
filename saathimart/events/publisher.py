@@ -270,6 +270,70 @@ def publish_settlement(vendor_name, payout_id, amount, commission,
        event_id=f"settlement.completed.{payout_id}")
 
 
+def publish_platform_ledger_entry(voucher_type, voucher_no, entries, remarks="", event_suffix=""):
+    """
+    Push a batch of platform-side (Entity A) GL entries to the designated
+    Platform Ledger Vendor's site (SaathiMart Settings > Platform Ledger
+    Vendor — see api.commission.get_platform_ledger_vendor).
+
+    The hub runs plain Frappe with no ERPNext, so it has no GL Entry
+    doctype to write to (accounting.py's module docstring). It still owns
+    all the computation — commission per vendor, coupon absorption, VAT —
+    since that needs data (Order, Vendor Fulfillment, Coupon) only the hub
+    has. What it can't do is create the actual ledger row, so this pushes
+    the *result* of that computation to the one vendor site designated to
+    hold the platform's own books, the same way settlement/order events
+    already go to any other vendor.
+
+    `entries` is a list of dicts: {"account_key": <a PLATFORM_ACCOUNTS key
+    from accounting.py, e.g. "commission_income">, "debit": n, "credit": n,
+    "remarks": str, "party_type": ..., "party": ...}. Deliberately symbolic
+    keys, not resolved account names — only the vendor's own site knows its
+    real Chart of Accounts (accounting.py's `_get_account` resolves names
+    locally today, which is exactly what breaks: there is no local chart to
+    resolve against). The vendor-side handler resolves each account_key
+    itself before creating the real GL Entry.
+
+    `event_suffix` disambiguates multiple distinct pushes against the same
+    voucher_no (e.g. a payment.received-triggered push and a separate
+    loyalty-reimbursement push both keyed on the same order_id) — without
+    it the second push's event_id would collide with the first's and get
+    silently dropped by _enqueue's idempotency check.
+    """
+    from saathimart.api.commission import get_platform_ledger_vendor
+
+    vendor_name = get_platform_ledger_vendor()
+    if not vendor_name:
+        frappe.log_error(
+            f"platform.ledger_entry: no Platform Ledger Vendor configured "
+            f"(SaathiMart Settings) — dropped {voucher_type} {voucher_no}",
+            "Publisher",
+        )
+        return
+
+    vendor_url = frappe.db.get_value("Vendor", vendor_name, "frappe_site_url")
+    if not vendor_url:
+        frappe.log_error(
+            f"platform.ledger_entry: platform ledger vendor {vendor_name} has no frappe_site_url",
+            "Publisher",
+        )
+        return
+
+    if not entries:
+        return
+
+    event_id = f"platform.ledger_entry.{voucher_type}.{voucher_no}"
+    if event_suffix:
+        event_id += f".{event_suffix}"
+
+    _enqueue("platform.ledger_entry", {
+        "voucher_type": voucher_type,
+        "voucher_no": voucher_no,
+        "remarks": remarks,
+        "entries": entries,
+    }, target_site=vendor_url, target_vendor=vendor_name, event_id=event_id)
+
+
 def on_product_created(doc, method):
     """
     A new Product was just created on the hub. Broadcast it to every vendor

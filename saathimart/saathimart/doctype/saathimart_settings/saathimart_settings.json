@@ -58,6 +58,13 @@
    "description": "Withholding rate vendors apply to the commission they pay the platform (Income Tax Act 2058 s88). Settlement transfers payout minus TDS; the platform books the withheld amount as TDS Receivable."
   },
   {
+   "fieldname": "platform_ledger_vendor",
+   "fieldtype": "Link",
+   "label": "Platform Ledger Vendor",
+   "options": "Vendor",
+   "description": "The one Vendor site that keeps SaathiMart's own books (Entity A: commission income, platform coupon/loyalty expense, delivery income, TDS receivable). The hub itself runs plain Frappe with no ERPNext, so it cannot hold GL Entries — accounting.py pushes platform.* ledger events to this vendor's site instead, the same way it already pushes order/settlement events to any other vendor. This vendor still processes real customer orders and pays its own commission/TDS like any other — the two roles are independent."
+  },
+  {
    "fieldname": "section_cart",
    "fieldtype": "Section Break",
    "label": "Cart & Checkout"

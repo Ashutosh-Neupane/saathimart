@@ -6,7 +6,7 @@ Handles all accounting for the SaathiMart ecosystem:
   - SaathiMart Vendor (Entity B): Independent merchant, product VAT, store coupons
   - Logistics Partner (Entity C): Delivery service, shipping VAT
 
-Every transaction creates proper double-entry GL Entries so that:
+Every transaction produces proper double-entry postings so that:
   1. Each entity's PAN/VAT is tracked separately
   2. Coupon discounts are attributed to the correct party
   3. Loyalty point redemptions are reimbursed from platform to vendor
@@ -14,15 +14,33 @@ Every transaction creates proper double-entry GL Entries so that:
   5. Settlement Journal Entries clear clearing accounts
 
 All accounting is against SM Order (our custom doctype), NOT ERPNext Sales Order.
-ERPNext GL Entries are created for audit trail and tax compliance.
+
+Entity A (this platform) has no GL Entry doctype of its own to write to —
+this hub runs plain Frappe with no ERPNext (see README: "no ERPNext
+dependency"), so it cannot hold ledger rows locally. What this module
+computes — which accounts, which amounts, per-vendor commission, coupon
+absorption, VAT — is still entirely the hub's job, since it's the only
+place with the cross-vendor data (Order, Vendor Fulfillment, Coupon) to
+compute it from. The actual GL Entry rows are created on the Platform
+Ledger Vendor's site instead (SaathiMart Settings > Platform Ledger Vendor
+— see api.commission.get_platform_ledger_vendor): every function below
+that used to call create_gl_entries_batch() now calls
+events.publisher.publish_platform_ledger_entry() with the same computed
+entries, keyed by symbolic PLATFORM_ACCOUNTS names instead of resolved
+account names, and that vendor's site resolves and creates them for real —
+the same event-push pattern already used for settlement.completed and
+order.new. (Previously this module tried to create GL Entry rows against a
+doctype that never existed on this site at all — see the git history for
+the incident.)
 """
 from __future__ import annotations
 
 import frappe
 from frappe import _
-from frappe.utils import flt, nowdate, getdate, rounded
+from frappe.utils import flt, rounded
 
 from saathimart.api.commission import get_commission_pct_for_vendor
+from saathimart.events.publisher import publish_platform_ledger_entry
 
 
 # ── Chart of Accounts Structure ──────────────────────────────────────────────
@@ -48,285 +66,37 @@ PLATFORM_ACCOUNTS = {
     "accounts_payable":    "Accounts Payable - SM",
 }
 
-VENDOR_ACCOUNTS = {
-    "cash_bank":              "Cash/Bank - Vendor",
-    "revenue":                "Product Revenue - Vendor",
-    "vat_output":             "Output VAT - Vendor",
-    "vat_input":              "Input VAT - Vendor",
-    "clearing_platform":      "Clearing Account - Platform - Vendor",
-    "commission_expense":     "Marketplace Commission Expense - Vendor",
-    "platform_coupon_income": "Platform Coupon Reimbursement - Vendor",
-    "loyalty_income":         "Loyalty Reimbursement - Vendor",
-}
-
-# Fuzzy keyword fallbacks — used when the exact account name from the map
-# above is not found (e.g. company abbreviation differs, or setup_accounts
-# was never run). Mirrors the same pattern in vendor_accounting.py so both
-# sides behave consistently. Each list is tried in order; first non-group
-# leaf match wins.
-_PLATFORM_FUZZY = {
-    "cash_bank":           ["Cash/Bank", "Cash In Hand", "Cash"],
-    "revenue":             ["Product Revenue", "Sales", "Revenue"],
-    "commission_income":   ["Marketplace Commission", "Commission on Sales", "Indirect Income"],
-    "platform_coupon_exp": ["Platform Coupon", "Coupon Expense", "Indirect Expenses"],
-    "loyalty_expense":     ["Loyalty", "Indirect Expenses"],
-    "delivery_income":     ["Delivery Service", "Delivery Charges", "Indirect Income"],
-    "clearing_vendor":     ["Clearing Account - Vendor", "Clearing - Vendor", "Accounts Payable"],
-    "clearing_logistics":  ["Clearing Account - Logistics", "Clearing - Logistics", "Accounts Payable"],
-    "tds_receivable":      ["TDS Receivable", "TDS", "Advance Tax", "Duties and Taxes"],
-    "tds_payable":         ["TDS Payable", "TDS", "Duties and Taxes"],
-    "platform_coupon_payable": ["Platform Coupon Payable", "Coupon Payable", "Accounts Payable"],
-    "loyalty_payable":         ["Loyalty Payable", "Accounts Payable"],
-    "vat_output":          ["Output VAT", "VAT", "Duties and Taxes"],
-    "vat_input":           ["Input VAT", "VAT", "Duties and Taxes"],
-    "accounts_receivable": ["Accounts Receivable", "Debtors"],
-    "accounts_payable":    ["Accounts Payable", "Creditors"],
-}
-
-_VENDOR_FUZZY = {
-    "cash_bank":              ["Cash/Bank", "Cash In Hand", "Cash"],
-    "revenue":                ["Sales", "Product Revenue", "Revenue"],
-    "vat_output":             ["Output VAT", "VAT", "Duties and Taxes"],
-    "vat_input":              ["Input VAT", "VAT", "Duties and Taxes"],
-    "clearing_platform":      ["SaathiMart Clearing", "Clearing - Platform", "Accounts Receivable"],
-    "commission_expense":     ["Marketplace Commission", "Commission on Sales", "Indirect Expenses"],
-    "platform_coupon_income": ["Platform Coupon Reimbursement", "Coupon Reimbursement", "Indirect Income"],
-    "loyalty_income":         ["Loyalty Reimbursement", "Indirect Income"],
-}
-
-# Runtime cache so fuzzy lookups only hit the DB once per process lifetime.
-_account_cache: dict = {}
-
-
-def _get_account(account_key: str, entity: str = "platform") -> str | None:
-    """Return the account name for account_key, falling back to fuzzy LIKE
-    matching when the exact canonical name is not present in the chart.
-
-    Strategy (same as vendor_accounting.py, now applied to the platform side):
-      0. Return None immediately when ERPNext isn't installed (no tabAccount)
-         — the hub can run standalone and GL recording is simply skipped.
-      1. Return cached value immediately if we've resolved this key before.
-      2. Try the exact canonical name from PLATFORM_ACCOUNTS / VENDOR_ACCOUNTS.
-      3. Try each keyword in the fuzzy fallback list with a LIKE search,
-         preferring non-group (leaf) accounts.
-      4. Log and return None if nothing is found so callers can skip the
-         entry rather than crashing.
-    """
-    if not frappe.db.exists("DocType", "Account"):
-        return None
-
-    cache_key = f"{entity}:{account_key}"
-    if cache_key in _account_cache:
-        return _account_cache[cache_key]
-
-    accounts  = PLATFORM_ACCOUNTS if entity == "platform" else VENDOR_ACCOUNTS
-    fuzzy_map = _PLATFORM_FUZZY   if entity == "platform" else _VENDOR_FUZZY
-
-    # ── Step 1: exact match ───────────────────────────────────────────────
-    canonical = accounts.get(account_key)
-    if canonical and frappe.db.exists("Account", canonical):
-        _account_cache[cache_key] = canonical
-        return canonical
-
-    # ── Step 2: LIKE search using fuzzy keywords ──────────────────────────
-    for keyword in (fuzzy_map.get(account_key) or []):
-        found = frappe.db.get_value(
-            "Account",
-            {"account_name": ["like", f"%{keyword}%"], "is_group": 0},
-            "name",
-        )
-        if found:
-            _account_cache[cache_key] = found
-            return found
-
-    frappe.log_error(
-        f"Account '{account_key}' not found for entity '{entity}'. "
-        "Run saathimart.api.setup_accounts.setup_platform_accounts to create it.",
-        "Accounting",
-    )
-    return None
-
-
-def _get_company():
-    """Get the default company for this site.
-
-    Returns None when ERPNext isn't installed (the hub can run standalone —
-    GL entries simply aren't recorded). The global-default lookup itself is
-    guarded: on a site without ERPNext there is no tabCompany table and the
-    defaults query can 1146.
-    """
-    if not frappe.db.exists("DocType", "Company"):
-        return None
-    try:
-        company = frappe.defaults.get_global_default("company")
-        if not company:
-            company = frappe.db.get_value("Company", {}, "name")
-        return company
-    except Exception:
-        return None
-
-
-def _get_default_cost_center(company=None):
-    """Get the default cost center for marketplace operations.
-    
-    ERPNext requires cost_center for P&L accounts (Income/Expense).
-    This function finds or creates a 'Marketplace' cost center.
-    """
-    if not company:
-        company = _get_company()
-    if not company:
-        return None
-    
-    # Try to find existing Marketplace cost center
-    cc = frappe.db.get_value(
-        "Cost Center",
-        {"company": company, "cost_center_name": "Marketplace", "is_group": 0},
-        "name"
-    )
-    if cc:
-        return cc
-    
-    # Fall back to any non-group cost center
-    cc = frappe.db.get_value(
-        "Cost Center",
-        {"company": company, "is_group": 0},
-        "name"
-    )
-    if cc:
-        return cc
-    
-    # Last resort: get root and create Marketplace under it
-    root = frappe.db.get_value(
-        "Cost Center",
-        {"company": company, "is_group": 1},
-        "name"
-    )
-    if root:
-        try:
-            doc = frappe.new_doc("Cost Center")
-            doc.cost_center_name = "Marketplace"
-            doc.company = company
-            doc.parent_cost_center = root
-            doc.is_group = 0
-            doc.insert(ignore_permissions=True, ignore_mandatory=True)
-            return doc.name
-        except Exception:
-            pass
-    
-    return None
-
-
-def _requires_cost_center(account):
-    """Check if an account requires a cost center (P&L accounts)."""
-    if not account:
-        return False
-    root_type = frappe.db.get_value("Account", account, "root_type")
-    return root_type in ("Income", "Expense")
-
-
-def create_gl_entry(account, debit=0, credit=0, voucher_type="Payment Entry",
-                    voucher_no="", remarks="", party_type=None, party=None,
-                    posting_date=None, cost_center=None):
-    """Create a single GL Entry with proper cost center handling."""
-    company = _get_company()
-    if not company:
-        frappe.log_error("No company found for GL Entry", "Accounting")
-        return None
-
-    # Verify account exists
-    if not frappe.db.exists("Account", account):
-        frappe.log_error(f"Account '{account}' does not exist", "Accounting")
-        return None
-
-    gl = frappe.new_doc("GL Entry")
-    gl.posting_date = posting_date or nowdate()
-    gl.account = account
-    gl.debit = flt(debit, 2)
-    gl.credit = flt(credit, 2)
-    gl.voucher_type = voucher_type
-    gl.voucher_no = voucher_no
-    gl.remarks = remarks
-    gl.company = company
-    if party_type:
-        gl.party_type = party_type
-    if party:
-        gl.party = party
-    
-    # Cost center is required for P&L accounts
-    if _requires_cost_center(account):
-        if not cost_center:
-            cost_center = _get_default_cost_center(company)
-        if cost_center:
-            gl.cost_center = cost_center
-    
-    # ignore_links allows GL entries to be created before the voucher is fully persisted
-    gl.insert(ignore_permissions=True, ignore_links=True)
-    return gl
-
-
-def create_gl_entries_batch(entries, voucher_type="Payment Entry", voucher_no="",
-                           remarks="", posting_date=None):
-    """Create multiple GL Entries in a batch. All entries must balance (sum debits = sum credits)."""
-    company = _get_company()
-    if not company:
-        frappe.log_error("No company found for GL Entry batch", "Accounting")
-        return []
-
-    created = []
-    for entry in entries:
-        gl = create_gl_entry(
-            account=entry["account"],
-            debit=entry.get("debit", 0),
-            credit=entry.get("credit", 0),
-            voucher_type=voucher_type,
-            voucher_no=voucher_no,
-            remarks=remarks,
-            party_type=entry.get("party_type"),
-            party=entry.get("party"),
-            posting_date=posting_date,
-        )
-        if gl:
-            created.append(gl)
-    return created
-
-
 # ── Order Payment GL Entries ─────────────────────────────────────────────────
 # Called after payment is confirmed (eSewa callback / COD delivery)
 
-def record_order_payment_gl(order_id, amount, gateway="", reference=""):
+def _compute_commission_and_platform_entries(order, amount):
+    """The platform's own (Entity A) ledger entries for a customer's order
+    payment. Shared by record_order_payment_gl (forward, on payment) and
+    create_refund_gl_entries (reversed, on refund) so a refund always
+    exactly mirrors whatever was actually booked — a second, hand-written
+    copy of this math for the refund path is exactly how it drifted out of
+    sync with the real model before (see create_refund_gl_entries).
+
+    Delivery is deliberately NOT booked here — record_delivery_charge_gl
+    (Entity C's logistics clearing) is the only place delivery income is
+    recorded; on_payment_log_created used to call both this function's old
+    body *and* that one for the same order, double-booking delivery income
+    and its VAT under two different account treatments. This still
+    subtracts delivery_charge from the vendor-clearing residual below
+    (that slice of cash isn't the vendor's either way) — it just no longer
+    books its own income/VAT rows for it a second time.
+
+    ── Nepal marketplace model: the platform's PAN books only ITS OWN
+    income and liabilities. Product revenue and product Output VAT belong
+    to the VENDOR's PAN (they made the sale) — booking them here would
+    declare the vendors' sales on the platform's VAT return. What the
+    platform actually earns on this order:
+      - marketplace commission (a service -> 13% service VAT)
+      - nothing else (delivery is Entity C's, coupons/loyalty are costs)
+    Everything else the customer paid sits in the vendor Clearing Account
+    until settlement.
     """
-    Create GL Entries when customer pays for an order.
-
-    This records:
-      1. Cash/Bank debit (money received)
-      2. Revenue credit (product sales)
-      3. VAT Output credit (tax collected)
-      4. Clearing Account debit (amount owed to vendors)
-      5. Platform Coupon Expense debit (if platform absorbed coupon)
-      6. Loyalty Expense debit (if loyalty points were redeemed)
-      7. Delivery Income credit (if delivery charge exists)
-    """
-    order = frappe.get_doc("Order", order_id)
-    if not order:
-        return
-
-    # Avoid double-entry
-    if frappe.db.exists("GL Entry", {"voucher_no": order_id, "voucher_type": "Payment Entry"}):
-        return
-
     entries = []
-    company = _get_company()
-    posting_date = nowdate()
-
-    # ── Nepal marketplace model: the platform's PAN books only ITS OWN
-    # income and liabilities. Product revenue and product Output VAT belong
-    # to the VENDOR's PAN (they made the sale) — booking them here would
-    # declare the vendors' sales on the platform's VAT return. What the
-    # platform actually earns on this order:
-    #   - marketplace commission (a service -> 13% service VAT)
-    #   - nothing else (delivery is pass-through, coupons/loyalty are costs)
-    # Everything else the customer paid sits in the vendor Clearing Account
-    # until settlement.
 
     # ── Per-vendor commission (each vendor has their own rate) ──
     fulfillments = frappe.get_all(
@@ -340,7 +110,6 @@ def record_order_payment_gl(order_id, amount, gateway="", reference=""):
     platform_absorbs = flt(coupon_absorption.get("platform_absorbs", 0))
     loyalty = flt(order.loyalty_discount or 0)
     delivery_charge = flt(order.delivery_charge or 0)
-    delivery_vat = rounded(delivery_charge * 13.0 / 113.0, 2)  # price-inclusive
 
     commission_total = 0.0
     commission_detail = []
@@ -358,108 +127,99 @@ def record_order_payment_gl(order_id, amount, gateway="", reference=""):
     service_vat = rounded(commission_total * 13.0 / 100.0, 2)
 
     # ── Step 1: Cash/Bank debit (the whole bill the customer paid) ──
-    cash_account = _get_account("cash_bank")
-    if cash_account:
-        entries.append({
-            "account": cash_account,
-            "debit": flt(amount, 2),
-            "credit": 0,
-            "party_type": "Customer",
-            "party": order.customer_email or order.customer_name,
-        })
+    entries.append({
+        "account_key": "cash_bank",
+        "debit": flt(amount, 2),
+        "credit": 0,
+        "party_type": "Customer",
+        "party": order.customer_email or order.customer_name,
+    })
 
     # ── Step 2: Platform Coupon Expense (platform-funded discount) ──
     if platform_absorbs > 0:
-        coupon_exp_account = _get_account("platform_coupon_exp")
-        if coupon_exp_account:
-            entries.append({
-                "account": coupon_exp_account,
-                "debit": platform_absorbs,
-                "credit": 0,
-                "remarks": f"Platform coupon absorbed for {order_id}",
-            })
+        entries.append({
+            "account_key": "platform_coupon_exp",
+            "debit": platform_absorbs,
+            "credit": 0,
+            "remarks": f"Platform coupon absorbed for {order.name}",
+        })
 
     # ── Step 3: Loyalty Expense (platform reimburses vendor) ──
     if loyalty > 0:
-        loyalty_exp_account = _get_account("loyalty_expense")
-        if loyalty_exp_account:
-            entries.append({
-                "account": loyalty_exp_account,
-                "debit": loyalty,
-                "credit": 0,
-                "remarks": f"Loyalty points redeemed for {order_id}",
-            })
+        entries.append({
+            "account_key": "loyalty_expense",
+            "debit": loyalty,
+            "credit": 0,
+            "remarks": f"Loyalty points redeemed for {order.name}",
+        })
 
     # ── Step 4: Marketplace Commission Income (platform's service fee) ──
-    commission_account = _get_account("commission_income")
-    if commission_account and commission_total > 0:
+    if commission_total > 0:
         entries.append({
-            "account": commission_account,
+            "account_key": "commission_income",
             "debit": 0,
             "credit": commission_total,
-            "remarks": f"Commission for {order_id} ({'; '.join(commission_detail)})",
+            "remarks": f"Commission for {order.name} ({'; '.join(commission_detail)})",
         })
 
     # ── Step 5: Service VAT on commission (13% — platform's own VAT liability) ──
-    vat_account = _get_account("vat_output")
-    if vat_account and service_vat > 0:
+    if service_vat > 0:
         entries.append({
-            "account": vat_account,
+            "account_key": "vat_output",
             "debit": 0,
             "credit": service_vat,
-            "remarks": f"Service VAT on commission for {order_id}",
+            "remarks": f"Service VAT on commission for {order.name}",
         })
 
-    # ── Step 6: Delivery charge (pass-through service, price-inclusive VAT) ──
-    if delivery_charge > 0:
-        delivery_account = _get_account("delivery_income")
-        if delivery_account:
-            entries.append({
-                "account": delivery_account,
-                "debit": 0,
-                "credit": flt(delivery_charge - delivery_vat, 2),
-                "remarks": f"Delivery charge for {order_id}",
-            })
-            if delivery_vat > 0 and vat_account:
-                entries.append({
-                    "account": vat_account,
-                    "debit": 0,
-                    "credit": delivery_vat,
-                    "remarks": f"Delivery charge VAT for {order_id}",
-                })
-
-    # ── Step 7: Vendor Clearing (residual = everything owed to vendors) ──
+    # ── Step 6: Vendor Clearing (residual = everything owed to vendors) ──
     # Balancing figure: cash-in + platform-funded discounts − platform's own
-    # earnings. Settlement claims per-vendor amounts out of this account.
+    # earnings − the delivery slice (Entity C's, not the vendor's). Settlement
+    # claims per-vendor amounts out of this account.
     clearing_amount = rounded(
         flt(amount) + platform_absorbs + loyalty
         - commission_total - service_vat - delivery_charge,
         2,
     )
-    clearing_account = _get_account("clearing_vendor")
-    if clearing_account and clearing_amount > 0:
+    if clearing_amount > 0:
         entries.append({
-            "account": clearing_account,
+            "account_key": "clearing_vendor",
             "debit": 0,
             "credit": clearing_amount,
-            "remarks": f"Vendor clearing for {order_id}",
+            "remarks": f"Vendor clearing for {order.name}",
         })
     elif clearing_amount < 0:
         frappe.log_error(
-            f"Negative vendor clearing {clearing_amount} for {order_id} — "
+            f"Negative vendor clearing {clearing_amount} for {order.name} — "
             "commission + VAT + delivery exceed the bill; check commission_pct",
             "Accounting",
         )
 
-    # Create all entries
-    if entries:
-        create_gl_entries_batch(
-            entries,
-            voucher_type="Payment Entry",
-            voucher_no=order_id,
-            remarks=f"Payment received for order {order_id} via {gateway}",
-            posting_date=posting_date,
-        )
+    return entries
+
+
+def record_order_payment_gl(order_id, amount, gateway="", reference=""):
+    """
+    Push the platform's ledger entries for a customer's order payment to
+    the Platform Ledger Vendor (see module docstring and
+    _compute_commission_and_platform_entries for what gets booked and why).
+
+    Idempotency is the receiving vendor's job now (its create_gl_entry
+    already dedupes on account+voucher+amount+remarks) — this function no
+    longer checks locally, since the hub has no GL Entry doctype to check
+    against.
+    """
+    order = frappe.get_doc("Order", order_id)
+    if not order:
+        return
+
+    entries = _compute_commission_and_platform_entries(order, amount)
+    publish_platform_ledger_entry(
+        voucher_type="Payment Entry",
+        voucher_no=order_id,
+        entries=entries,
+        remarks=f"Payment received for order {order_id} via {gateway}",
+        event_suffix="payment",
+    )
 
 
 def _get_coupon_absorption(order):
@@ -557,125 +317,106 @@ def record_loyalty_reimbursement_gl(order_id):
     if not order or not flt(order.loyalty_discount):
         return
 
-    # Avoid double-entry
-    if frappe.db.exists("GL Entry", {
-        "voucher_no": order_id,
-        "voucher_type": "Journal Entry",
-        "remarks": ["like", "%Loyalty reimbursement%"]
-    }):
-        return
-
     loyalty_amount = flt(order.loyalty_discount)
-    entries = []
 
-    # Platform side: expense
-    loyalty_exp_account = _get_account("loyalty_expense")
-    clearing_account = _get_account("clearing_vendor")
-
-    if loyalty_exp_account and clearing_account:
-        # Platform debits loyalty expense, credits clearing account
-        entries.append({
-            "account": loyalty_exp_account,
+    # Platform debits loyalty expense, credits clearing account
+    entries = [
+        {
+            "account_key": "loyalty_expense",
             "debit": loyalty_amount,
             "credit": 0,
             "remarks": f"Loyalty reimbursement for {order_id}",
-        })
-        entries.append({
-            "account": clearing_account,
+        },
+        {
+            "account_key": "clearing_vendor",
             "debit": 0,
             "credit": loyalty_amount,
             "remarks": f"Loyalty reimbursement for {order_id}",
-        })
+        },
+    ]
 
-        create_gl_entries_batch(
-            entries,
-            voucher_type="Journal Entry",
-            voucher_no=order_id,
-            remarks=f"Loyalty points reimbursement for order {order_id}",
-        )
+    publish_platform_ledger_entry(
+        voucher_type="Journal Entry",
+        voucher_no=order_id,
+        entries=entries,
+        remarks=f"Loyalty points reimbursement for order {order_id}",
+        event_suffix="loyalty",
+    )
 
 
 # ── Delivery Charge GL Entries ───────────────────────────────────────────────
 
-def record_delivery_charge_gl(order_id):
-    """
-    Delivery charges flow through a separate logistics entity ledger.
-    The vendor's PAN must NOT include delivery charges.
-    
-    If Saathimart/Courier handles delivery:
-      - Courier issues VAT invoice to customer (or to Saathimart which passes through)
-      - Treated as separate ledger flow
-    """
-    order = frappe.get_doc("Order", order_id)
-    if not order or not flt(order.delivery_charge):
-        return
+def _compute_delivery_entries(order):
+    """Entity C (logistics) ledger entries for this order's delivery charge.
+    Shared by record_delivery_charge_gl (forward) and create_refund_gl_entries
+    (reversed) — same reason as _compute_commission_and_platform_entries.
 
-    # Avoid double-entry
-    if frappe.db.exists("GL Entry", {
-        "voucher_no": order_id,
-        "voucher_type": "Payment Entry",
-        "remarks": ["like", "%Delivery charge%"]
-    }):
-        return
+    This is the ONLY place delivery income is booked — deliberately not
+    also booked inside _compute_commission_and_platform_entries, which
+    used to duplicate this under a different account treatment (see git
+    history). Delivery charges flow through a separate logistics entity
+    ledger; the vendor's PAN must NOT include them.
+    """
+    delivery_amount = flt(order.delivery_charge or 0)
+    if delivery_amount <= 0:
+        return []
 
-    delivery_amount = flt(order.delivery_charge)
     # The customer's delivery charge is VAT-INCLUSIVE (13% is inside what
     # they paid — same model as the ERPNext middleware, VAT Act s.12).
     # Back it out: VAT = amount × 13/113, income = amount × 100/113.
     delivery_vat = rounded(delivery_amount * 13.0 / 113.0, 2)
 
-    entries = []
-
-    # Clearing account for logistics
-    logistics_clearing = _get_account("clearing_logistics")
-    delivery_income = _get_account("delivery_income")
-    vat_output = _get_account("vat_output")
-
-    if logistics_clearing and delivery_income:
-        # Debit clearing (logistics owes this), credit delivery income
-        entries.append({
-            "account": logistics_clearing,
+    # Debit clearing (logistics owes this), credit delivery income
+    entries = [
+        {
+            "account_key": "clearing_logistics",
             "debit": delivery_amount,
             "credit": 0,
-            "remarks": f"Delivery charge for {order_id}",
-        })
-        entries.append({
-            "account": delivery_income,
+            "remarks": f"Delivery charge for {order.name}",
+        },
+        {
+            "account_key": "delivery_income",
             "debit": 0,
             "credit": delivery_amount - delivery_vat,
-            "remarks": f"Delivery service income for {order_id}",
+            "remarks": f"Delivery service income for {order.name}",
+        },
+    ]
+    if delivery_vat > 0:
+        entries.append({
+            "account_key": "vat_output",
+            "debit": 0,
+            "credit": delivery_vat,
+            "remarks": f"Delivery VAT for {order.name}",
         })
-        if vat_output:
-            entries.append({
-                "account": vat_output,
-                "debit": 0,
-                "credit": delivery_vat,
-                "remarks": f"Delivery VAT for {order_id}",
-            })
+    return entries
 
-        create_gl_entries_batch(
-            entries,
-            voucher_type="Payment Entry",
-            voucher_no=order_id,
-            remarks=f"Delivery charge accounting for order {order_id}",
-        )
+
+def record_delivery_charge_gl(order_id):
+    """Push this order's delivery-charge ledger entries (see
+    _compute_delivery_entries) to the Platform Ledger Vendor."""
+    order = frappe.get_doc("Order", order_id)
+    if not order:
+        return
+
+    entries = _compute_delivery_entries(order)
+    if not entries:
+        return
+
+    publish_platform_ledger_entry(
+        voucher_type="Payment Entry",
+        voucher_no=order_id,
+        entries=entries,
+        remarks=f"Delivery charge accounting for order {order_id}",
+        event_suffix="delivery",
+    )
 
 
 # ── Vendor Settlement Journal Entry ──────────────────────────────────────────
-
-def _get_party_balance(account, party):
-    """Current credit-positive balance of a liability account for one party
-    (Supplier). Returns credits minus debits — what we still owe."""
-    rows = frappe.db.sql(
-        """
-        SELECT SUM(credit - debit) AS bal
-        FROM `tabGL Entry`
-        WHERE account = %s AND party = %s AND is_cancelled = 0
-        """,
-        (account, party),
-        as_dict=True,
-    )
-    return rounded(flt(rows[0].bal if rows else 0), 2)
+#
+# _get_party_balance (a direct `tabGL Entry` query, since removed) used to
+# bound the promotional payables below against their actual outstanding
+# balance. That table lives on the Platform Ledger Vendor's site now, not
+# here — see create_settlement_journal_entry's docstring.
 
 
 def create_settlement_journal_entry(vendor_name, payout_id, amount, commission,
@@ -701,24 +442,26 @@ def create_settlement_journal_entry(vendor_name, payout_id, amount, commission,
 
     `commission`, `coupon_reimbursement` and `loyalty_reimbursement` are
     accepted for backward compatibility with earlier callers.
-    """
-    entries = []
-    posting_date = nowdate()
-    tds = flt(tds_amount)
 
-    # ── Debits: relieve the liabilities we owe the vendor ──
-    # Promotional payables first (bounded by their actual balance so payouts
-    # for ranges that straddle midnight still work), then clearing for the
-    # remainder.
+    The promotional payables used to be capped against
+    _get_party_balance(account, vendor_name) — a direct query against this
+    site's own `tabGL Entry` for what's actually still outstanding. That
+    table lives on the Platform Ledger Vendor's site now, not here, so the
+    hub can no longer verify the bound itself; the caller-supplied
+    coupon_reimbursement/loyalty_reimbursement amounts are trusted as-is
+    (payouts.py derives them from generate_settlement_statement, which is
+    the authoritative source for what's actually due).
+    """
+    tds = flt(tds_amount)
+    promo_coupon = rounded(flt(coupon_reimbursement), 2)
+    promo_loyalty = rounded(flt(loyalty_reimbursement), 2)
     relieved = flt(amount) + tds
 
-    coupon_pay = _get_account("platform_coupon_payable")
-    promo_coupon = rounded(min(flt(coupon_reimbursement),
-                               _get_party_balance(coupon_pay, vendor_name)), 2) \
-        if coupon_pay else 0.0
+    # ── Debits: relieve the liabilities we owe the vendor ──
+    entries = []
     if promo_coupon > 0:
         entries.append({
-            "account": coupon_pay,
+            "account_key": "platform_coupon_payable",
             "debit": promo_coupon,
             "credit": 0,
             "party_type": "Supplier",
@@ -726,13 +469,9 @@ def create_settlement_journal_entry(vendor_name, payout_id, amount, commission,
             "remarks": f"Platform coupon funding cleared for {vendor_name} — payout {payout_id}",
         })
 
-    loyalty_pay = _get_account("loyalty_payable")
-    promo_loyalty = rounded(min(flt(loyalty_reimbursement),
-                                 _get_party_balance(loyalty_pay, vendor_name)), 2) \
-        if loyalty_pay else 0.0
     if promo_loyalty > 0:
         entries.append({
-            "account": loyalty_pay,
+            "account_key": "loyalty_payable",
             "debit": promo_loyalty,
             "credit": 0,
             "party_type": "Supplier",
@@ -740,99 +479,49 @@ def create_settlement_journal_entry(vendor_name, payout_id, amount, commission,
             "remarks": f"Loyalty funding cleared for {vendor_name} — payout {payout_id}",
         })
 
-    clearing_account = _get_account("clearing_vendor")
-    if clearing_account:
-        entries.append({
-            "account": clearing_account,
-            "debit": rounded(relieved - promo_coupon - promo_loyalty, 2),
-            "credit": 0,
-            "party_type": "Supplier",
-            "party": vendor_name,
-            "remarks": f"Clearing for {vendor_name} payout {payout_id}",
-        })
+    entries.append({
+        "account_key": "clearing_vendor",
+        "debit": rounded(relieved - promo_coupon - promo_loyalty, 2),
+        "credit": 0,
+        "party_type": "Supplier",
+        "party": vendor_name,
+        "remarks": f"Clearing for {vendor_name} payout {payout_id}",
+    })
 
     # ── Credits: cash leaves, withheld TDS sits in suspense ──
-    bank_account = _get_account("cash_bank")
-    if bank_account:
-        entries.append({
-            "account": bank_account,
-            "debit": 0,
-            "credit": flt(amount, 2),
-            "party_type": "Supplier",
-            "party": vendor_name,
-            "remarks": f"Payout to {vendor_name} for {payout_id}",
-        })
+    entries.append({
+        "account_key": "cash_bank",
+        "debit": 0,
+        "credit": flt(amount, 2),
+        "party_type": "Supplier",
+        "party": vendor_name,
+        "remarks": f"Payout to {vendor_name} for {payout_id}",
+    })
 
     if tds > 0:
-        tds_account = _get_account("tds_payable")
-        if tds_account:
-            entries.append({
-                "account": tds_account,
-                "debit": 0,
-                "credit": tds,
-                "party_type": "Supplier",
-                "party": vendor_name,
-                "remarks": f"TDS withheld by {vendor_name} on commission (s88) — payout {payout_id}",
-            })
-
-    # Create journal entry
-    if entries:
-        create_gl_entries_batch(
-            entries,
-            voucher_type="Journal Entry",
-            voucher_no=payout_id,
-            remarks=f"Settlement for {vendor_name} ({payout_id})",
-            posting_date=posting_date,
-        )
-
-
-# ── Credit Note for Loyalty Redemptions ──────────────────────────────────────
-
-def create_loyalty_credit_note(order_id, vendor_name, loyalty_amount):
-    """
-    Auto-generate a Credit Note (Debit Note) from Vendor to Saathimart Platform
-    for loyalty point redemptions.
-    
-    This tracks exactly how much SaathiMart Corporate owes that specific vendor
-    for marketing promotions (loyalty points).
-    """
-    if flt(loyalty_amount) <= 0:
-        return
-
-    # Check if credit note already exists
-    if frappe.db.exists("GL Entry", {
-        "voucher_no": order_id,
-        "voucher_type": "Journal Entry",
-        "remarks": ["like", "%Loyalty credit note%"]
-    }):
-        return
-
-    entries = []
-
-    # Vendor side: receives reimbursement
-    vendor_clearing = _get_account("clearing_platform", entity="vendor")
-    loyalty_income = _get_account("loyalty_income", entity="vendor")
-
-    if vendor_clearing and loyalty_income:
         entries.append({
-            "account": vendor_clearing,
-            "debit": flt(loyalty_amount, 2),
-            "credit": 0,
-            "remarks": f"Loyalty credit note for {order_id}",
-        })
-        entries.append({
-            "account": loyalty_income,
+            "account_key": "tds_payable",
             "debit": 0,
-            "credit": flt(loyalty_amount, 2),
-            "remarks": f"Loyalty credit note for {order_id}",
+            "credit": tds,
+            "party_type": "Supplier",
+            "party": vendor_name,
+            "remarks": f"TDS withheld by {vendor_name} on commission (s88) — payout {payout_id}",
         })
 
-        create_gl_entries_batch(
-            entries,
-            voucher_type="Journal Entry",
-            voucher_no=order_id,
-            remarks=f"Loyalty credit note from {vendor_name} for order {order_id}",
-        )
+    publish_platform_ledger_entry(
+        voucher_type="Journal Entry",
+        voucher_no=payout_id,
+        entries=entries,
+        remarks=f"Settlement for {vendor_name} ({payout_id})",
+        event_suffix="settlement",
+    )
+
+
+# create_loyalty_credit_note (dead code, no callers, removed here) resolved
+# "clearing_platform"/"loyalty_income" — VENDOR accounts — against the
+# hub's own chart, which never made sense (the hub doesn't hold the
+# vendor's books). record_loyalty_reimbursement_gl above already does the
+# real equivalent correctly, from the platform side, via the event push.
 
 
 # ── Vendor Settlement Statement ──────────────────────────────────────────────
@@ -973,70 +662,69 @@ def on_payment_log_created(doc, method):
 
 @frappe.whitelist()
 def get_gl_entries_for_order(order_id):
-    """Get all GL Entries for a specific order."""
-    return frappe.get_all(
-        "GL Entry",
-        filters={"voucher_no": order_id},
-        fields=["name", "posting_date", "account", "debit", "credit",
-                "voucher_type", "voucher_no", "remarks", "party_type", "party"],
-        order_by="creation asc",
+    """GL Entries for an order live on the Platform Ledger Vendor's site now
+    (see module docstring) — this hub has no GL Entry doctype to read from
+    at all. Call saathimart_vendor.api.vendor_accounting.get_vendor_gl_entries
+    on that vendor's site (SaathiMart Settings > Platform Ledger Vendor)
+    instead of this endpoint.
+    """
+    frappe.throw(
+        _(
+            "GL Entries are not stored on this site. Query "
+            "get_vendor_gl_entries on the configured Platform Ledger "
+            "Vendor's own site instead."
+        ),
+        frappe.ValidationError,
     )
 
 
 # ── Refund GL Entries ───────────────────────────────────────────────────────
 def create_refund_gl_entries(order_id, refund_amount, reason=""):
     """
-    Create reversal GL entries when a paid order is refunded.
+    Push reversal ledger entries when a paid order is refunded, to the
+    Platform Ledger Vendor (see module docstring).
 
-    This reverses the original sale entries:
-      DR: Product Revenue (reverses the sale)
-      DR: Output VAT (reverses the tax)
-      CR: Cash/Bank (money goes back to customer)
+    Reverses whatever record_order_payment_gl / record_delivery_charge_gl
+    actually booked for this order — via the same shared helpers
+    (_compute_commission_and_platform_entries, _compute_delivery_entries),
+    debit and credit swapped — instead of the old hand-written reversal
+    that touched "cash_bank"/"revenue", accounts the payment path never
+    even books under this model (see git history). Commission, service
+    VAT, coupon/loyalty expense, delivery income and the vendor-clearing
+    residual are all reversed now, not just a generic cash/revenue pair.
 
-    The clearing account entries on the vendor side are NOT touched here —
-    the vendor handles that when they receive the order.cancelled event.
+    Assumes a full refund of the order as originally paid: `refund_amount`
+    feeds the same computation record_order_payment_gl used, so a partial
+    refund (less than the full order) would still reverse the *full*
+    commission/coupon/loyalty/delivery figures, not a proportional slice.
+    A proportional partial refund would need the caller to pass through a
+    fraction or a recomputed breakdown — out of scope for this pass.
+
+    The vendor-side clearing entries are NOT touched here — the vendor
+    handles that when it receives the order.cancelled event.
     """
-    if frappe.db.exists("GL Entry", {
-        "voucher_no": order_id,
-        "remarks": ["like", "%Refund%"],
-    }):
-        return  # already reversed
+    order = frappe.get_doc("Order", order_id)
+    if not order:
+        return
 
-    doc = frappe.get_doc("Order", order_id)
-    company = frappe.defaults.get_global_default("company") or frappe.db.get_value("Company", {}, "name")
-    posting_date = frappe.utils.nowdate()
+    forward_entries = _compute_commission_and_platform_entries(order, refund_amount)
+    forward_entries += _compute_delivery_entries(order)
 
-    entries = []
+    reversed_entries = [
+        {
+            **entry,
+            "debit": entry.get("credit", 0),
+            "credit": entry.get("debit", 0),
+            "remarks": f"Refund reversal ({reason}): {entry.get('remarks', '')}".strip(),
+        }
+        for entry in forward_entries
+    ]
 
-    # Cash/Bank credit (money returned)
-    bank_account = frappe.db.get_value("Account", {"account_name": ["like", "%Cash%"], "is_group": 0}, "name")
-    if bank_account:
-        entries.append({
-            "account": bank_account,
-            "debit": 0,
-            "credit": flt(refund_amount, 2),
-            "remarks": f"Refund for {order_id}: {reason}",
-        })
-
-    # Product Revenue debit (reverses the sale)
-    revenue_account = frappe.db.get_value("Account", {"account_name": ["like", "%Sales%"], "is_group": 0}, "name")
-    if revenue_account:
-        entries.append({
-            "account": revenue_account,
-            "debit": flt(refund_amount, 2),
-            "credit": 0,
-            "remarks": f"Refund reversal for {order_id}",
-        })
-
-    for entry in entries:
-        gl = frappe.new_doc("GL Entry")
-        gl.posting_date = posting_date
-        gl.account = entry["account"]
-        gl.debit = entry["debit"]
-        gl.credit = entry["credit"]
-        gl.voucher_type = "Journal Entry"
-        gl.voucher_no = order_id
-        gl.remarks = entry["remarks"]
-        gl.company = company
-        gl.insert(ignore_permissions=True, ignore_links=True)
+    publish_platform_ledger_entry(
+        voucher_type="Journal Entry",
+        voucher_no=order_id,
+        entries=reversed_entries,
+        remarks=f"Refund for order {order_id}: {reason}",
+        event_suffix="refund",
+    )
 

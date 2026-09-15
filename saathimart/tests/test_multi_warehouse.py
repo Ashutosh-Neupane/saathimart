@@ -39,7 +39,6 @@ class TestVendorWarehouseCRUD(unittest.TestCase):
             v.vendor_name = cls.VENDOR
             v.slug = "wh-test-crud"
             v.status = "Active"
-            v.default_warehouse = "Default Store"
             v.flags.ignore_links = True
             v.insert(ignore_permissions=True)
             frappe.db.commit()
@@ -146,7 +145,6 @@ class TestNearestWarehouse(unittest.TestCase):
             v.vendor_name = cls.VENDOR
             v.slug = "wh-test-routing"
             v.status = "Active"
-            v.default_warehouse = "Default Store"
             v.flags.ignore_links = True
             v.insert(ignore_permissions=True)
             frappe.db.commit()
@@ -223,7 +221,6 @@ class TestPerWarehouseStock(unittest.TestCase):
             v.vendor_name = cls.VENDOR
             v.slug = "wh-test-stock"
             v.status = "Active"
-            v.default_warehouse = "Default Store"
             v.flags.ignore_links = True
             v.insert(ignore_permissions=True)
             frappe.db.commit()
@@ -318,7 +315,6 @@ class TestBackwardCompatibility(unittest.TestCase):
             v.vendor_name = cls.VENDOR
             v.slug = "wh-test-backcompat"
             v.status = "Active"
-            v.default_warehouse = "Single Store"
             v.flags.ignore_links = True
             v.insert(ignore_permissions=True)
             frappe.db.commit()
@@ -330,9 +326,13 @@ class TestBackwardCompatibility(unittest.TestCase):
             frappe.delete_doc("Vendor", cls.vendor_name, force=True)
             frappe.db.commit()
 
-    def test_no_warehouses_falls_back_to_default(self):
+    def test_no_warehouses_returns_none(self):
+        # No Vendor Warehouse child rows -> no named default warehouse
+        # (the old Vendor.default_warehouse Link field was removed; the
+        # implicit reservation pool is the "default" Vendor Stock row,
+        # which needs no warehouse name here).
         r = find_nearest_warehouse(self.vendor_name, 27.7172, 85.3240)
-        self.assertEqual(r["warehouse_name"], "Single Store")
+        self.assertIsNone(r)
 
     def test_get_warehouses_empty(self):
         whs = get_vendor_warehouses(self.vendor_name)

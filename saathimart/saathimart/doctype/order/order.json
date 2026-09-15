@@ -360,7 +360,40 @@
  "allow_rename": 0,
  "index_web_pages_for_search": 0,
  "actions": [],
- "links": [],
+ "links": [
+  {
+   "link_doctype": "Coupon Usage",
+   "link_fieldname": "order"
+  },
+  {
+   "link_doctype": "Customer Membership",
+   "link_fieldname": "order"
+  },
+  {
+   "link_doctype": "Delivery Slot Booking",
+   "link_fieldname": "order"
+  },
+  {
+   "link_doctype": "Loyalty Point Entry",
+   "link_fieldname": "order"
+  },
+  {
+   "link_doctype": "Order Event Log",
+   "link_fieldname": "order_id"
+  },
+  {
+   "link_doctype": "Payment Log",
+   "link_fieldname": "order"
+  },
+  {
+   "link_doctype": "Review",
+   "link_fieldname": "order"
+  },
+  {
+   "link_doctype": "Membership Saving Entry",
+   "link_fieldname": "order"
+  }
+ ],
  "states": [],
  "naming_rule": "Expression (old style)",
  "field_order": [

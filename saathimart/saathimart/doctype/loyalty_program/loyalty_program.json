@@ -86,7 +86,12 @@
  "allow_rename": 0,
  "index_web_pages_for_search": 0,
  "actions": [],
- "links": [],
+ "links": [
+  {
+   "link_doctype": "Loyalty Point Entry",
+   "link_fieldname": "program"
+  }
+ ],
  "states": [],
  "naming_rule": "Expression (old style)",
  "field_order": [

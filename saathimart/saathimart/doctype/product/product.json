@@ -231,7 +231,40 @@
  "allow_rename": 0,
  "index_web_pages_for_search": 0,
  "actions": [],
- "links": [],
+ "links": [
+  {
+   "link_doctype": "Cart Item",
+   "link_fieldname": "product"
+  },
+  {
+   "link_doctype": "Order Item",
+   "link_fieldname": "product"
+  },
+  {
+   "link_doctype": "Review",
+   "link_fieldname": "product"
+  },
+  {
+   "link_doctype": "Stock Ledger Entry",
+   "link_fieldname": "product"
+  },
+  {
+   "link_doctype": "Vendor Listing",
+   "link_fieldname": "product"
+  },
+  {
+   "link_doctype": "Vendor Stock",
+   "link_fieldname": "product"
+  },
+  {
+   "link_doctype": "Wishlist",
+   "link_fieldname": "product"
+  },
+  {
+   "link_doctype": "Product",
+   "link_fieldname": "variant_of"
+  }
+ ],
  "states": [],
  "naming_rule": "Expression (old style)",
  "field_order": [

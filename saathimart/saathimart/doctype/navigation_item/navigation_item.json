@@ -76,7 +76,12 @@
  "allow_rename": 0,
  "index_web_pages_for_search": 0,
  "actions": [],
- "links": [],
+ "links": [
+  {
+   "link_doctype": "Navigation Item",
+   "link_fieldname": "parent_item"
+  }
+ ],
  "states": [],
  "naming_rule": "Expression (old style)",
  "field_order": [

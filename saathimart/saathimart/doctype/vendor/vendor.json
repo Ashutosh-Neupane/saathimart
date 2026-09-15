@@ -82,7 +82,7 @@
    "fieldtype": "Datetime",
    "label": "Webhook Secret Last Rotated",
    "read_only": 1,
-   "description": "Set by api/secret_rotation.py:rotate_vendor_secret on success. Blank means never rotated since this field was added \u2014 api/secret_rotation.py:check_stale_secrets treats that as due, using the vendor's creation date as the baseline."
+   "description": "Set by api/secret_rotation.py:rotate_vendor_secret on success. Blank means never rotated since this field was added — api/secret_rotation.py:check_stale_secrets treats that as due, using the vendor's creation date as the baseline."
   },
   {
    "fieldname": "col_break_whmeta",
@@ -101,7 +101,7 @@
    "fieldtype": "Int",
    "label": "Last Processed Event Seq",
    "read_only": 1,
-   "description": "Highest event_seq successfully delivered to this vendor, in order. Used to hold later-sequenced events until earlier gaps are filled \u2014 see api/event_ordering.py."
+   "description": "Highest event_seq successfully delivered to this vendor, in order. Used to hold later-sequenced events until earlier gaps are filled — see api/event_ordering.py."
   },
   {
    "fieldname": "section_sync_health",
@@ -113,14 +113,14 @@
    "fieldtype": "Float",
    "label": "Clock Skew (seconds)",
    "read_only": 1,
-   "description": "Measured difference between this vendor's clock and the hub's, from inbound request timestamps. Positive = vendor ahead. Widens the HMAC timestamp tolerance for this vendor \u2014 see api/clock_sync.py."
+   "description": "Measured difference between this vendor's clock and the hub's, from inbound request timestamps. Positive = vendor ahead. Widens the HMAC timestamp tolerance for this vendor — see api/clock_sync.py."
   },
   {
    "fieldname": "error_count",
    "fieldtype": "Int",
    "label": "Error Count (DB Fallback)",
    "read_only": 1,
-   "description": "Delivery error counter used only when Redis is unavailable \u2014 see api/partial_failure.py._db_record_error. Not the live error-budget counter (that lives in cache)."
+   "description": "Delivery error counter used only when Redis is unavailable — see api/partial_failure.py._db_record_error. Not the live error-budget counter (that lives in cache)."
   },
   {
    "fieldname": "col_break_health",
@@ -192,12 +192,6 @@
    "fieldtype": "Float",
    "label": "Service Radius (km)",
    "default": "5"
-  },
-  {
-   "fieldname": "default_warehouse",
-   "fieldtype": "Link",
-   "label": "Default Warehouse",
-   "options": "Warehouse"
   },
   {
    "fieldname": "section_stock",
@@ -276,7 +270,48 @@
  "allow_rename": 0,
  "index_web_pages_for_search": 0,
  "actions": [],
- "links": [],
+ "links": [
+  {
+   "link_doctype": "Cart Item",
+   "link_fieldname": "vendor"
+  },
+  {
+   "link_doctype": "Order",
+   "link_fieldname": "vendor"
+  },
+  {
+   "link_doctype": "Order Item",
+   "link_fieldname": "vendor"
+  },
+  {
+   "link_doctype": "Product Price",
+   "link_fieldname": "vendor"
+  },
+  {
+   "link_doctype": "Stock Ledger Entry",
+   "link_fieldname": "vendor"
+  },
+  {
+   "link_doctype": "Vendor Barcode Index",
+   "link_fieldname": "vendor"
+  },
+  {
+   "link_doctype": "Vendor Fulfillment",
+   "link_fieldname": "vendor"
+  },
+  {
+   "link_doctype": "Vendor Listing",
+   "link_fieldname": "vendor"
+  },
+  {
+   "link_doctype": "Vendor Stock",
+   "link_fieldname": "vendor"
+  },
+  {
+   "link_doctype": "Vendor Payout",
+   "link_fieldname": "vendor"
+  }
+ ],
  "states": [],
  "naming_rule": "Expression (old style)",
  "field_order": [
@@ -313,7 +348,6 @@
   "lng",
   "col_break_loc",
   "service_radius_km",
-  "default_warehouse",
   "section_stock",
   "warehouses",
   "total_available_qty",

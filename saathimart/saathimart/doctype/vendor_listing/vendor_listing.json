@@ -188,7 +188,12 @@
  "allow_rename": 0,
  "index_web_pages_for_search": 0,
  "actions": [],
- "links": [],
+ "links": [
+  {
+   "link_doctype": "Order Item",
+   "link_fieldname": "vendor_listing"
+  }
+ ],
  "states": [],
  "naming_rule": "Expression (old style)",
  "field_order": [

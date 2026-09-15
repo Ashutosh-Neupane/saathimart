@@ -123,7 +123,7 @@ def get_onboarding_status(vendor_name):
     vendor = frappe.get_doc("Vendor", vendor_name)
     has_url = bool(vendor.frappe_site_url)
     has_location = bool(vendor.lat and vendor.lng)
-    has_warehouse = bool(vendor.default_warehouse or (vendor.warehouses and len(vendor.warehouses) > 0))
+    has_warehouse = bool(vendor.warehouses and len(vendor.warehouses) > 0)
 
     steps = {
         "registered": True,

@@ -106,7 +106,28 @@
  "allow_rename": 0,
  "index_web_pages_for_search": 0,
  "actions": [],
- "links": [],
+ "links": [
+  {
+   "link_doctype": "Cart",
+   "link_fieldname": "delivery_zone"
+  },
+  {
+   "link_doctype": "Order",
+   "link_fieldname": "delivery_zone"
+  },
+  {
+   "link_doctype": "Product Price",
+   "link_fieldname": "delivery_zone"
+  },
+  {
+   "link_doctype": "Vendor",
+   "link_fieldname": "delivery_zone"
+  },
+  {
+   "link_doctype": "Vendor Listing",
+   "link_fieldname": "delivery_zone"
+  }
+ ],
  "states": [],
  "naming_rule": "Expression (old style)",
  "field_order": [

@@ -24,11 +24,11 @@ class Vendor(Document):
                 )
             )
 
-        # Sync read-only default_warehouse_name field
-        if defaults:
-            self.default_warehouse_name = defaults[0].warehouse_name
-        else:
-            self.default_warehouse_name = self.default_warehouse or ""
+        # Sync read-only default_warehouse_name field. Warehouses live only
+        # in the Vendor Warehouse child table — the old Vendor.default_warehouse
+        # Link to ERPNext's Warehouse doctype was removed (that doctype does
+        # not exist on the no-ERPNext hub).
+        self.default_warehouse_name = defaults[0].warehouse_name if defaults else ""
 
     def on_update(self):
         frappe.cache().delete_key(f"sm_vendor:{self.name}")

@@ -53,7 +53,7 @@ def get_default_warehouse(vendor_name):
         {"parent": vendor_name, "parenttype": "Vendor", "is_default": 1, "status": "Active"},
         "warehouse_name",
     )
-    return wh or frappe.db.get_value("Vendor", vendor_name, "default_warehouse")
+    return wh
 
 
 def find_nearest_warehouse(vendor_name, customer_lat, customer_lng, product=None):

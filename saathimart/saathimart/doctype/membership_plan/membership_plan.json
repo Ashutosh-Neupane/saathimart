@@ -107,7 +107,12 @@
  "allow_rename": 0,
  "index_web_pages_for_search": 0,
  "actions": [],
- "links": [],
+ "links": [
+  {
+   "link_doctype": "Customer Membership",
+   "link_fieldname": "plan"
+  }
+ ],
  "states": [],
  "naming_rule": "Expression (old style)",
  "field_order": [

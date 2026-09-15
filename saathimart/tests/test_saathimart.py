@@ -3072,7 +3072,6 @@ class TestERPNextSync(unittest.TestCase):
 
         # Create vendor with warehouse
         self.vendor = _make_vendor("ERPNext Sync Vendor", slug="erpnext-sync-vendor")
-        frappe.db.set_value("Vendor", self.vendor.name, "default_warehouse", "Test Warehouse - SM")
 
         # Create vendor listing
         self.vl = frappe.new_doc("Vendor Listing")

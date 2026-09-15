@@ -91,6 +91,12 @@
    "label": "Max Discount Per Order",
    "default": "0",
    "description": "Ceiling across all rules combined. 0 = no cap."
+  },
+  {
+   "fieldname": "tab_connections",
+   "fieldtype": "Tab Break",
+   "label": "Connections",
+   "show_dashboard": 1
   }
  ],
  "title_field": "plan_name",
@@ -129,7 +135,8 @@
   "section_benefits",
   "benefits",
   "section_caps",
-  "max_discount_per_order"
+  "max_discount_per_order",
+  "tab_connections"
  ],
  "sort_field": "modified",
  "sort_order": "DESC",

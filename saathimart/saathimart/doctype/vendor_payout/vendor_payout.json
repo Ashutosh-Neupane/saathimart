@@ -84,7 +84,7 @@
   {
    "fieldname": "section_payment",
    "fieldtype": "Section Break",
-   "label": "Payment"
+   "label": "💸 Payment"
   },
   {
    "fieldname": "payment_method",
@@ -116,6 +116,12 @@
    "label": "Created By",
    "options": "User",
    "read_only": 1
+  },
+  {
+   "fieldname": "tab_connections",
+   "fieldtype": "Tab Break",
+   "label": "Connections",
+   "show_dashboard": 1
   }
  ],
  "permissions": [
@@ -164,8 +170,10 @@
   "paid_at",
   "notes",
   "col_break_3",
-  "created_by"
+  "created_by",
+  "tab_connections"
  ],
  "sort_field": "modified",
- "sort_order": "DESC"
+ "sort_order": "DESC",
+ "title_field": "vendor"
 }

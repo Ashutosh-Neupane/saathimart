@@ -105,6 +105,22 @@
    "fieldname": "text_color",
    "fieldtype": "Color",
    "label": "Text Color"
+  },
+  {
+   "fieldname": "tab_connections",
+   "fieldtype": "Tab Break",
+   "label": "Connections",
+   "show_dashboard": 1
+  },
+  {
+   "fieldname": "tab_content",
+   "fieldtype": "Tab Break",
+   "label": "Content"
+  },
+  {
+   "fieldname": "tab_appearance",
+   "fieldtype": "Tab Break",
+   "label": "Appearance"
   }
  ],
  "title_field": "title",
@@ -136,6 +152,7 @@
   "sort_order",
   "valid_from",
   "valid_to",
+  "tab_content",
   "section_content",
   "heading",
   "subheading",
@@ -143,11 +160,13 @@
   "cta_url",
   "cta_secondary_label",
   "cta_secondary_url",
+  "tab_appearance",
   "col_break_2",
   "image",
   "mobile_image",
   "bg_color",
-  "text_color"
+  "text_color",
+  "tab_connections"
  ],
  "sort_field": "modified",
  "sort_order": "DESC",

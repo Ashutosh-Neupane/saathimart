@@ -42,6 +42,12 @@
    "fieldtype": "Datetime",
    "label": "Created At",
    "reqd": 1
+  },
+  {
+   "fieldname": "tab_connections",
+   "fieldtype": "Tab Break",
+   "label": "Connections",
+   "show_dashboard": 1
   }
  ],
  "permissions": [
@@ -73,7 +79,8 @@
   "title",
   "message",
   "read",
-  "created_at"
+  "created_at",
+  "tab_connections"
  ],
  "sort_field": "modified",
  "sort_order": "DESC",

@@ -9,7 +9,8 @@
   "slot",
   "delivery_date",
   "order",
-  "status"
+  "status",
+  "tab_connections"
  ],
  "fields": [
   {
@@ -42,6 +43,12 @@
    "options": "Booked\nConfirmed\nCancelled",
    "default": "Booked",
    "in_list_view": 1
+  },
+  {
+   "fieldname": "tab_connections",
+   "fieldtype": "Tab Break",
+   "label": "Connections",
+   "show_dashboard": 1
   }
  ],
  "allow_rename": 0,

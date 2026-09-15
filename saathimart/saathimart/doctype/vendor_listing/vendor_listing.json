@@ -68,7 +68,7 @@
   {
    "fieldname": "section_inventory",
    "fieldtype": "Section Break",
-   "label": "Inventory"
+   "label": "📦 Inventory"
   },
   {
    "fieldname": "warehouse",
@@ -95,7 +95,7 @@
   {
    "fieldname": "section_delivery",
    "fieldtype": "Section Break",
-   "label": "Delivery"
+   "label": "🚚 Delivery"
   },
   {
    "fieldname": "delivery_zone",
@@ -119,7 +119,7 @@
   {
    "fieldname": "section_sync",
    "fieldtype": "Section Break",
-   "label": "Sync"
+   "label": "🔄 Sync"
   },
   {
    "fieldname": "sync_enabled",
@@ -162,9 +162,25 @@
    "label": "Last Event Seq",
    "read_only": 1,
    "description": "Monotonically increasing sequence of the last processed price.update event — same pattern as Vendor Stock.last_event_seq"
+  },
+  {
+   "fieldname": "tab_connections",
+   "fieldtype": "Tab Break",
+   "label": "Connections",
+   "show_dashboard": 1
+  },
+  {
+   "fieldname": "tab_fulfillment",
+   "fieldtype": "Tab Break",
+   "label": "Fulfillment"
+  },
+  {
+   "fieldname": "tab_sync",
+   "fieldtype": "Tab Break",
+   "label": "Sync"
   }
  ],
- "title_field": "vendor",
+ "title_field": "product",
  "permissions": [
   {
    "role": "SM Admin",
@@ -207,6 +223,7 @@
   "barcode",
   "sku",
   "vendor_product_id",
+  "tab_fulfillment",
   "section_inventory",
   "warehouse",
   "track_inventory",
@@ -215,15 +232,18 @@
   "delivery_zone",
   "estimated_delivery_minutes",
   "priority",
+  "tab_sync",
   "section_sync",
   "sync_enabled",
   "sync_status",
   "pushed_at",
   "last_sync_at",
   "last_event_id",
-  "last_event_seq"
+  "last_event_seq",
+  "tab_connections"
  ],
  "sort_field": "modified",
  "sort_order": "DESC",
- "track_changes": 0
+ "track_changes": 0,
+ "description": "The marketplace sell offer: one row per vendor x product. The SOURCE OF TRUTH for storefront pricing, cart, and checkout — Product.display_price is a denormalized cache of the cheapest active listing (kept in sync by on_vendor_listing_changed). Product Price (child table on Product) is the vendor-neutral default price ladder used only when no listing matches. Stock truth lives in Vendor Stock; this row's qty column is display-only."
 }

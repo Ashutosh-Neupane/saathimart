@@ -91,6 +91,22 @@
    "label": "Sections",
    "options": "JSON",
    "description": "JSON array of structured content sections: paragraph/heading/list/cta blocks, matching the frontend's PageSection contract exactly (no raw HTML)."
+  },
+  {
+   "fieldname": "tab_connections",
+   "fieldtype": "Tab Break",
+   "label": "Connections",
+   "show_dashboard": 1
+  },
+  {
+   "fieldname": "tab_seo",
+   "fieldtype": "Tab Break",
+   "label": "SEO"
+  },
+  {
+   "fieldname": "tab_page_builder",
+   "fieldtype": "Tab Break",
+   "label": "Page Builder"
   }
  ],
  "title_field": "title",
@@ -124,12 +140,15 @@
   "section_header",
   "breadcrumb_label",
   "subtitle",
+  "tab_seo",
   "section_seo",
   "meta_title",
   "meta_description",
   "og_image",
+  "tab_page_builder",
   "section_blocks",
-  "sections"
+  "sections",
+  "tab_connections"
  ],
  "sort_field": "modified",
  "sort_order": "DESC"

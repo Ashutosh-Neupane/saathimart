@@ -104,6 +104,17 @@
    "label": "Last Event Seq",
    "read_only": 1,
    "description": "Monotonically increasing sequence of the last processed event"
+  },
+  {
+   "fieldname": "tab_connections",
+   "fieldtype": "Tab Break",
+   "label": "Connections",
+   "show_dashboard": 1
+  },
+  {
+   "fieldname": "tab_sync",
+   "fieldtype": "Tab Break",
+   "label": "Sync"
   }
  ],
  "title_field": "product",
@@ -139,11 +150,13 @@
   "physical_qty",
   "col_break_2",
   "last_known_qty",
+  "tab_sync",
   "section_sync",
   "last_updated",
   "last_sync_at",
   "last_event_id",
-  "last_event_seq"
+  "last_event_seq",
+  "tab_connections"
  ],
  "sort_field": "modified",
  "sort_order": "DESC"

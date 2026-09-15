@@ -5,3 +5,4 @@ saathimart.patches.rename_settings_doctype
 saathimart.patches.backfill_legacy_warehouse
 saathimart.patches.drop_vendor_listing_qty_columns
 saathimart.patches.fix_dead_link_targets
+saathimart.patches.normalize_membership_benefit_brand

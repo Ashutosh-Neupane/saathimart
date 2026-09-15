@@ -19,7 +19,8 @@
   "error_reason",
   "retry_msg_id",
   "section_resolution",
-  "resolution_notes"
+  "resolution_notes",
+  "tab_connections"
  ],
  "fields": [
   {
@@ -109,6 +110,12 @@
    "fieldname": "resolution_notes",
    "fieldtype": "Text",
    "label": "Resolution Notes"
+  },
+  {
+   "fieldname": "tab_connections",
+   "fieldtype": "Tab Break",
+   "label": "Connections",
+   "show_dashboard": 1
   }
  ],
  "links": [],

@@ -53,6 +53,12 @@
    "fieldtype": "Link",
    "label": "Order",
    "options": "Order"
+  },
+  {
+   "fieldname": "tab_connections",
+   "fieldtype": "Tab Break",
+   "label": "Connections",
+   "show_dashboard": 1
   }
  ],
  "permissions": [
@@ -84,7 +90,8 @@
   "rating",
   "status",
   "comment",
-  "order"
+  "order",
+  "tab_connections"
  ],
  "sort_field": "modified",
  "sort_order": "DESC",

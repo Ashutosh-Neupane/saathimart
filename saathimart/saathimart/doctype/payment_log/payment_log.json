@@ -52,6 +52,12 @@
    "fieldname": "notes",
    "fieldtype": "Small Text",
    "label": "Notes"
+  },
+  {
+   "fieldname": "tab_connections",
+   "fieldtype": "Tab Break",
+   "label": "Connections",
+   "show_dashboard": 1
   }
  ],
  "permissions": [
@@ -77,7 +83,8 @@
   "amount",
   "reference",
   "transaction_uid",
-  "notes"
+  "notes",
+  "tab_connections"
  ],
  "sort_field": "modified",
  "sort_order": "DESC"

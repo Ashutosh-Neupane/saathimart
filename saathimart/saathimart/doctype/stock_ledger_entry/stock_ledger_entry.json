@@ -83,6 +83,12 @@
    "fieldname": "remarks",
    "fieldtype": "Small Text",
    "label": "Remarks"
+  },
+  {
+   "fieldname": "tab_connections",
+   "fieldtype": "Tab Break",
+   "label": "Connections",
+   "show_dashboard": 1
   }
  ],
  "title_field": "product",
@@ -121,7 +127,8 @@
   "col_break_2",
   "source_site",
   "vendor",
-  "remarks"
+  "remarks",
+  "tab_connections"
  ],
  "sort_field": "modified",
  "sort_order": "DESC"

@@ -24,9 +24,10 @@
   },
   {
    "fieldname": "brand",
-   "fieldtype": "Data",
+   "fieldtype": "Link",
    "label": "Brand",
-   "depends_on": "eval:doc.scope=='Brand'"
+   "depends_on": "eval:doc.scope=='Brand'",
+   "options": "Brand"
   },
   {
    "fieldname": "col_break_1",

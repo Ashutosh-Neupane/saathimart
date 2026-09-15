@@ -18,7 +18,8 @@
   "delivery_charge_override",
   "section_warehouse",
   "warehouse_scope",
-  "notes"
+  "notes",
+  "tab_connections"
  ],
  "fields": [
   {
@@ -99,6 +100,12 @@
    "fieldtype": "Small Text",
    "label": "Notes",
    "description": "Internal notes about this slot"
+  },
+  {
+   "fieldname": "tab_connections",
+   "fieldtype": "Tab Break",
+   "label": "Connections",
+   "show_dashboard": 1
   }
  ],
  "title_field": "slot_name",

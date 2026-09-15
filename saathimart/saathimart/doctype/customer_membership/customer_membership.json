@@ -89,6 +89,12 @@
    "fieldname": "remarks",
    "fieldtype": "Small Text",
    "label": "Remarks"
+  },
+  {
+   "fieldname": "tab_connections",
+   "fieldtype": "Tab Break",
+   "label": "Connections",
+   "show_dashboard": 1
   }
  ],
  "permissions": [
@@ -129,7 +135,8 @@
   "amount_paid",
   "col_break_2",
   "total_saved",
-  "remarks"
+  "remarks",
+  "tab_connections"
  ],
  "sort_field": "modified",
  "sort_order": "DESC",

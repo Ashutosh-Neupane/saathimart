@@ -1,7 +1,7 @@
 import frappe
 from frappe import _
 from frappe.model.document import Document
-from frappe.utils import flt, getdate
+from frappe.utils import flt, getdate, rounded
 
 
 class VendorPayout(Document):
@@ -21,8 +21,15 @@ class VendorPayout(Document):
             from saathimart.api.commission import get_commission_pct_for_vendor
             commission_pct = get_commission_pct_for_vendor(self.vendor)
             self.commission_pct = commission_pct
-            self.commission_amount = flt(self.total_sales) * flt(commission_pct) / 100
-            self.payout_amount = flt(self.total_sales) - flt(self.commission_amount)
+            self.commission_amount = rounded(flt(self.total_sales) * flt(commission_pct) / 100, 2)
+            # Net of the platform's 13% service VAT on its commission bill —
+            # the platform collects that VAT and remits it to IRD; it was
+            # never part of the vendor's receivable (whose sale GL is booked
+            # at the full product base). Matches generate_settlement_statement.
+            service_vat = rounded(self.commission_amount * 13.0 / 100.0, 2)
+            self.payout_amount = rounded(
+                flt(self.total_sales) - self.commission_amount - service_vat, 2
+            )
 
     @frappe.whitelist()
     def calculate_payout(self):

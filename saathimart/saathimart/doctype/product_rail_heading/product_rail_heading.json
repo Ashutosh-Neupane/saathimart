@@ -34,6 +34,12 @@
    "fieldtype": "Int",
    "label": "Sort Order",
    "default": "0"
+  },
+  {
+   "fieldname": "tab_connections",
+   "fieldtype": "Tab Break",
+   "label": "Connections",
+   "show_dashboard": 1
   }
  ],
  "title_field": "title",
@@ -69,7 +75,8 @@
   "title",
   "subtitle",
   "published",
-  "sort_order"
+  "sort_order",
+  "tab_connections"
  ],
  "sort_field": "modified",
  "sort_order": "DESC",

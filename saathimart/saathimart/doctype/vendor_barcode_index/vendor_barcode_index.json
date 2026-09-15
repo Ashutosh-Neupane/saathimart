@@ -26,6 +26,12 @@
    "fieldtype": "Datetime",
    "label": "Last Registered",
    "read_only": 1
+  },
+  {
+   "fieldname": "tab_connections",
+   "fieldtype": "Tab Break",
+   "label": "Connections",
+   "show_dashboard": 1
   }
  ],
  "permissions": [
@@ -47,7 +53,8 @@
  "field_order": [
   "vendor",
   "barcode",
-  "last_registered"
+  "last_registered",
+  "tab_connections"
  ],
  "sort_field": "modified",
  "sort_order": "DESC",

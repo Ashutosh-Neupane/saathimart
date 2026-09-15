@@ -75,6 +75,12 @@
    "fieldtype": "Check",
    "label": "Published",
    "default": "1"
+  },
+  {
+   "fieldname": "tab_connections",
+   "fieldtype": "Tab Break",
+   "label": "Connections",
+   "show_dashboard": 1
   }
  ],
  "title_field": "slide_key",
@@ -118,7 +124,8 @@
   "cta_secondary_href",
   "section_meta",
   "sort_order",
-  "published"
+  "published",
+  "tab_connections"
  ],
  "sort_field": "modified",
  "sort_order": "DESC",

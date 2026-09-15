@@ -86,6 +86,12 @@
    "label": "Max Onboarding Discount Amount",
    "default": "0",
    "description": "Caps the first/second order auto-discount amount. 0 = uncapped."
+  },
+  {
+   "fieldname": "tab_connections",
+   "fieldtype": "Tab Break",
+   "label": "Connections",
+   "show_dashboard": 1
   }
  ],
  "title_field": "zone_name",
@@ -144,7 +150,8 @@
   "col_break_loyalty",
   "first_order_discount_pct",
   "second_order_discount_pct",
-  "onboarding_max_discount_amount"
+  "onboarding_max_discount_amount",
+  "tab_connections"
  ],
  "sort_field": "modified",
  "sort_order": "DESC",

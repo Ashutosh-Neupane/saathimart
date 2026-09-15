@@ -17,7 +17,8 @@
   "column_break_1",
   "status",
   "processed_at",
-  "error_message"
+  "error_message",
+  "tab_connections"
  ],
  "fields": [
   {
@@ -87,6 +88,12 @@
    "fieldname": "error_message",
    "fieldtype": "Text",
    "label": "Error Message"
+  },
+  {
+   "fieldname": "tab_connections",
+   "fieldtype": "Tab Break",
+   "label": "Connections",
+   "show_dashboard": 1
   }
  ],
  "title_field": "ref_doctype",

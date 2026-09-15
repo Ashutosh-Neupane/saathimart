@@ -77,6 +77,12 @@
    "fieldname": "lng",
    "fieldtype": "Float",
    "label": "Longitude"
+  },
+  {
+   "fieldname": "tab_connections",
+   "fieldtype": "Tab Break",
+   "label": "Connections",
+   "show_dashboard": 1
   }
  ],
  "search_fields": "full_name,phone,city",
@@ -116,7 +122,8 @@
   "landmark",
   "col_break_2",
   "lat",
-  "lng"
+  "lng",
+  "tab_connections"
  ],
  "sort_field": "modified",
  "sort_order": "DESC",

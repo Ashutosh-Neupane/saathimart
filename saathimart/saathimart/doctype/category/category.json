@@ -40,6 +40,12 @@
    "fieldtype": "Check",
    "label": "Is Active",
    "default": "1"
+  },
+  {
+   "fieldname": "tab_connections",
+   "fieldtype": "Tab Break",
+   "label": "Connections",
+   "show_dashboard": 1
   }
  ],
  "title_field": "category_name",
@@ -62,11 +68,11 @@
  "actions": [],
  "links": [
   {
-   "link_doctype": "Product",
+   "link_doctype": "Membership Benefit",
    "link_fieldname": "category"
   },
   {
-   "link_doctype": "Membership Benefit",
+   "link_doctype": "Product",
    "link_fieldname": "category"
   }
  ],
@@ -78,7 +84,8 @@
   "parent_category",
   "image",
   "sort_order",
-  "is_active"
+  "is_active",
+  "tab_connections"
  ],
  "sort_field": "modified",
  "sort_order": "DESC",

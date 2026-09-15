@@ -154,6 +154,12 @@
    "fieldtype": "Small Text",
    "label": "Applicable Categories",
    "description": "Comma-separated category names. Leave blank for all categories."
+  },
+  {
+   "fieldname": "connections_tab",
+   "fieldtype": "Tab Break",
+   "label": "Connections",
+   "show_dashboard": 1
   }
  ],
  "title_field": "title",
@@ -204,7 +210,8 @@
   "coupon_code",
   "col_break_link",
   "applicable_products",
-  "applicable_categories"
+  "applicable_categories",
+  "connections_tab"
  ],
  "sort_field": "modified",
  "sort_order": "DESC"

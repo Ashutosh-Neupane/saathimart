@@ -89,6 +89,22 @@
    "fieldname": "meta_description",
    "fieldtype": "Small Text",
    "label": "Meta Description"
+  },
+  {
+   "fieldname": "tab_connections",
+   "fieldtype": "Tab Break",
+   "label": "Connections",
+   "show_dashboard": 1
+  },
+  {
+   "fieldname": "tab_content",
+   "fieldtype": "Tab Break",
+   "label": "Content"
+  },
+  {
+   "fieldname": "tab_seo",
+   "fieldtype": "Tab Break",
+   "label": "SEO"
   }
  ],
  "title_field": "title",
@@ -121,14 +137,17 @@
   "published_at",
   "category",
   "tags",
+  "tab_content",
   "section_media",
   "cover_image",
   "excerpt",
   "section_body",
   "content",
+  "tab_seo",
   "section_seo",
   "meta_title",
-  "meta_description"
+  "meta_description",
+  "tab_connections"
  ],
  "sort_field": "modified",
  "sort_order": "DESC"

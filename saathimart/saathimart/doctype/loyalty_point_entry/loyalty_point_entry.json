@@ -71,6 +71,12 @@
    "fieldname": "remarks",
    "fieldtype": "Small Text",
    "label": "Remarks"
+  },
+  {
+   "fieldname": "tab_connections",
+   "fieldtype": "Tab Break",
+   "label": "Connections",
+   "show_dashboard": 1
   }
  ],
  "permissions": [
@@ -104,7 +110,8 @@
   "is_expired",
   "source",
   "tier",
-  "remarks"
+  "remarks",
+  "tab_connections"
  ],
  "sort_field": "modified",
  "sort_order": "DESC",

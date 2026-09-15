@@ -11,7 +11,8 @@
   "column_break_main",
   "search_count",
   "last_result_count",
-  "last_searched_at"
+  "last_searched_at",
+  "tab_connections"
  ],
  "fields": [
   {
@@ -52,6 +53,12 @@
    "fieldname": "last_searched_at",
    "fieldtype": "Datetime",
    "label": "Last Searched At"
+  },
+  {
+   "fieldname": "tab_connections",
+   "fieldtype": "Tab Break",
+   "label": "Connections",
+   "show_dashboard": 1
   }
  ],
  "index_web_pages_for_search": 0,

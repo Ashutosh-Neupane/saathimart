@@ -47,6 +47,12 @@
    "label": "Amount Saved",
    "reqd": 1,
    "in_list_view": 1
+  },
+  {
+   "fieldname": "tab_connections",
+   "fieldtype": "Tab Break",
+   "label": "Connections",
+   "show_dashboard": 1
   }
  ],
  "permissions": [
@@ -71,7 +77,8 @@
   "order",
   "col_break_1",
   "benefit_label",
-  "amount_saved"
+  "amount_saved",
+  "tab_connections"
  ],
  "sort_field": "modified",
  "sort_order": "DESC",

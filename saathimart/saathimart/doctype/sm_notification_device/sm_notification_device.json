@@ -50,6 +50,12 @@
    "fieldname": "last_seen",
    "fieldtype": "Datetime",
    "label": "Last Seen"
+  },
+  {
+   "fieldname": "tab_connections",
+   "fieldtype": "Tab Break",
+   "label": "Connections",
+   "show_dashboard": 1
   }
  ],
  "permissions": [
@@ -84,7 +90,8 @@
   "device_name",
   "app_version",
   "is_active",
-  "last_seen"
+  "last_seen",
+  "tab_connections"
  ],
  "sort_field": "modified",
  "sort_order": "DESC",

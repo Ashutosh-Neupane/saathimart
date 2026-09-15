@@ -30,6 +30,12 @@
    "fieldname": "notes",
    "fieldtype": "Small Text",
    "label": "Editor Notes"
+  },
+  {
+   "fieldname": "tab_connections",
+   "fieldtype": "Tab Break",
+   "label": "Connections",
+   "show_dashboard": 1
   }
  ],
  "title_field": "content_key",
@@ -64,7 +70,8 @@
   "content_key",
   "content_json",
   "published",
-  "notes"
+  "notes",
+  "tab_connections"
  ],
  "sort_field": "modified",
  "sort_order": "DESC",

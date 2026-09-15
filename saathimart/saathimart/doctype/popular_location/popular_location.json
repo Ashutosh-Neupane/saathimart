@@ -68,6 +68,12 @@
    "label": "Is Active",
    "default": "1",
    "in_list_view": 1
+  },
+  {
+   "fieldname": "tab_connections",
+   "fieldtype": "Tab Break",
+   "label": "Connections",
+   "show_dashboard": 1
   }
  ],
  "title_field": "location_name",
@@ -101,7 +107,8 @@
   "longitude",
   "section_display",
   "sort_order",
-  "is_active"
+  "is_active",
+  "tab_connections"
  ],
  "sort_field": "modified",
  "sort_order": "DESC",

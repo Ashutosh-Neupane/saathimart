@@ -93,6 +93,17 @@
    "label": "Sync Token",
    "read_only": 1,
    "description": "Opaque token for mobile offline cart sync — client sends this back to detect conflicts"
+  },
+  {
+   "fieldname": "tab_connections",
+   "fieldtype": "Tab Break",
+   "label": "Connections",
+   "show_dashboard": 1
+  },
+  {
+   "fieldname": "tab_items_totals",
+   "fieldtype": "Tab Break",
+   "label": "Items & Totals"
   }
  ],
  "permissions": [
@@ -126,6 +137,7 @@
   "expires_at",
   "customer_lat",
   "customer_lng",
+  "tab_items_totals",
   "section_items",
   "items",
   "section_totals",
@@ -133,7 +145,8 @@
   "delivery_zone",
   "coupon_code",
   "section_sync",
-  "sync_token"
+  "sync_token",
+  "tab_connections"
  ],
  "sort_field": "modified",
  "sort_order": "DESC",

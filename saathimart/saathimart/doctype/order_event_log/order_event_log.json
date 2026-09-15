@@ -42,6 +42,12 @@
    "fieldtype": "Code",
    "label": "Event Data",
    "options": "JSON"
+  },
+  {
+   "fieldname": "tab_connections",
+   "fieldtype": "Tab Break",
+   "label": "Connections",
+   "show_dashboard": 1
   }
  ],
  "permissions": [
@@ -71,7 +77,8 @@
   "actor",
   "col_break_1",
   "timestamp",
-  "data"
+  "data",
+  "tab_connections"
  ],
  "track_changes": 0
 }

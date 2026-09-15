@@ -56,6 +56,12 @@
    "fieldname": "icon",
    "fieldtype": "Data",
    "label": "Icon (CSS class or emoji)"
+  },
+  {
+   "fieldname": "tab_connections",
+   "fieldtype": "Tab Break",
+   "label": "Connections",
+   "show_dashboard": 1
   }
  ],
  "title_field": "label",
@@ -93,7 +99,8 @@
   "sort_order",
   "is_active",
   "open_in_new_tab",
-  "icon"
+  "icon",
+  "tab_connections"
  ],
  "sort_field": "modified",
  "sort_order": "DESC",

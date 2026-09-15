@@ -37,7 +37,7 @@
   {
    "fieldname": "section_connection",
    "fieldtype": "Section Break",
-   "label": "Connection"
+   "label": "🔗 Connection"
   },
   {
    "fieldname": "frappe_site_url",
@@ -69,7 +69,7 @@
   {
    "fieldname": "section_webhook_meta",
    "fieldtype": "Section Break",
-   "label": "Webhook Sync State"
+   "label": "🌐 Webhook Sync State"
   },
   {
    "fieldname": "webhook_secret_old",
@@ -106,7 +106,7 @@
   {
    "fieldname": "section_sync_health",
    "fieldtype": "Section Break",
-   "label": "Sync Health"
+   "label": "💓 Sync Health"
   },
   {
    "fieldname": "clock_skew_seconds",
@@ -144,7 +144,7 @@
   {
    "fieldname": "section_contact",
    "fieldtype": "Section Break",
-   "label": "Contact"
+   "label": "📞 Contact"
   },
   {
    "fieldname": "contact_email",
@@ -170,7 +170,7 @@
   {
    "fieldname": "section_location",
    "fieldtype": "Section Break",
-   "label": "Location & Delivery"
+   "label": "📍 Location & Delivery"
   },
   {
    "fieldname": "lat",
@@ -196,7 +196,7 @@
   {
    "fieldname": "section_stock",
    "fieldtype": "Section Break",
-   "label": "Stock & Location"
+   "label": "📦 Stock & Location"
   },
   {
    "fieldname": "warehouses",
@@ -231,7 +231,7 @@
   {
    "fieldname": "section_credentials_info",
    "fieldtype": "Section Break",
-   "label": "Credentials Info"
+   "label": "🔐 Credentials Info"
   },
   {
    "fieldname": "credentials_info",
@@ -243,12 +243,36 @@
   {
    "fieldname": "section_meta",
    "fieldtype": "Section Break",
-   "label": "Meta"
+   "label": "ℹ️ Meta"
   },
   {
    "fieldname": "notes",
    "fieldtype": "Small Text",
    "label": "Notes"
+  },
+  {
+   "fieldname": "tab_sync_health",
+   "fieldtype": "Tab Break",
+   "label": "Sync Health",
+   "options": "fa fa-heartbeat"
+  },
+  {
+   "fieldname": "tab_location_stock",
+   "fieldtype": "Tab Break",
+   "label": "Location & Stock",
+   "options": "fa fa-map-marker"
+  },
+  {
+   "fieldname": "tab_more_info",
+   "fieldtype": "Tab Break",
+   "label": "More Info",
+   "options": "fa fa-file-text"
+  },
+  {
+   "fieldname": "tab_connections",
+   "fieldtype": "Tab Break",
+   "label": "Connections",
+   "show_dashboard": 1
   }
  ],
  "title_field": "vendor_name",
@@ -276,6 +300,12 @@
    "link_fieldname": "vendor"
   },
   {
+   "group": "Vendor",
+   "link_doctype": "Dead Letter Log",
+   "link_fieldname": "vendor_id",
+   "link_type": "Document"
+  },
+  {
    "link_doctype": "Order",
    "link_fieldname": "vendor"
   },
@@ -286,6 +316,12 @@
   {
    "link_doctype": "Product Price",
    "link_fieldname": "vendor"
+  },
+  {
+   "group": "Vendor",
+   "link_doctype": "SaathiMart Settings",
+   "link_fieldname": "platform_ledger_vendor",
+   "link_type": "Document"
   },
   {
    "link_doctype": "Stock Ledger Entry",
@@ -304,11 +340,11 @@
    "link_fieldname": "vendor"
   },
   {
-   "link_doctype": "Vendor Stock",
+   "link_doctype": "Vendor Payout",
    "link_fieldname": "vendor"
   },
   {
-   "link_doctype": "Vendor Payout",
+   "link_doctype": "Vendor Stock",
    "link_fieldname": "vendor"
   }
  ],
@@ -326,6 +362,7 @@
   "col_break_conn",
   "api_secret",
   "webhook_secret",
+  "tab_sync_health",
   "section_webhook_meta",
   "webhook_secret_old",
   "webhook_secret_rotated_at",
@@ -338,6 +375,7 @@
   "col_break_health",
   "hub_status",
   "last_sync_at",
+  "tab_location_stock",
   "section_contact",
   "contact_email",
   "contact_phone",
@@ -354,10 +392,12 @@
   "col_break_wh",
   "default_warehouse_name",
   "total_physical_qty",
+  "tab_more_info",
   "section_credentials_info",
   "credentials_info",
   "section_meta",
-  "notes"
+  "notes",
+  "tab_connections"
  ],
  "sort_field": "modified",
  "sort_order": "DESC",

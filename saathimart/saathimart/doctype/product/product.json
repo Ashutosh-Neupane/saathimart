@@ -48,7 +48,7 @@
   {
    "fieldname": "section_general",
    "fieldtype": "Section Break",
-   "label": "General"
+   "label": "⚙️ General"
   },
   {
    "fieldname": "short_description",
@@ -69,7 +69,7 @@
   {
    "fieldname": "section_media",
    "fieldtype": "Section Break",
-   "label": "Media"
+   "label": "🖼️ Media"
   },
   {
    "fieldname": "media",
@@ -79,13 +79,13 @@
   },
   {
    "fieldname": "thumbnail",
-   "fieldtype": "Data",
+   "fieldtype": "Attach Image",
    "label": "Thumbnail"
   },
   {
    "fieldname": "section_meta",
    "fieldtype": "Section Break",
-   "label": "SEO"
+   "label": "🔍 SEO"
   },
   {
    "fieldname": "meta_title",
@@ -105,12 +105,12 @@
   {
    "fieldname": "section_vendor_listings",
    "fieldtype": "Section Break",
-   "label": "Vendor Listings"
+   "label": "🏪 Vendor Listings"
   },
   {
    "fieldname": "section_pricing",
    "fieldtype": "Section Break",
-   "label": "Pricing"
+   "label": "💰 Pricing"
   },
   {
    "fieldname": "prices",
@@ -134,7 +134,7 @@
   {
    "fieldname": "section_inventory",
    "fieldtype": "Section Break",
-   "label": "Inventory"
+   "label": "📦 Inventory"
   },
   {
    "fieldname": "sku",
@@ -157,7 +157,7 @@
   {
    "fieldname": "section_rating",
    "fieldtype": "Section Break",
-   "label": "Ratings"
+   "label": "⭐ Ratings"
   },
   {
    "fieldname": "avg_rating",
@@ -178,7 +178,7 @@
   {
    "fieldname": "section_variants",
    "fieldtype": "Section Break",
-   "label": "Variants"
+   "label": "🔀 Variants"
   },
   {
    "fieldname": "has_variants",
@@ -204,6 +204,36 @@
    "label": "Variant Attributes",
    "options": "Product Variant Attribute",
    "description": "What distinguishes this variant from its siblings, e.g. Size=Large, Color=Red. Only meaningful when variant_of is set."
+  },
+  {
+   "fieldname": "tab_connections",
+   "fieldtype": "Tab Break",
+   "label": "Connections",
+   "show_dashboard": 1
+  },
+  {
+   "fieldname": "tab_media",
+   "fieldtype": "Tab Break",
+   "label": "Media",
+   "options": "fa fa-picture-o"
+  },
+  {
+   "fieldname": "tab_pricing",
+   "fieldtype": "Tab Break",
+   "label": "Pricing",
+   "options": "fa fa-tag"
+  },
+  {
+   "fieldname": "tab_inventory_variants",
+   "fieldtype": "Tab Break",
+   "label": "Inventory & Variants",
+   "options": "fa fa-cubes"
+  },
+  {
+   "fieldname": "tab_ratings_seo",
+   "fieldtype": "Tab Break",
+   "label": "Ratings",
+   "options": "fa fa-star-half-o"
   }
  ],
  "title_field": "product_name",
@@ -241,6 +271,10 @@
    "link_fieldname": "product"
   },
   {
+   "link_doctype": "Product",
+   "link_fieldname": "variant_of"
+  },
+  {
    "link_doctype": "Review",
    "link_fieldname": "product"
   },
@@ -259,10 +293,6 @@
   {
    "link_doctype": "Wishlist",
    "link_fieldname": "product"
-  },
-  {
-   "link_doctype": "Product",
-   "link_fieldname": "variant_of"
   }
  ],
  "states": [],
@@ -278,6 +308,7 @@
   "short_description",
   "description",
   "specifications",
+  "tab_media",
   "section_media",
   "media",
   "thumbnail",
@@ -285,24 +316,29 @@
   "meta_title",
   "meta_description",
   "tags",
+  "tab_pricing",
   "section_vendor_listings",
   "section_pricing",
   "prices",
   "display_price",
   "display_compare_price",
+  "tab_inventory_variants",
   "section_inventory",
   "sku",
   "track_inventory",
   "stock_qty",
-  "section_rating",
-  "avg_rating",
-  "review_count",
   "section_variants",
   "has_variants",
   "col_break_variants",
   "variant_of",
-  "variant_attributes"
+  "variant_attributes",
+  "tab_ratings_seo",
+  "section_rating",
+  "avg_rating",
+  "review_count",
+  "tab_connections"
  ],
  "sort_field": "modified",
- "sort_order": "DESC"
+ "sort_order": "DESC",
+ "image_field": "thumbnail"
 }

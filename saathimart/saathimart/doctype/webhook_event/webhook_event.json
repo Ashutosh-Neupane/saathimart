@@ -106,6 +106,22 @@
    "label": "Response",
    "options": "JSON",
    "read_only": 1
+  },
+  {
+   "fieldname": "tab_connections",
+   "fieldtype": "Tab Break",
+   "label": "Connections",
+   "show_dashboard": 1
+  },
+  {
+   "fieldname": "tab_delivery",
+   "fieldtype": "Tab Break",
+   "label": "Delivery"
+  },
+  {
+   "fieldname": "tab_payload",
+   "fieldtype": "Tab Break",
+   "label": "Payload"
   }
  ],
  "permissions": [
@@ -132,15 +148,18 @@
   "target_vendor",
   "status",
   "priority",
+  "tab_delivery",
   "col_break_1",
   "retry_count",
   "next_retry_at",
   "dead_letter_reason",
   "delivery_method",
   "compressed",
+  "tab_payload",
   "section_payload",
   "payload",
-  "response"
+  "response",
+  "tab_connections"
  ],
  "sort_field": "modified",
  "sort_order": "DESC",

@@ -50,6 +50,12 @@
    "fieldname": "used_at",
    "fieldtype": "Datetime",
    "label": "Used At"
+  },
+  {
+   "fieldname": "tab_connections",
+   "fieldtype": "Tab Break",
+   "label": "Connections",
+   "show_dashboard": 1
   }
  ],
  "permissions": [
@@ -75,7 +81,8 @@
   "customer_phone",
   "customer_email",
   "discount_amount",
-  "used_at"
+  "used_at",
+  "tab_connections"
  ],
  "sort_field": "modified",
  "sort_order": "DESC",

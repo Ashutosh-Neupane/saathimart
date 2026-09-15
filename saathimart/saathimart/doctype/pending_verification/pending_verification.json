@@ -38,6 +38,12 @@
    "fieldname": "expires_at",
    "fieldtype": "Datetime",
    "label": "Expires At"
+  },
+  {
+   "fieldname": "tab_connections",
+   "fieldtype": "Tab Break",
+   "label": "Connections",
+   "show_dashboard": 1
   }
  ],
  "permissions": [
@@ -67,7 +73,8 @@
   "otp",
   "purpose",
   "new_email",
-  "expires_at"
+  "expires_at",
+  "tab_connections"
  ],
  "sort_field": "modified",
  "sort_order": "DESC",

@@ -15,7 +15,8 @@
   "rollout_percentage",
   "start_date",
   "end_date",
-  "condition"
+  "condition",
+  "tab_connections"
  ],
  "fields": [
   {
@@ -72,6 +73,12 @@
    "label": "Condition",
    "description": "Safe condition expression",
    "default": "True"
+  },
+  {
+   "fieldname": "tab_connections",
+   "fieldtype": "Tab Break",
+   "label": "Connections",
+   "show_dashboard": 1
   }
  ],
  "title_field": "feature_name",

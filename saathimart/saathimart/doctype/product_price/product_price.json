@@ -76,5 +76,6 @@
   "valid_from",
   "valid_to",
   "is_active"
- ]
+ ],
+ "description": "Child table on Product. Quantity-tiered price ladder keyed by price_type (Site Price / Retail / Wholesale / B2B). The DEFAULT price a product sells at when no vendor-specific offer exists. NOT the marketplace sell price \u2014 that lives on Vendor Listing. See get_effective_price() in api/products.py for the full resolution order."
 }

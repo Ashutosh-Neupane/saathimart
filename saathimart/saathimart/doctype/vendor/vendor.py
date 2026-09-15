@@ -7,6 +7,19 @@ from frappe.utils.password import set_encrypted_password
 
 class Vendor(Document):
     def before_save(self):
+        # Frappe's _save_passwords() deletes a Password field's __Auth row
+        # whenever its in-memory value is empty — and Password fields always
+        # load as None — so ANY save of this doc (desk edit, API update,
+        # location sync) silently wiped webhook_secret/api_secret unless the
+        # caller knew to set flags.ignore_save_passwords. The registration
+        # handshake lost its secret this way on every boot. Secrets are only
+        # ever written via set_encrypted_password(), never through this doc,
+        # so preserve them on every save that doesn't carry a new value.
+        ignore = self.flags.get("ignore_save_passwords")
+        if ignore is not True:  # True already skips every password field
+            preserve = [f for f in ("webhook_secret", "api_secret") if not self.get(f)]
+            if preserve:
+                self.flags.ignore_save_passwords = list(ignore or []) + preserve
         # Auto-generate API key on first creation (plain text, no save needed)
         if not self.api_key:
             self.api_key = secrets.token_urlsafe(16)

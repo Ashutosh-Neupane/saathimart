@@ -84,6 +84,12 @@
    "options": "JSON",
    "label": "Gateway Config (JSON)",
    "description": "Reserved for future per-mode gateway options. Credentials stay in SaathiMart Settings."
+  },
+  {
+   "fieldname": "tab_connections",
+   "fieldtype": "Tab Break",
+   "label": "Connections",
+   "show_dashboard": 1
   }
  ],
  "title_field": "mode_name",
@@ -116,7 +122,14 @@
  "engine": "InnoDB",
  "allow_rename": 0,
  "actions": [],
- "links": [],
+ "links": [
+  {
+   "group": "Payment Mode",
+   "link_doctype": "SaathiMart Settings",
+   "link_fieldname": "esewa_mode_of_payment",
+   "link_type": "Document"
+  }
+ ],
  "states": [],
  "field_order": [
   "mode_name",
@@ -130,7 +143,8 @@
   "description",
   "logo",
   "section_break_gateway",
-  "gateway_config"
+  "gateway_config",
+  "tab_connections"
  ],
  "track_changes": 0
 }

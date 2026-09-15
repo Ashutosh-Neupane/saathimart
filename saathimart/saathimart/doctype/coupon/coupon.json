@@ -46,7 +46,7 @@
   {
    "fieldname": "section_limits",
    "fieldtype": "Section Break",
-   "label": "Limits"
+   "label": "🔢 Limits"
   },
   {
    "fieldname": "min_order_amount",
@@ -85,7 +85,7 @@
   {
    "fieldname": "section_validity",
    "fieldtype": "Section Break",
-   "label": "Validity"
+   "label": "📅 Validity"
   },
   {
    "fieldname": "valid_from",
@@ -105,7 +105,7 @@
   {
    "fieldname": "section_accounting",
    "fieldtype": "Section Break",
-   "label": "Accounting"
+   "label": "🧾 Accounting"
   },
   {
    "fieldname": "absorption_type",
@@ -114,6 +114,18 @@
    "options": "Platform\nVendor",
    "default": "Platform",
    "description": "Who absorbs this coupon's discount: Platform (SaathiMart reimburses vendor) or Vendor (reduces vendor's settlement)"
+  },
+  {
+   "fieldname": "tab_limits_validity",
+   "fieldtype": "Tab Break",
+   "label": "Limits & Validity",
+   "options": "fa fa-calendar"
+  },
+  {
+   "fieldname": "tab_connections",
+   "fieldtype": "Tab Break",
+   "label": "Connections",
+   "show_dashboard": 1
   }
  ],
  "title_field": "coupon_code",
@@ -149,6 +161,7 @@
   "col_break_1",
   "discount_percentage",
   "discount_amount",
+  "tab_limits_validity",
   "section_limits",
   "min_order_amount",
   "max_discount_amount",
@@ -161,7 +174,8 @@
   "valid_to",
   "applicable_vendors",
   "section_accounting",
-  "absorption_type"
+  "absorption_type",
+  "tab_connections"
  ],
  "sort_field": "modified",
  "sort_order": "DESC",

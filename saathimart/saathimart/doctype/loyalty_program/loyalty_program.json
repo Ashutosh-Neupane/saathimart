@@ -70,6 +70,12 @@
    "fieldtype": "Table",
    "label": "Tiers",
    "options": "Loyalty Tier"
+  },
+  {
+   "fieldname": "tab_connections",
+   "fieldtype": "Tab Break",
+   "label": "Connections",
+   "show_dashboard": 1
   }
  ],
  "title_field": "program_name",
@@ -90,6 +96,12 @@
   {
    "link_doctype": "Loyalty Point Entry",
    "link_fieldname": "program"
+  },
+  {
+   "group": "Loyalty Program",
+   "link_doctype": "SaathiMart Settings",
+   "link_fieldname": "loyalty_program",
+   "link_type": "Document"
   }
  ],
  "states": [],
@@ -105,7 +117,8 @@
   "max_redemption_per_order_pct",
   "point_expiry_days",
   "section_tiers",
-  "tiers"
+  "tiers",
+  "tab_connections"
  ],
  "sort_field": "modified",
  "sort_order": "DESC",

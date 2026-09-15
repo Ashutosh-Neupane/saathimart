@@ -7,7 +7,7 @@
   {
    "fieldname": "section_general",
    "fieldtype": "Section Break",
-   "label": "General"
+   "label": "⚙️ General"
   },
   {
    "fieldname": "site_name",
@@ -29,7 +29,7 @@
   {
    "fieldname": "section_marketplace",
    "fieldtype": "Section Break",
-   "label": "Marketplace"
+   "label": "🛍️ Marketplace"
   },
   {
    "fieldname": "vendor_selection_mode",
@@ -67,7 +67,7 @@
   {
    "fieldname": "section_cart",
    "fieldtype": "Section Break",
-   "label": "Cart & Checkout"
+   "label": "🛒 Cart & Checkout"
   },
   {
    "fieldname": "cart_expiry_days",
@@ -103,7 +103,7 @@
   {
    "fieldname": "section_payments",
    "fieldtype": "Section Break",
-   "label": "Payments"
+   "label": "💳 Payments"
   },
   {
    "fieldname": "enable_esewa",
@@ -138,12 +138,12 @@
    "fieldtype": "Link",
    "label": "eSewa Payment Mode",
    "options": "Payment Mode",
-   "description": "App Payment Mode entry to use for eSewa transactions (the app's own Payment Mode doctype \u2014 the hub has no ERPNext, so ERPNext's Mode of Payment does not exist here)"
+   "description": "App Payment Mode entry to use for eSewa transactions (the app's own Payment Mode doctype — the hub has no ERPNext, so ERPNext's Mode of Payment does not exist here)"
   },
   {
    "fieldname": "section_payment_portal",
    "fieldtype": "Section Break",
-   "label": "Payment Portal"
+   "label": "💻 Payment Portal"
   },
   {
    "fieldname": "payment_sandbox_mode",
@@ -172,7 +172,7 @@
   {
    "fieldname": "section_loyalty",
    "fieldtype": "Section Break",
-   "label": "Loyalty Points"
+   "label": "🎁 Loyalty Points"
   },
   {
    "fieldname": "enable_loyalty",
@@ -207,7 +207,7 @@
   {
    "fieldname": "section_coupons",
    "fieldtype": "Section Break",
-   "label": "Coupons"
+   "label": "🎟️ Coupons"
   },
   {
    "fieldname": "enable_coupons",
@@ -229,7 +229,7 @@
   {
    "fieldname": "section_webhook",
    "fieldtype": "Section Break",
-   "label": "Webhooks & Events"
+   "label": "🌐 Webhooks & Events"
   },
   {
    "fieldname": "webhook_secret",
@@ -250,7 +250,7 @@
   {
    "fieldname": "section_redis",
    "fieldtype": "Section Break",
-   "label": "Redis Queue"
+   "label": "📬 Redis Queue"
   },
   {
    "fieldname": "redis_queue_url",
@@ -272,7 +272,7 @@
   {
    "fieldname": "section_retention",
    "fieldtype": "Section Break",
-   "label": "Data Retention"
+   "label": "🗑️ Data Retention"
   },
   {
    "fieldname": "retain_webhook_events_days",
@@ -310,7 +310,7 @@
   {
    "fieldname": "section_erpnext",
    "fieldtype": "Section Break",
-   "label": "ERPNext Integration",
+   "label": "⇄ ERPNext Integration",
    "description": "Connect saathimart to a separate ERPNext site for daily accounting sync. Orders, payments, and customers are pushed once per day."
   },
   {
@@ -386,7 +386,7 @@
   {
    "fieldname": "section_streams",
    "fieldtype": "Section Break",
-   "label": "Streams (Redis Mirror)"
+   "label": "📡 Streams (Redis Mirror)"
   },
   {
    "fieldname": "stream_mirror_enabled",
@@ -404,6 +404,36 @@
    "fieldtype": "Data",
    "label": "Stream Redis URL",
    "description": "Override only when the vendor consumes on a different Redis than this site's cache, e.g. redis://redis-cache:6379/1. Empty = use this site's cache Redis (same instance, same DB)."
+  },
+  {
+   "fieldname": "tab_commerce",
+   "fieldtype": "Tab Break",
+   "label": "Commerce",
+   "options": "fa fa-shopping-cart"
+  },
+  {
+   "fieldname": "tab_payments",
+   "fieldtype": "Tab Break",
+   "label": "Payments",
+   "options": "fa fa-credit-card"
+  },
+  {
+   "fieldname": "tab_sync_webhooks",
+   "fieldtype": "Tab Break",
+   "label": "Sync & Webhooks",
+   "options": "fa fa-refresh"
+  },
+  {
+   "fieldname": "tab_erpnext",
+   "fieldtype": "Tab Break",
+   "label": "ERPNext",
+   "options": "fa fa-exchange"
+  },
+  {
+   "fieldname": "tab_retention",
+   "fieldtype": "Tab Break",
+   "label": "Retention",
+   "options": "fa fa-trash"
   }
  ],
  "permissions": [
@@ -430,12 +460,14 @@
   "col_break_marketplace",
   "default_commission_pct",
   "tds_rate",
+  "tab_commerce",
   "section_cart",
   "cart_expiry_days",
   "abandoned_cart_hours",
   "col_break_cart",
   "min_order_amount",
   "free_delivery_above",
+  "tab_payments",
   "section_payments",
   "enable_esewa",
   "esewa_merchant_code",
@@ -458,6 +490,7 @@
   "enable_coupons",
   "col_break_coupons",
   "max_coupon_uses_per_user",
+  "tab_sync_webhooks",
   "section_webhook",
   "webhook_secret",
   "col_break_webhook",
@@ -466,12 +499,11 @@
   "redis_queue_url",
   "col_break_redis",
   "event_channel",
-  "section_retention",
-  "retain_webhook_events_days",
-  "retain_sync_outbox_days",
-  "col_break_retention",
-  "retain_cart_days",
-  "retain_orders_days",
+  "section_streams",
+  "stream_mirror_enabled",
+  "col_break_streams",
+  "stream_redis_url",
+  "tab_erpnext",
   "section_erpnext",
   "erpnext_site_url",
   "erpnext_api_key",
@@ -485,10 +517,13 @@
   "erpnext_delivery_charge_account",
   "erpnext_delivery_item_code",
   "erpnext_sync_enabled",
-  "section_streams",
-  "stream_mirror_enabled",
-  "col_break_streams",
-  "stream_redis_url"
+  "tab_retention",
+  "section_retention",
+  "retain_webhook_events_days",
+  "retain_sync_outbox_days",
+  "col_break_retention",
+  "retain_cart_days",
+  "retain_orders_days"
  ],
  "sort_field": "modified",
  "sort_order": "DESC",

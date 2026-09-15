@@ -68,6 +68,7 @@ def _get_config():
         "price_list":             s.erpnext_selling_price_list or "Standard Selling",
         "tax_template":           s.erpnext_taxes_template or "",
         "delivery_charge_account": s.erpnext_delivery_charge_account or "",
+        "delivery_item_code":      getattr(s, "erpnext_delivery_item_code", "") or "",
     }
 
 
@@ -283,10 +284,12 @@ def _sync_order_to_sales_order(config: dict, order) -> str:
         )
 
     # ── 4. Taxes ──────────────────────────────────────────────────────────
+    # Delivery charge is a SERVICE (logistics entity, separate PAN), not a
+    # tax — it rides as its own line item below, never inside the taxes[]
+    # rows, so tax reports stop inflating Output VAT by the delivery amount.
     taxes = []
     if config.get("tax_template"):
-        # Fetch the tax rows from the template so we can include delivery
-        # VAT on the same row chain (same logic as saathi_middleware).
+        # Fetch the template's tax rows (product VAT chain) for the order.
         try:
             tmpl = _request(
                 config, "GET",
@@ -305,13 +308,38 @@ def _sync_order_to_sales_order(config: dict, order) -> str:
         except ERPNextSyncError:
             pass  # template fetch failed — continue without taxes
 
-    if flt(order.delivery_charge) > 0 and config.get("delivery_charge_account"):
-        taxes.append({
-            "charge_type":  "Actual",
-            "account_head": config["delivery_charge_account"],
-            "description":  "Delivery Charge",
-            "tax_amount":   flt(order.delivery_charge),
-        })
+    if flt(order.delivery_charge) > 0:
+        delivery_item_code = config.get("delivery_item_code") or "DELIVERY SERVICE"
+        # ERPNext rejects line items whose item_code has no Item. Provision
+        # the non-stock service Item on the vendor site lazily — the delivery
+        # charge is a logistics service (separate PAN), never a tax row.
+        if not _erp_exists(config, "Item", [["item_code", "=", delivery_item_code]]):
+            try:
+                _erp_insert(config, "Item", {
+                    "item_code":        delivery_item_code,
+                    "item_name":        "Delivery Service",
+                    "item_group":       "Services",
+                    "is_stock_item":    0,
+                    "is_sales_item":    1,
+                    "is_purchase_item": 0,
+                    "stock_uom":        "Nos",
+                })
+            except Exception:
+                frappe.log_error(
+                    frappe.get_traceback(),
+                    f"Could not provision delivery Item {delivery_item_code}",
+                )
+        # Only ride the line if the Item exists (or was just created);
+        # otherwise skip the delivery row rather than failing the order push.
+        if _erp_exists(config, "Item", [["item_code", "=", delivery_item_code]]):
+            so_items.append({
+                "item_code":   delivery_item_code,
+                "item_name":   "Delivery Charge",
+                "qty":         1,
+                "rate":        flt(order.delivery_charge),
+                "warehouse":   config.get("warehouse", ""),
+                "description": "Delivery service charge (logistics entity, separate PAN)",
+            })
 
     # ── 5. Discount ───────────────────────────────────────────────────────
     total_discount = flt(order.coupon_discount) + flt(order.loyalty_discount)

@@ -371,6 +371,12 @@
    "description": "Account head for delivery charges on Sales Orders, e.g. Delivery Charges - SM"
   },
   {
+   "fieldname": "erpnext_delivery_item_code",
+   "fieldtype": "Data",
+   "label": "ERPNext Delivery Item Code",
+   "description": "Non-stock Item carrying the delivery charge as a line item on synced Sales Orders (a service of the logistics entity, not a tax). Created automatically in the ERPNext company if absent. Default: DELIVERY SERVICE"
+  },
+  {
    "fieldname": "erpnext_sync_enabled",
    "fieldtype": "Check",
    "label": "Enable Daily Sync",
@@ -477,6 +483,7 @@
   "col_break_erpnext_2",
   "erpnext_taxes_template",
   "erpnext_delivery_charge_account",
+  "erpnext_delivery_item_code",
   "erpnext_sync_enabled",
   "section_streams",
   "stream_mirror_enabled",

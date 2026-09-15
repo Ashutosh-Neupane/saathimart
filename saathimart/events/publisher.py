@@ -20,7 +20,7 @@ import urllib.parse
 from datetime import datetime, timezone
 
 import frappe
-from frappe.utils import now_datetime, add_to_date, flt
+from frappe.utils import now_datetime, add_to_date, flt, rounded
 
 from saathimart.api.utils import safe_enqueue
 
@@ -219,12 +219,43 @@ def publish_payment_received(order_id, amount=None, gateway="", reference=""):
         # Legacy path — order predates Vendor Fulfillment rows.
         fulfillments = [frappe._dict(vendor=doc.vendor, subtotal=doc.grand_total)]
 
+    # ── Per-vendor tax slice (three-party clearing-house model) ──────────
+    # The vendor must book its own sale: revenue + Output VAT. Whether a
+    # coupon reduces the vendor's taxable base depends on who absorbs it:
+    #   Vendor coupon   → reduces the base (vendor chose to discount)
+    #   Platform coupon → does NOT (platform reimburses the vendor)
+    #   Loyalty points  → does NOT (platform-funded retention expense)
+    # Slices are proportional to each vendor's share of the product base.
+    from saathimart.api.totals import NEPAL_VAT_RATE
+
+    total_product_base = sum(
+        flt(f.subtotal) for f in fulfillments if f.subtotal is not None
+    ) or 1.0
+    coupon_absorption = ""
+    if doc.get("coupon_code"):
+        coupon_absorption = frappe.db.get_value(
+            "Coupon", doc.coupon_code, "absorption_type"
+        ) or "Vendor"
+    coupon_discount = flt(doc.get("coupon_discount"))
+    loyalty_discount = flt(doc.get("loyalty_discount"))
+
     for f in fulfillments:
         if not f.vendor:
             continue
         vendor_url = frappe.db.get_value("Vendor", f.vendor, "frappe_site_url")
         if not vendor_url:
             continue
+
+        share = flt(f.subtotal) / total_product_base
+        vendor_coupon = coupon_discount * share if coupon_absorption == "Vendor" else 0.0
+        platform_coupon = coupon_discount * share if coupon_absorption == "Platform" else 0.0
+        loyalty_amt = loyalty_discount * share
+        # Price-inclusive back-out of the VAT-inclusive product base —
+        # same convention as totals.py applies to the whole bill.
+        vat_inclusive_base = max(flt(f.subtotal) - vendor_coupon, 0.0)
+        taxable_value = rounded(vat_inclusive_base / (1 + NEPAL_VAT_RATE / 100), 2)
+        tax_amount = rounded(vat_inclusive_base - taxable_value, 2)
+
         _enqueue("payment.received", {
             "order_id": doc.name,
             "vendor_id": f.vendor,
@@ -235,6 +266,15 @@ def publish_payment_received(order_id, amount=None, gateway="", reference=""):
             "gateway": gateway or doc.payment_method,
             "reference": reference or doc.payment_reference,
             "customer_name": doc.customer_name,
+            # Tax breakdown for the vendor's sale booking (revenue + Output
+            # VAT GL). Delivery belongs to the logistics entity, not the
+            # vendor's taxable base — sent separately for reference only.
+            "taxable_value": taxable_value,
+            "tax_amount": tax_amount,
+            "vendor_coupon_amount": rounded(vendor_coupon, 2),
+            "platform_coupon_amount": rounded(platform_coupon, 2),
+            "loyalty_amount": rounded(loyalty_amt, 2),
+            "delivery_charge": flt(f.get("delivery_charge")),
         }, target_site=vendor_url, target_vendor=f.vendor,
            event_id=f"payment.received.{doc.name}.{f.vendor}")
 

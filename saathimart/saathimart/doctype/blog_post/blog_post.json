@@ -53,7 +53,7 @@
   {
    "fieldname": "section_media",
    "fieldtype": "Section Break",
-   "label": "Media"
+   "label": "🖼️ Media"
   },
   {
    "fieldname": "cover_image",
@@ -68,7 +68,7 @@
   {
    "fieldname": "section_body",
    "fieldtype": "Section Break",
-   "label": "Content"
+   "label": "📝 Content"
   },
   {
    "fieldname": "content",
@@ -78,7 +78,7 @@
   {
    "fieldname": "section_seo",
    "fieldtype": "Section Break",
-   "label": "SEO"
+   "label": "🔍 SEO"
   },
   {
    "fieldname": "meta_title",

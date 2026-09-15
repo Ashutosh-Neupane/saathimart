@@ -104,7 +104,7 @@
   {
    "fieldname": "section_resolution",
    "fieldtype": "Section Break",
-   "label": "Resolution"
+   "label": "🛠️ Resolution"
   },
   {
    "fieldname": "resolution_notes",

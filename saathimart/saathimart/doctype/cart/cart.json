@@ -52,7 +52,7 @@
   {
    "fieldname": "section_items",
    "fieldtype": "Section Break",
-   "label": "Items"
+   "label": "🧾 Items"
   },
   {
    "fieldname": "items",
@@ -63,7 +63,7 @@
   {
    "fieldname": "section_totals",
    "fieldtype": "Section Break",
-   "label": "Totals"
+   "label": "🧮 Totals"
   },
   {
    "fieldname": "subtotal",
@@ -85,7 +85,7 @@
   {
    "fieldname": "section_sync",
    "fieldtype": "Section Break",
-   "label": "Offline Sync"
+   "label": "🔄 Offline Sync"
   },
   {
    "fieldname": "sync_token",

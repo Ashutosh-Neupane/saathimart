@@ -45,7 +45,7 @@
   {
    "fieldname": "section_location",
    "fieldtype": "Section Break",
-   "label": "Location"
+   "label": "📍 Location"
   },
   {
    "fieldname": "city",

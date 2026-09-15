@@ -76,7 +76,7 @@
   {
    "fieldname": "section_sync",
    "fieldtype": "Section Break",
-   "label": "Sync"
+   "label": "🔄 Sync"
   },
   {
    "fieldname": "last_updated",

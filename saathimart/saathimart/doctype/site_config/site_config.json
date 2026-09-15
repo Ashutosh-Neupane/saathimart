@@ -67,7 +67,7 @@
   {
    "fieldname": "section_contact",
    "fieldtype": "Section Break",
-   "label": "Contact"
+   "label": "📞 Contact"
   },
   {
    "fieldname": "contact_email",
@@ -107,7 +107,7 @@
   {
    "fieldname": "section_newsletter",
    "fieldtype": "Section Break",
-   "label": "Newsletter"
+   "label": "📬 Newsletter"
   },
   {
    "fieldname": "newsletter_email_label",
@@ -130,7 +130,7 @@
   {
    "fieldname": "section_seo",
    "fieldtype": "Section Break",
-   "label": "SEO Defaults"
+   "label": "🔍 SEO Defaults"
   },
   {
    "fieldname": "meta_title",
@@ -150,7 +150,7 @@
   {
    "fieldname": "section_scripts",
    "fieldtype": "Section Break",
-   "label": "Scripts"
+   "label": "📜 Scripts"
   },
   {
    "fieldname": "google_analytics_id",

@@ -54,7 +54,7 @@
   {
    "fieldname": "section_dates",
    "fieldtype": "Section Break",
-   "label": "Validity"
+   "label": "📅 Validity"
   },
   {
    "fieldname": "valid_from",
@@ -69,7 +69,7 @@
   {
    "fieldname": "section_media",
    "fieldtype": "Section Break",
-   "label": "Media"
+   "label": "🖼️ Media"
   },
   {
    "fieldname": "image",
@@ -84,7 +84,7 @@
   {
    "fieldname": "section_content",
    "fieldtype": "Section Break",
-   "label": "Content"
+   "label": "📝 Content"
   },
   {
    "fieldname": "description",
@@ -94,7 +94,7 @@
   {
    "fieldname": "section_highlights",
    "fieldtype": "Section Break",
-   "label": "Highlights"
+   "label": "✨ Highlights"
   },
   {
    "fieldname": "highlights",
@@ -105,7 +105,7 @@
   {
    "fieldname": "section_terms",
    "fieldtype": "Section Break",
-   "label": "Terms & Conditions"
+   "label": "📜 Terms & Conditions"
   },
   {
    "fieldname": "terms",
@@ -115,7 +115,7 @@
   {
    "fieldname": "section_seo",
    "fieldtype": "Section Break",
-   "label": "SEO"
+   "label": "🔍 SEO"
   },
   {
    "fieldname": "meta_title",
@@ -130,7 +130,7 @@
   {
    "fieldname": "section_linking",
    "fieldtype": "Section Break",
-   "label": "Discount Link"
+   "label": "🔗 Discount Link"
   },
   {
    "fieldname": "coupon_code",
@@ -160,6 +160,18 @@
    "fieldtype": "Tab Break",
    "label": "Connections",
    "show_dashboard": 1
+  },
+  {
+   "fieldname": "tab_content",
+   "fieldtype": "Tab Break",
+   "label": "Content",
+   "options": "fa fa-file-text"
+  },
+  {
+   "fieldname": "tab_scope_seo",
+   "fieldtype": "Tab Break",
+   "label": "Scope & SEO",
+   "options": "fa fa-search"
   }
  ],
  "title_field": "title",
@@ -194,6 +206,7 @@
   "section_dates",
   "valid_from",
   "valid_to",
+  "tab_content",
   "section_media",
   "image",
   "mobile_image",
@@ -203,6 +216,7 @@
   "highlights",
   "section_terms",
   "terms",
+  "tab_scope_seo",
   "section_seo",
   "meta_title",
   "meta_description",

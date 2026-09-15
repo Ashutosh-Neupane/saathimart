@@ -16,7 +16,7 @@
   {
    "fieldname": "section_content",
    "fieldtype": "Section Break",
-   "label": "Content"
+   "label": "🖼️ Content"
   },
   {
    "fieldname": "title_lines",
@@ -52,7 +52,7 @@
   {
    "fieldname": "section_meta",
    "fieldtype": "Section Break",
-   "label": "Meta"
+   "label": "ℹ️ Meta"
   },
   {
    "fieldname": "sort_order",

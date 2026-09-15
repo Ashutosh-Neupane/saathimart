@@ -25,7 +25,7 @@
   {
    "fieldname": "section_hero",
    "fieldtype": "Section Break",
-   "label": "Hero"
+   "label": "🌟 Hero"
   },
   {
    "fieldname": "hero_title",
@@ -45,7 +45,7 @@
   {
    "fieldname": "section_mission",
    "fieldtype": "Section Break",
-   "label": "Mission"
+   "label": "🎯 Mission"
   },
   {
    "fieldname": "mission_title",
@@ -61,7 +61,7 @@
   {
    "fieldname": "section_stats",
    "fieldtype": "Section Break",
-   "label": "Stats"
+   "label": "📊 Stats"
   },
   {
    "fieldname": "stats",
@@ -72,7 +72,7 @@
   {
    "fieldname": "section_features",
    "fieldtype": "Section Break",
-   "label": "Features"
+   "label": "✨ Features"
   },
   {
    "fieldname": "features_title",
@@ -89,7 +89,7 @@
   {
    "fieldname": "section_values",
    "fieldtype": "Section Break",
-   "label": "Values"
+   "label": "💎 Values"
   },
   {
    "fieldname": "values_title",
@@ -106,7 +106,7 @@
   {
    "fieldname": "section_cta",
    "fieldtype": "Section Break",
-   "label": "CTA"
+   "label": "📣 CTA"
   },
   {
    "fieldname": "cta_title",
@@ -122,7 +122,7 @@
   {
    "fieldname": "section_seo",
    "fieldtype": "Section Break",
-   "label": "SEO"
+   "label": "🔍 SEO"
   },
   {
    "fieldname": "meta_title",

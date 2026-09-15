@@ -52,7 +52,7 @@
   {
    "fieldname": "section_delivery",
    "fieldtype": "Section Break",
-   "label": "Delivery Perk"
+   "label": "🚚 Delivery Perk"
   },
   {
    "fieldname": "free_delivery",
@@ -71,7 +71,7 @@
   {
    "fieldname": "section_benefits",
    "fieldtype": "Section Break",
-   "label": "Discount Rules",
+   "label": "％ Discount Rules",
    "description": "Each row is one rule. A cart line matches at most one rule — the active one with the lowest priority."
   },
   {
@@ -83,7 +83,7 @@
   {
    "fieldname": "section_caps",
    "fieldtype": "Section Break",
-   "label": "Plan-wide Cap"
+   "label": "🚧 Plan-wide Cap"
   },
   {
    "fieldname": "max_discount_per_order",

@@ -49,7 +49,7 @@
   {
    "fieldname": "section_content",
    "fieldtype": "Section Break",
-   "label": "Content"
+   "label": "🖼️ Content"
   },
   {
    "fieldname": "heading",

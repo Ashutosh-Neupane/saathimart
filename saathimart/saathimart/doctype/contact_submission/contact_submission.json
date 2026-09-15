@@ -51,7 +51,7 @@
   {
    "fieldname": "section_message",
    "fieldtype": "Section Break",
-   "label": "Message"
+   "label": "💬 Message"
   },
   {
    "fieldname": "message",

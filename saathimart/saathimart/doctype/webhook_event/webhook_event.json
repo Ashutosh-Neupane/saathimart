@@ -92,7 +92,7 @@
   {
    "fieldname": "section_payload",
    "fieldtype": "Section Break",
-   "label": "Payload"
+   "label": "📨 Payload"
   },
   {
    "fieldname": "payload",

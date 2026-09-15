@@ -48,7 +48,7 @@
   {
    "fieldname": "section_qty",
    "fieldtype": "Section Break",
-   "label": "Quantity"
+   "label": "📦 Quantity"
   },
   {
    "fieldname": "qty_change",

@@ -39,7 +39,7 @@
   {
    "fieldname": "section_limits",
    "fieldtype": "Section Break",
-   "label": "Limits"
+   "label": "🔢 Limits"
   },
   {
    "fieldname": "min_points_to_redeem",
@@ -63,7 +63,7 @@
   {
    "fieldname": "section_tiers",
    "fieldtype": "Section Break",
-   "label": "Tiers"
+   "label": "🪜 Tiers"
   },
   {
    "fieldname": "tiers",

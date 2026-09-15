@@ -45,7 +45,7 @@
   {
    "fieldname": "section_blocks",
    "fieldtype": "Section Break",
-   "label": "Sections (JSON)"
+   "label": "🏍️ Sections (JSON)"
   },
   {
    "fieldname": "sections",

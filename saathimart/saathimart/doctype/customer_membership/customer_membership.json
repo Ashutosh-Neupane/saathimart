@@ -58,7 +58,7 @@
   {
    "fieldname": "section_purchase",
    "fieldtype": "Section Break",
-   "label": "Purchase"
+   "label": "🛍️ Purchase"
   },
   {
    "fieldname": "order",

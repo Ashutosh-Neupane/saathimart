@@ -58,7 +58,7 @@
   {
    "fieldname": "section_break_display",
    "fieldtype": "Section Break",
-   "label": "Storefront Display"
+   "label": "🏪 Storefront Display"
   },
   {
    "fieldname": "description",
@@ -75,7 +75,7 @@
   {
    "fieldname": "section_break_gateway",
    "fieldtype": "Section Break",
-   "label": "Gateway Config",
+   "label": "🔧 Gateway Config",
    "collapsible": 1
   },
   {

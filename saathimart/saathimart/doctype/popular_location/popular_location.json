@@ -53,7 +53,7 @@
   {
    "fieldname": "section_display",
    "fieldtype": "Section Break",
-   "label": "Display"
+   "label": "🖥️ Display"
   },
   {
    "fieldname": "sort_order",

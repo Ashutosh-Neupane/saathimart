@@ -87,7 +87,7 @@
   {
    "fieldname": "section_warehouse",
    "fieldtype": "Section Break",
-   "label": "Warehouse Scope"
+   "label": "🏭 Warehouse Scope"
   },
   {
    "fieldname": "warehouse_scope",

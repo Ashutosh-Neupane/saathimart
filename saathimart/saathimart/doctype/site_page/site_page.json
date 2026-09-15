@@ -47,7 +47,7 @@
   {
    "fieldname": "section_header",
    "fieldtype": "Section Break",
-   "label": "Header"
+   "label": "📑 Header"
   },
   {
    "fieldname": "breadcrumb_label",
@@ -63,7 +63,7 @@
   {
    "fieldname": "section_seo",
    "fieldtype": "Section Break",
-   "label": "SEO"
+   "label": "🔍 SEO"
   },
   {
    "fieldname": "meta_title",
@@ -83,7 +83,7 @@
   {
    "fieldname": "section_blocks",
    "fieldtype": "Section Break",
-   "label": "Sections (JSON)"
+   "label": "🧩 Sections (JSON)"
   },
   {
    "fieldname": "sections",

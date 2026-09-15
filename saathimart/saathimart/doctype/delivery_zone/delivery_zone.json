@@ -53,7 +53,7 @@
   {
    "fieldname": "section_loyalty",
    "fieldtype": "Section Break",
-   "label": "Loyalty & Onboarding"
+   "label": "🎁 Loyalty & Onboarding"
   },
   {
    "fieldname": "loyalty_multiplier",

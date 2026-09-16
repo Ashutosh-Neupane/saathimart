@@ -75,7 +75,10 @@ def _send(email, subject, content_html, reference_doctype=None, reference_name=N
             recipients=[email],
             subject=subject,
             content=content_html,
-            queue=True,  # Better for high volume - processes in background
+            # Frappe v16 sendmail has no `queue` kwarg (delayed=True already
+            # queues via Email Queue; passing queue=True raised
+            # TypeError on every send: "sendmail() got an unexpected
+            # keyword argument 'queue'").
             reference_doctype=reference_doctype,
             reference_name=reference_name,
         )

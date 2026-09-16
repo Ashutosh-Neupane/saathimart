@@ -37,7 +37,7 @@
   {
    "fieldname": "section_connection",
    "fieldtype": "Section Break",
-   "label": "🔗 Connection"
+   "label": "\ud83d\udd17 Connection"
   },
   {
    "fieldname": "frappe_site_url",
@@ -69,7 +69,7 @@
   {
    "fieldname": "section_webhook_meta",
    "fieldtype": "Section Break",
-   "label": "🌐 Webhook Sync State"
+   "label": "\ud83c\udf10 Webhook Sync State"
   },
   {
    "fieldname": "webhook_secret_old",
@@ -82,7 +82,7 @@
    "fieldtype": "Datetime",
    "label": "Webhook Secret Last Rotated",
    "read_only": 1,
-   "description": "Set by api/secret_rotation.py:rotate_vendor_secret on success. Blank means never rotated since this field was added — api/secret_rotation.py:check_stale_secrets treats that as due, using the vendor's creation date as the baseline."
+   "description": "Set by api/secret_rotation.py:rotate_vendor_secret on success. Blank means never rotated since this field was added \u2014 api/secret_rotation.py:check_stale_secrets treats that as due, using the vendor's creation date as the baseline."
   },
   {
    "fieldname": "col_break_whmeta",
@@ -101,26 +101,26 @@
    "fieldtype": "Int",
    "label": "Last Processed Event Seq",
    "read_only": 1,
-   "description": "Highest event_seq successfully delivered to this vendor, in order. Used to hold later-sequenced events until earlier gaps are filled — see api/event_ordering.py."
+   "description": "Highest event_seq successfully delivered to this vendor, in order. Used to hold later-sequenced events until earlier gaps are filled \u2014 see api/event_ordering.py."
   },
   {
    "fieldname": "section_sync_health",
    "fieldtype": "Section Break",
-   "label": "💓 Sync Health"
+   "label": "\ud83d\udc93 Sync Health"
   },
   {
    "fieldname": "clock_skew_seconds",
    "fieldtype": "Float",
    "label": "Clock Skew (seconds)",
    "read_only": 1,
-   "description": "Measured difference between this vendor's clock and the hub's, from inbound request timestamps. Positive = vendor ahead. Widens the HMAC timestamp tolerance for this vendor — see api/clock_sync.py."
+   "description": "Measured difference between this vendor's clock and the hub's, from inbound request timestamps. Positive = vendor ahead. Widens the HMAC timestamp tolerance for this vendor \u2014 see api/clock_sync.py."
   },
   {
    "fieldname": "error_count",
    "fieldtype": "Int",
    "label": "Error Count (DB Fallback)",
    "read_only": 1,
-   "description": "Delivery error counter used only when Redis is unavailable — see api/partial_failure.py._db_record_error. Not the live error-budget counter (that lives in cache)."
+   "description": "Delivery error counter used only when Redis is unavailable \u2014 see api/partial_failure.py._db_record_error. Not the live error-budget counter (that lives in cache)."
   },
   {
    "fieldname": "col_break_health",
@@ -144,7 +144,7 @@
   {
    "fieldname": "section_contact",
    "fieldtype": "Section Break",
-   "label": "📞 Contact"
+   "label": "\ud83d\udcde Contact"
   },
   {
    "fieldname": "contact_email",
@@ -170,7 +170,7 @@
   {
    "fieldname": "section_location",
    "fieldtype": "Section Break",
-   "label": "📍 Location & Delivery"
+   "label": "\ud83d\udccd Location & Delivery"
   },
   {
    "fieldname": "lat",
@@ -196,7 +196,7 @@
   {
    "fieldname": "section_stock",
    "fieldtype": "Section Break",
-   "label": "📦 Stock & Location"
+   "label": "\ud83d\udce6 Stock & Location"
   },
   {
    "fieldname": "warehouses",
@@ -231,7 +231,7 @@
   {
    "fieldname": "section_credentials_info",
    "fieldtype": "Section Break",
-   "label": "🔐 Credentials Info"
+   "label": "\ud83d\udd10 Credentials Info"
   },
   {
    "fieldname": "credentials_info",
@@ -243,7 +243,7 @@
   {
    "fieldname": "section_meta",
    "fieldtype": "Section Break",
-   "label": "ℹ️ Meta"
+   "label": "\u2139\ufe0f Meta"
   },
   {
    "fieldname": "notes",
@@ -316,12 +316,6 @@
   {
    "link_doctype": "Product Price",
    "link_fieldname": "vendor"
-  },
-  {
-   "group": "Vendor",
-   "link_doctype": "SaathiMart Settings",
-   "link_fieldname": "platform_ledger_vendor",
-   "link_type": "Document"
   },
   {
    "link_doctype": "Stock Ledger Entry",
@@ -401,5 +395,6 @@
  ],
  "sort_field": "modified",
  "sort_order": "DESC",
- "track_changes": 0
+ "track_changes": 0,
+ "connections": []
 }

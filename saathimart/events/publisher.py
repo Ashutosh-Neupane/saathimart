@@ -66,7 +66,15 @@ def _enqueue(event_type, payload, target_site=None, target_vendor=None, event_id
     # caller that (re)generates a fresh event_id for what is, by payload,
     # the same event within the last 10 minutes (e.g. a retried caller that
     # didn't reuse its own idempotency key). See api/event_dedup.py.
-    if target_vendor:
+    #
+    # Skipped when the caller passed an explicit event_id: those already
+    # get durable idempotency from the DB row check (same id → return),
+    # and a rolled-back transaction that never inserted its row would
+    # otherwise leave a poisoned Redis fingerprint that blocks the
+    # legitimate re-publish for the full 10-minute TTL (observed: a
+    # payment.received replay was swallowed after its enqueuing transaction
+    # rolled back, stranding the vendor's payment record).
+    if target_vendor and not event_id:
         from saathimart.api.event_dedup import is_duplicate
         if is_duplicate(event_type, target_vendor, payload):
             return

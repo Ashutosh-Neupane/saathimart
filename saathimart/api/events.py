@@ -59,7 +59,13 @@ def poll(since=None, limit=50):
     if since:
         filters["event_seq"] = [">", int(since)]
 
-    events = frappe.get_list(
+    # get_all, not get_list: the caller is an HMAC-authenticated Guest
+    # (verify_hub_secret above already bound the signature to THIS
+    # vendor's own webhook_secret), so Guest's lack of read permission on
+    # Webhook Event made every poll 403 — pull delivery could never work.
+    # The vendor_id filter keeps the query scoped to the caller's own
+    # events, so no cross-vendor data is reachable either way.
+    events = frappe.get_all(
         "Webhook Event",
         filters=filters,
         fields=["name", "event_type", "event_seq", "payload", "status", "creation"],

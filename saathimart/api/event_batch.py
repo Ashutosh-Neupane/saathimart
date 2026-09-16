@@ -16,6 +16,7 @@ the window are collected, deduplicated, and sent as one request.
 """
 import gzip
 import json
+import uuid
 
 import frappe
 from frappe.utils import now_datetime
@@ -124,6 +125,10 @@ def create_batch_event(vendor_name, batch_payload, compressed=False):
     """Create a Webhook Event for a batch."""
     event = frappe.new_doc("Webhook Event")
     event.event_type = batch_payload["event_type"]
+    # event_id is mandatory on Webhook Event — a raw insert without one
+    # fails validation (observed: batched deliveries died on
+    # MandatoryError: event_id before ever reaching a vendor).
+    event.event_id = f"{batch_payload['event_type']}.{vendor_name}.{uuid.uuid4()}"
     event.target_vendor = vendor_name
     event.target_site = frappe.db.get_value("Vendor", vendor_name, "frappe_site_url") or ""
     event.payload = json.dumps(batch_payload, default=str)

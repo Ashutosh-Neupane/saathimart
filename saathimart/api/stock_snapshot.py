@@ -12,6 +12,7 @@ Unlike reconciliation.py (which checks specific products), this sends
 the complete catalog snapshot so nothing is missed.
 """
 import json
+import uuid
 
 import frappe
 from frappe import _
@@ -71,6 +72,10 @@ def send_stock_snapshot(vendor_name):
     # Create event
     event = frappe.new_doc("Webhook Event")
     event.event_type = "stock.snapshot"
+    # event_id is mandatory on Webhook Event — a raw insert without one
+    # fails validation (observed: the snapshot cron silently failed for
+    # every vendor with MandatoryError: event_id).
+    event.event_id = f"stock.snapshot.{vendor_name}.{uuid.uuid4()}"
     event.target_vendor = vendor_name
     event.target_site = vendor_doc.frappe_site_url
     event.payload = json.dumps(payload, default=str)

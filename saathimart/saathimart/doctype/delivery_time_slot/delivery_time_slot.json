@@ -2,7 +2,7 @@
  "name": "Delivery Time Slot",
  "module": "Saathimart",
  "doctype": "DocType",
- "autoname": "format:DTS-.YYYY.-.#####",
+ "autoname": "DTS-.YYYY.-.#####",
  "naming_rule": "Expression (old style)",
  "engine": "InnoDB",
  "description": "Reusable delivery time windows (e.g., 10:00-12:00, 14:00-16:00)",
@@ -87,7 +87,7 @@
   {
    "fieldname": "section_warehouse",
    "fieldtype": "Section Break",
-   "label": "🏭 Warehouse Scope"
+   "label": "\ud83c\udfed Warehouse Scope"
   },
   {
    "fieldname": "warehouse_scope",

@@ -444,9 +444,27 @@ class TestCacheBust(unittest.TestCase):
     def test_delete_pattern_survives_old_wrappers(self):
         # A wrapper lacking delete_keys_pattern must not raise out of a bust.
         from saathimart.api import storefront_cache as sc
-        real = sc.frappe.cache().delete_keys_pattern
-        del type(sc.frappe.cache()).delete_keys_pattern
+        real = getattr(type(sc.frappe.cache()), "delete_keys_pattern", None)
+        if real is not None:
+            del type(sc.frappe.cache()).delete_keys_pattern
         try:
             storefront_cache.bust_product_cache("P1")  # must not raise
         finally:
-            type(sc.frappe.cache()).delete_keys_pattern = real
+            if real is not None:
+                type(sc.frappe.cache()).delete_keys_pattern = real
+
+    def test_delete_pattern_falls_back_to_delete_keys(self):
+        # Frappe 16 regression: the wrapper has glob delete_keys but NO
+        # delete_keys_pattern — the fallback must still delete for real.
+        from saathimart.api import storefront_cache as sc
+        store = self._store()
+        assert "sm_product:P1:hub::" in store
+        real = getattr(type(sc.frappe.cache()), "delete_keys_pattern", None)
+        if real is not None:
+            del type(sc.frappe.cache()).delete_keys_pattern
+        try:
+            storefront_cache.bust_product_cache("P1")
+        finally:
+            if real is not None:
+                type(sc.frappe.cache()).delete_keys_pattern = real
+        self.assertNotIn("sm_product:P1:hub::", store)  # actually deleted

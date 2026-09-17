@@ -87,13 +87,25 @@ def _secret() -> str:
 # ── Hub Redis invalidation ──────────────────────────────────────────────────
 
 def _delete_pattern(pattern: str):
-    """Best-effort glob delete; falls back silently on old redis wrappers."""
+    """Best-effort glob delete across redis-wrapper generations.
+
+    Frappe 16's wrapper implements wildcard deletion as delete_keys
+    ("Delete keys with wildcard *", via get_keys) and has NO
+    delete_keys_pattern — newer wrappers are the reverse. Try the
+    pattern-named API first, fall back to the glob delete_keys. The
+    previous code called only delete_keys_pattern, so on Frappe 16 every
+    pattern delete raised AttributeError and was swallowed: stale keys
+    served for their whole TTL. Both calls are wrapped — a busted redis
+    must never break a save; TTLs bound the staleness.
+    """
     cache = frappe.cache()
     try:
-        cache.delete_keys_pattern(pattern)
+        pattern_deleter = getattr(cache, "delete_keys_pattern", None)
+        if pattern_deleter is not None:
+            pattern_deleter(pattern)
+        else:
+            cache.delete_keys(pattern)
     except Exception:
-        # Very old wrappers lack delete_keys_pattern — the short TTLs make
-        # skipping pattern deletes acceptable rather than crashing a save.
         pass
 
 

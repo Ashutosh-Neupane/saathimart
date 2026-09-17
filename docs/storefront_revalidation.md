@@ -36,6 +36,22 @@ Body:    {"tags": ["catalog-list", "catalog-product-tea-500g", ...]}
 400 → disallowed/unknown tag (allowlist: content-, catalog-, orders-, cart-, location-)
 ```
 
+### Delivery & retry semantics
+
+Deliveries run on the `short` queue with **bounded exponential backoff**
+(default 4 attempts, 1s→2s→4s; worst case ~40s of a 90s job budget):
+
+| Response | Classified | Behaviour |
+|---|---|---|
+| 2xx | `ok` | done |
+| 429 / 5xx / timeout / transport error | `retry` | retried until attempts exhausted, then logged |
+| other 4xx (401 bad secret, 400 disallowed tag, 404 wrong route) | `fail` | **no retry** — a contract mismatch can't be fixed by retrying; logged once |
+
+Failures never raise into the caller (a dead storefront can't break a
+Frappe save). Smoke tests: `saathimart/tests/test_storefront_revalidation.py`
+(mock HTTP receiver proves the wire bytes, the retry classes, and that
+permanent rejections are attempted exactly once).
+
 Tag universe emitted by the hub:
 - `catalog-list` — any product/listing/filter-level change
 - `catalog-product-{slug}` — that product's detail data

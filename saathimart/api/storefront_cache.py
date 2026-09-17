@@ -185,7 +185,8 @@ def notify_nextjs(tags, remark: str = ""):
     safe_enqueue(
         _deliver_revalidation,
         queue="short",
-        timeout=60,
+        # Worst case: 4 attempts × 8s POST timeout + 7s backoff ≈ 40s.
+        timeout=90,
         url=url,
         secret=secret,
         tags=tags,
@@ -194,14 +195,15 @@ def notify_nextjs(tags, remark: str = ""):
     return True
 
 
-def _deliver_revalidation(url: str, secret: str, tags, remark: str = ""):
-    """Background job: one webhook POST. Logs failures, never raises.
+def _post_once(url: str, secret: str, tags, timeout: int = 8):
+    """One webhook POST. Returns (verdict, detail).
 
-    Returns True only on HTTP 200 from the storefront route; False on any
-    non-2xx rejection (wrong secret → 401, disallowed tag → 400) or
-    transport error. The return value isn't consumed by the queue, but the
-    smoke tests assert it and honest semantics keep it useful for a future
-    retry/last-status layer.
+    verdict: "ok"    — HTTP 2xx
+             "retry" — transient: transport error, timeout, 429, 5xx
+             "fail"  — permanent 4xx (wrong secret → 401, disallowed tag →
+                       400, wrong route → 404). Retrying cannot fix a
+                       contract mismatch; it would only burn worker time
+                       and spam the error log.
     """
     import requests
 
@@ -210,22 +212,61 @@ def _deliver_revalidation(url: str, secret: str, tags, remark: str = ""):
             url,
             json={"tags": list(tags)},
             headers={"x-revalidate-secret": secret},
-            timeout=8,
+            timeout=timeout,
         )
-        ok = resp.status_code == 200
-        if not ok:
+        code = resp.status_code
+        if 200 <= code < 300:
+            return "ok", ""
+        detail = f"HTTP {code} {(resp.text or '')[:300]}"
+        if code >= 500 or code == 429:
+            return "retry", detail
+        return "fail", detail
+    except Exception as e:
+        # Transport errors and timeouts are transient by nature.
+        return "retry", f"{type(e).__name__}: {e}"
+
+
+def _deliver_revalidation(
+    url: str, secret: str, tags, remark: str = "",
+    attempts: int = 4, base_delay: float = 1.0,
+):
+    """Background job: deliver with bounded exponential backoff.
+
+    Retries only transient failures (transport errors, timeouts, 429, 5xx);
+    permanent 4xx rejections stop immediately. Backoff is 1s, 2s, 4s, …
+    (base_delay doubled per attempt); with the default 4 attempts and the
+    8s per-POST timeout the worst-case job occupancy is ~40s, which fits
+    the queued job's 90s budget — revisit with a dedicated retry queue if
+    storefront outages ever become routine.
+
+    Never raises. Returns True only when some attempt got HTTP 2xx from
+    the storefront route; False on permanent rejection or attempt
+    exhaustion. The queue ignores the return value, but the smoke tests
+    assert it and it feeds a future last-status/audit layer.
+    """
+    import time
+
+    attempts = max(1, int(attempts))
+    detail = ""
+    for attempt in range(1, attempts + 1):
+        verdict, detail = _post_once(url, secret, tags)
+        if verdict == "ok":
+            return True
+        if verdict == "fail":
             frappe.log_error(
-                f"Next.js revalidation failed: HTTP {resp.status_code} "
-                f"{(resp.text or '')[:300]} — tags={tags} ({remark})",
+                f"Next.js revalidation rejected (permanent, no retry): "
+                f"{detail} — tags={tags} ({remark})",
                 "Storefront Revalidation",
             )
-        return ok
-    except Exception as e:
-        frappe.log_error(
-            f"Next.js revalidation request failed: {e} — tags={tags} ({remark})",
-            "Storefront Revalidation",
-        )
-        return False
+            return False
+        if attempt < attempts:
+            time.sleep(base_delay * (2 ** (attempt - 1)))
+    frappe.log_error(
+        f"Next.js revalidation failed after {attempts} attempts: "
+        f"{detail} — tags={tags} ({remark})",
+        "Storefront Revalidation",
+    )
+    return False
 
 
 # ── Tag mapping: hub doctypes → Next.js tags ───────────────────────────────

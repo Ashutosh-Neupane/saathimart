@@ -34,10 +34,12 @@ from saathimart.api import storefront_cache
 # ── Mock storefront: a real HTTP receiver that records requests ─────────────
 
 class _Receiver(BaseHTTPRequestHandler):
-    """Records every POST; `response_code` is a per-test knob."""
+    """Records every POST; `response_codes` is a per-test sequence — one
+    entry consumed per request, the last one repeating (so [503, 200]
+    simulates a storefront that recovers between attempts)."""
 
-    captured = []       # list of {path, secret, body}
-    response_code = 200
+    captured = []          # list of {path, secret, body}
+    response_codes = [200]
 
     def do_POST(self):  # noqa: N802 — http.server API
         length = int(self.headers.get("Content-Length") or 0)
@@ -47,7 +49,9 @@ class _Receiver(BaseHTTPRequestHandler):
             "secret": self.headers.get("x-revalidate-secret"),
             "body": body,
         })
-        self.send_response(_Receiver.response_code)
+        codes = _Receiver.response_codes
+        code = codes.pop(0) if len(codes) > 1 else codes[0]
+        self.send_response(code)
         self.send_header("Content-Type", "application/json")
         self.end_headers()
         self.wfile.write(b'{"revalidated": 1}')
@@ -80,7 +84,7 @@ class TestRevalidationWireContract(unittest.TestCase):
 
     def setUp(self):
         _Receiver.captured = []
-        _Receiver.response_code = 200
+        _Receiver.response_codes = [200]
 
     def test_delivers_exact_contract(self):
         ok = storefront_cache._deliver_revalidation(
@@ -104,7 +108,7 @@ class TestRevalidationWireContract(unittest.TestCase):
 
     def test_sender_treats_401_as_failure(self):
         # The real route rejects a wrong/missing secret with 401.
-        _Receiver.response_code = 401
+        _Receiver.response_codes = [401]
         ok = storefront_cache._deliver_revalidation(
             url=self.url, secret="wrong-secret", tags=["catalog-list"],
             remark="smoke",
@@ -114,7 +118,7 @@ class TestRevalidationWireContract(unittest.TestCase):
 
     def test_sender_treats_400_disallowed_tag_as_failure(self):
         # The real route 400s on unknown/disallowed tag prefixes.
-        _Receiver.response_code = 400
+        _Receiver.response_codes = [400]
         ok = storefront_cache._deliver_revalidation(
             url=self.url, secret="s", tags=["evil-tag"], remark="smoke",
         )
@@ -128,6 +132,55 @@ class TestRevalidationWireContract(unittest.TestCase):
         )
         # Logged, not raised, and honestly reported as not-delivered — a dead
         # storefront must never break a save, but must not claim success.
+        self.assertFalse(ok)
+        self.assertEqual(_Receiver.captured, [])
+
+    # ── Retry layer: transient retried, permanent not ─────────────────────
+
+    def test_retries_transient_then_succeeds(self):
+        # 429 then 503 then 200: both transient codes retried, delivery
+        # succeeds on attempt 3. Tiny backoff keeps the test fast.
+        _Receiver.response_codes = [429, 503, 200]
+        ok = storefront_cache._deliver_revalidation(
+            url=self.url, secret="s", tags=["catalog-list"],
+            remark="smoke", attempts=4, base_delay=0.01,
+        )
+        self.assertTrue(ok)
+        self.assertEqual(len(_Receiver.captured), 3)
+        # every attempt carried the same contract
+        self.assertTrue(all(r["path"] == "/api/revalidate" for r in _Receiver.captured))
+
+    def test_does_not_retry_permanent_rejections(self):
+        # 401/400/404 are contract mismatches — retrying cannot fix them,
+        # so exactly ONE request must be made.
+        for code in (401, 400, 404):
+            with self.subTest(code=code):
+                _Receiver.captured = []
+                _Receiver.response_codes = [code]
+                ok = storefront_cache._deliver_revalidation(
+                    url=self.url, secret="s", tags=["catalog-list"],
+                    remark="smoke", attempts=4, base_delay=0.01,
+                )
+                self.assertFalse(ok)
+                self.assertEqual(len(_Receiver.captured), 1)
+
+    def test_exhausts_retries_on_persistent_5xx(self):
+        _Receiver.response_codes = [503]
+        ok = storefront_cache._deliver_revalidation(
+            url=self.url, secret="s", tags=["catalog-list"],
+            remark="smoke", attempts=3, base_delay=0.01,
+        )
+        self.assertFalse(ok)
+        self.assertEqual(len(_Receiver.captured), 3)  # every attempt made
+
+    def test_retries_connection_errors(self):
+        # Transport failures are transient: attempts are all spent, then
+        # the exhaustion is reported honestly.
+        ok = storefront_cache._deliver_revalidation(
+            url="http://127.0.0.1:1/api/revalidate",
+            secret="s", tags=["catalog-list"], remark="smoke",
+            attempts=2, base_delay=0.01,
+        )
         self.assertFalse(ok)
         self.assertEqual(_Receiver.captured, [])
 

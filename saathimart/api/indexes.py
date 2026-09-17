@@ -39,9 +39,11 @@ INDEXES = [
     ("tabProduct", "slug", False, "Product: slug-based lookup"),
     ("tabProduct", "status, avg_rating", False, "Product: rating sort"),
 
-    # ── Cart (session-based lookup) ──
+    # ── Cart (lookup identity is `user` + status — cart.py never queries
+    # by email; a customer_email index here referenced a column the Cart
+    # table doesn't have and logged "missing columns" every migrate) ──
     ("tabCart", "session_id", False, "Cart: session lookup"),
-    ("tabCart", "customer_email", False, "Cart: customer cart lookup"),
+    ("tabCart", "user, status", False, "Cart: customer cart lookup"),
 
     # ── SM Notification (user inbox) ──
     ("tabSM Notification", "user, `read`", False, "Notification: user inbox query"),

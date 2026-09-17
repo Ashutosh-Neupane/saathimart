@@ -237,6 +237,12 @@ def _make_coupon(code, coupon_type="Percentage", pct=10, amount=0,
         for usage in frappe.get_all("Coupon Usage",
                                     filters={"coupon": code}, pluck="name"):
             frappe.delete_doc("Coupon Usage", usage, ignore_permissions=True)
+        # Offer rows (seeded storefront content) link coupon_code too —
+        # same LinkExistsError class. Unlink rather than delete: the
+        # offers are demo data the storefront expects to keep.
+        for offer in frappe.get_all("Offer",
+                                    filters={"coupon_code": code}, pluck="name"):
+            frappe.db.set_value("Offer", offer, "coupon_code", None)
         frappe.delete_doc("Coupon", code, ignore_permissions=True)
     doc = frappe.new_doc("Coupon")
     doc.coupon_code          = code

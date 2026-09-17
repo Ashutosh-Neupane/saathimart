@@ -44,6 +44,10 @@
    "fieldtype": "Tab Break",
    "label": "Connections",
    "show_dashboard": 1
+  },
+  {
+   "fieldname": "col_break_1",
+   "fieldtype": "Column Break"
   }
  ],
  "permissions": [
@@ -72,6 +76,7 @@
   "user",
   "otp",
   "purpose",
+  "col_break_1",
   "new_email",
   "expires_at",
   "tab_connections"

@@ -84,7 +84,7 @@
   {
    "fieldname": "section_payment",
    "fieldtype": "Section Break",
-   "label": "💸 Payment"
+   "label": "\ud83d\udcb8 Payment"
   },
   {
    "fieldname": "payment_method",
@@ -122,6 +122,10 @@
    "fieldtype": "Tab Break",
    "label": "Connections",
    "show_dashboard": 1
+  },
+  {
+   "fieldname": "col_break_4",
+   "fieldtype": "Column Break"
   }
  ],
  "permissions": [
@@ -161,6 +165,7 @@
   "col_break_2",
   "total_sales",
   "fulfillments_count",
+  "col_break_4",
   "commission_pct",
   "commission_amount",
   "payout_amount",

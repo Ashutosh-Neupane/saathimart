@@ -50,7 +50,7 @@
    "label": "Priority",
    "default": "3",
    "in_list_view": 1,
-   "description": "1=Critical, 2=High, 3=Normal, 4=Low. Lower delivers first — see api/event_priority.py."
+   "description": "1=Critical, 2=High, 3=Normal, 4=Low. Lower delivers first \u2014 see api/event_priority.py."
   },
   {
    "fieldname": "col_break_1",
@@ -80,19 +80,19 @@
    "options": "Push\nPull\nEmail",
    "default": "Push",
    "read_only": 1,
-   "description": "How this event actually reached (or is waiting to reach) the vendor — see api/fallback_delivery.py."
+   "description": "How this event actually reached (or is waiting to reach) the vendor \u2014 see api/fallback_delivery.py."
   },
   {
    "fieldname": "compressed",
    "fieldtype": "Check",
    "label": "Compressed",
    "default": "0",
-   "description": "Payload is gzip-compressed batch content — see api/event_batch.py."
+   "description": "Payload is gzip-compressed batch content \u2014 see api/event_batch.py."
   },
   {
    "fieldname": "section_payload",
    "fieldtype": "Section Break",
-   "label": "📨 Payload"
+   "label": "\ud83d\udce8 Payload"
   },
   {
    "fieldname": "payload",
@@ -122,6 +122,10 @@
    "fieldname": "tab_payload",
    "fieldtype": "Tab Break",
    "label": "Payload"
+  },
+  {
+   "fieldname": "col_break_main",
+   "fieldtype": "Column Break"
   }
  ],
  "permissions": [
@@ -144,6 +148,7 @@
   "event_type",
   "event_id",
   "event_seq",
+  "col_break_main",
   "target_site",
   "target_vendor",
   "status",

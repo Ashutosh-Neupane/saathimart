@@ -9,11 +9,13 @@
  "field_order": [
   "slot_name",
   "day_of_week",
+  "col_break_1b",
   "start_time",
   "end_time",
   "column_break_1",
   "is_active",
   "max_orders",
+  "col_break_2",
   "current_orders",
   "delivery_charge_override",
   "section_warehouse",
@@ -106,6 +108,14 @@
    "fieldtype": "Tab Break",
    "label": "Connections",
    "show_dashboard": 1
+  },
+  {
+   "fieldname": "col_break_1b",
+   "fieldtype": "Column Break"
+  },
+  {
+   "fieldname": "col_break_2",
+   "fieldtype": "Column Break"
   }
  ],
  "title_field": "slot_name",

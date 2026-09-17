@@ -21,7 +21,7 @@
    "reqd": 1,
    "unique": 1,
    "in_list_view": 1,
-   "description": "Also the docname — one usage row per order, so a retried checkout can never double-count a redemption"
+   "description": "Also the docname \u2014 one usage row per order, so a retried checkout can never double-count a redemption"
   },
   {
    "fieldname": "col_break_1",
@@ -33,7 +33,7 @@
    "label": "Customer Phone",
    "in_list_view": 1,
    "search_index": 1,
-   "description": "The per-customer limit key. Phone, not email, because guests check out with a phone number and no account — keying on email would let a guest bypass max_uses_per_user entirely."
+   "description": "The per-customer limit key. Phone, not email, because guests check out with a phone number and no account \u2014 keying on email would let a guest bypass max_uses_per_user entirely."
   },
   {
    "fieldname": "customer_email",
@@ -56,6 +56,10 @@
    "fieldtype": "Tab Break",
    "label": "Connections",
    "show_dashboard": 1
+  },
+  {
+   "fieldname": "col_break_2",
+   "fieldtype": "Column Break"
   }
  ],
  "permissions": [
@@ -80,6 +84,7 @@
   "col_break_1",
   "customer_phone",
   "customer_email",
+  "col_break_2",
   "discount_amount",
   "used_at",
   "tab_connections"

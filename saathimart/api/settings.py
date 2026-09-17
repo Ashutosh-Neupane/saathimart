@@ -102,10 +102,6 @@ def get_event_channel() -> str:
     return getattr(get_settings(), "event_channel", "saathimart:events") or "saathimart:events"
 
 
-def get_redis_queue_url() -> str:
-    return getattr(get_settings(), "redis_queue_url", "redis://redis-queue:6379") or "redis://redis-queue:6379"
-
-
 def get_retain_webhook_events_days() -> int:
     return int(getattr(get_settings(), "retain_webhook_events_days", 30) or 30)
 

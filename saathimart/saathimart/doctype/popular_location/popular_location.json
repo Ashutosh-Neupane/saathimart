@@ -53,7 +53,7 @@
   {
    "fieldname": "section_display",
    "fieldtype": "Section Break",
-   "label": "🖥️ Display"
+   "label": "\ud83d\udda5\ufe0f Display"
   },
   {
    "fieldname": "sort_order",
@@ -74,6 +74,10 @@
    "fieldtype": "Tab Break",
    "label": "Connections",
    "show_dashboard": 1
+  },
+  {
+   "fieldname": "col_break_1b",
+   "fieldtype": "Column Break"
   }
  ],
  "title_field": "location_name",
@@ -100,6 +104,7 @@
  "field_order": [
   "location_name",
   "slug",
+  "col_break_1b",
   "city",
   "district",
   "col_break_1",

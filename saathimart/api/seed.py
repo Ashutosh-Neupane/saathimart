@@ -57,7 +57,7 @@ WIPE_TABLES = [
     "Order Tax", "Order Item", "Order Event Log", "Order",
     "Cart Item", "Cart",
     "Payment Log", "Stock Ledger Entry", "Vendor Payout",
-    "Webhook Event", "Dead Letter Log",
+    "Webhook Event",
     # marketing / loyalty / membership
     "Coupon Usage", "Coupon",
     "Loyalty Point Entry", "Membership Saving Entry", "Customer Membership",

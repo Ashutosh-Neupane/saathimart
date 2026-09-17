@@ -50,8 +50,6 @@ doc_events = {
             "saathimart.events.publisher.on_order_created",
             "saathimart.api.order_events.on_order_created",
             "saathimart.api.audit.log_order_update",
-            # Publish to Redis Stream (via frappe.enqueue)
-            "saathimart.streams.publisher.publish_order_created",
         ],
         "on_update": [
             "saathimart.events.publisher.on_order_updated",
@@ -182,10 +180,6 @@ scheduler_events = {
         "saathimart.api.dead_letter.retry_dead_letters",
         # Dead letter alert when threshold exceeded
         "saathimart.api.dead_letter.dead_letter_alert",
-        # Redis Streams: Check all DLQs and move failed messages
-        "saathimart.streams.dead_letter.check_all_dead_letter_queues",
-        # Redis Streams: Send stream health digest to admins
-        "saathimart.streams.monitor.send_stream_health_digest",
         # Alert (never auto-rotates) when a vendor's webhook secret is overdue
         "saathimart.api.secret_rotation.check_stale_secrets",
         # Push notification: clean up stale device tokens (90-day inactivity)

@@ -66,14 +66,13 @@ def execute(filters=None):
         ORDER BY gross_sales DESC
     """, values, as_dict=True)
 
-    # Platform-wide commission rate (SaathiMart Settings) — one rate for all
-    # vendors, so it's stamped on every row after the aggregate query instead
-    # of being selected from the (now nonexistent) per-vendor column.
-    from saathimart.api.commission import get_default_commission_pct
-    platform_pct = get_default_commission_pct()
+    # Per-vendor contract rate (hub Vendor row, platform-wide fallback) —
+    # resolved through the commission seam so this report always matches
+    # what accounting and payouts actually charge.
+    from saathimart.api.commission import get_commission_pct_for_vendor
     for row in data:
-        row.commission_pct = platform_pct
-        commission_pct = platform_pct
+        commission_pct = get_commission_pct_for_vendor(row.vendor)
+        row.commission_pct = commission_pct
         settled_sales = flt(row.settled_sales)
         paid_out_sales = flt(row.paid_out_sales)
         unpaid_settled_sales = settled_sales - paid_out_sales

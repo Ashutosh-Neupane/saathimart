@@ -53,7 +53,7 @@
   {
    "fieldname": "section_media",
    "fieldtype": "Section Break",
-   "label": "🖼️ Media"
+   "label": "\ud83d\uddbc\ufe0f Media"
   },
   {
    "fieldname": "cover_image",
@@ -68,7 +68,7 @@
   {
    "fieldname": "section_body",
    "fieldtype": "Section Break",
-   "label": "📝 Content"
+   "label": "\ud83d\udcdd Content"
   },
   {
    "fieldname": "content",
@@ -78,7 +78,7 @@
   {
    "fieldname": "section_seo",
    "fieldtype": "Section Break",
-   "label": "🔍 SEO"
+   "label": "\ud83d\udd0d SEO"
   },
   {
    "fieldname": "meta_title",
@@ -105,6 +105,10 @@
    "fieldname": "tab_seo",
    "fieldtype": "Tab Break",
    "label": "SEO"
+  },
+  {
+   "fieldname": "col_break_2",
+   "fieldtype": "Column Break"
   }
  ],
  "title_field": "title",
@@ -135,6 +139,7 @@
   "col_break_1",
   "status",
   "published_at",
+  "col_break_2",
   "category",
   "tags",
   "tab_content",

@@ -49,7 +49,7 @@
   {
    "fieldname": "section_content",
    "fieldtype": "Section Break",
-   "label": "🖼️ Content"
+   "label": "\ud83d\uddbc\ufe0f Content"
   },
   {
    "fieldname": "heading",
@@ -121,6 +121,10 @@
    "fieldname": "tab_appearance",
    "fieldtype": "Tab Break",
    "label": "Appearance"
+  },
+  {
+   "fieldname": "col_break_cta",
+   "fieldtype": "Column Break"
   }
  ],
  "title_field": "title",
@@ -158,6 +162,7 @@
   "subheading",
   "cta_label",
   "cta_url",
+  "col_break_cta",
   "cta_secondary_label",
   "cta_secondary_url",
   "tab_appearance",

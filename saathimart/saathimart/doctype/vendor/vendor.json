@@ -67,6 +67,37 @@
    "description": "Per-vendor HMAC secret for inbound webhook authentication. Leave blank to use the global Settings secret."
   },
   {
+   "fieldname": "section_commission",
+   "fieldtype": "Section Break",
+   "label": "\ud83d\udcb0 Commission & TDS"
+  },
+  {
+   "fieldname": "commission_pct",
+   "fieldtype": "Float",
+   "label": "SaathiMart Commission %",
+   "default": "10",
+   "non_negative": 1,
+   "description": "Commission this vendor pays the platform on hub orders (agreed contract rate). Settlements and payout math read this via saathimart.api.commission."
+  },
+  {
+   "fieldname": "tds_rate",
+   "fieldtype": "Float",
+   "label": "TDS Rate on Commission %",
+   "default": "15",
+   "non_negative": 1,
+   "description": "Withholding applied to the commission under Income Tax Act 2058 s88 \u2014 the vendor deposits it with IRD and certifies it to the platform."
+  },
+  {
+   "fieldname": "col_break_commission",
+   "fieldtype": "Column Break"
+  },
+  {
+   "fieldname": "commission_effective_note",
+   "fieldtype": "Small Text",
+   "label": "Notes",
+   "description": "Optional contract notes: effective date, negotiated rate, certificate cadence."
+  },
+  {
    "fieldname": "section_webhook_meta",
    "fieldtype": "Section Break",
    "label": "\ud83c\udf10 Webhook Sync State"
@@ -273,6 +304,29 @@
    "fieldtype": "Tab Break",
    "label": "Connections",
    "show_dashboard": 1
+  },
+  {
+   "fieldname": "section_reconciliation",
+   "fieldtype": "Section Break",
+   "label": "Stock Reconciliation"
+  },
+  {
+   "fieldname": "reconciliation_enabled",
+   "fieldtype": "Check",
+   "label": "Hourly Reconciliation Enabled",
+   "default": "1",
+   "description": "Hub-side safety net: hourly comparison of this vendor's real ERPNext stock against Vendor Stock, independent of the vendor's own reconciliation job (if they run one)."
+  },
+  {
+   "fieldname": "col_break_recon",
+   "fieldtype": "Column Break"
+  },
+  {
+   "fieldname": "reconciliation_threshold_pct",
+   "fieldtype": "Float",
+   "label": "Drift Threshold (%)",
+   "default": "5",
+   "description": "Auto-correct silently within this percentage drift; beyond it, flag for review instead."
   }
  ],
  "title_field": "vendor_name",
@@ -298,12 +352,6 @@
   {
    "link_doctype": "Cart Item",
    "link_fieldname": "vendor"
-  },
-  {
-   "group": "Vendor",
-   "link_doctype": "Dead Letter Log",
-   "link_fieldname": "vendor_id",
-   "link_type": "Document"
   },
   {
    "link_doctype": "Order",
@@ -369,6 +417,10 @@
   "col_break_health",
   "hub_status",
   "last_sync_at",
+  "section_reconciliation",
+  "reconciliation_enabled",
+  "col_break_recon",
+  "reconciliation_threshold_pct",
   "tab_location_stock",
   "section_contact",
   "contact_email",

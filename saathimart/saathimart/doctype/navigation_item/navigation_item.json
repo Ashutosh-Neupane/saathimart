@@ -62,6 +62,10 @@
    "fieldtype": "Tab Break",
    "label": "Connections",
    "show_dashboard": 1
+  },
+  {
+   "fieldname": "col_break_2",
+   "fieldtype": "Column Break"
   }
  ],
  "title_field": "label",
@@ -97,6 +101,7 @@
   "col_break_1",
   "parent_item",
   "sort_order",
+  "col_break_2",
   "is_active",
   "open_in_new_tab",
   "icon",

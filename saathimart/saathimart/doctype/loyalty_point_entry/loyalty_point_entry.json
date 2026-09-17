@@ -59,13 +59,13 @@
    "fieldtype": "Select",
    "label": "Source",
    "options": "order\nreferral\nbirthday",
-   "description": "Set by api/loyalty_enhanced.py — what triggered this entry, distinct from entry_type (earn/redeem)."
+   "description": "Set by api/loyalty_enhanced.py \u2014 what triggered this entry, distinct from entry_type (earn/redeem)."
   },
   {
    "fieldname": "tier",
    "fieldtype": "Data",
    "label": "Tier",
-   "description": "Customer's loyalty tier (Bronze/Silver/Gold) at the time this entry was recorded — set by api/loyalty_enhanced.py."
+   "description": "Customer's loyalty tier (Bronze/Silver/Gold) at the time this entry was recorded \u2014 set by api/loyalty_enhanced.py."
   },
   {
    "fieldname": "remarks",
@@ -77,6 +77,10 @@
    "fieldtype": "Tab Break",
    "label": "Connections",
    "show_dashboard": 1
+  },
+  {
+   "fieldname": "col_break_2",
+   "fieldtype": "Column Break"
   }
  ],
  "permissions": [
@@ -107,6 +111,7 @@
   "entry_type",
   "order",
   "expiry_date",
+  "col_break_2",
   "is_expired",
   "source",
   "tier",

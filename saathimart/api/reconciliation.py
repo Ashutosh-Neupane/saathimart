@@ -12,14 +12,27 @@ from frappe import _
 from frappe.utils import flt, now_datetime, add_to_date
 
 
-TOLERANCE_PCT = 5.0  # auto-correct if within 5%
+DEFAULT_TOLERANCE_PCT = 5.0  # fallback when a Vendor has no threshold set
+
+
+def _tolerance_pct(vendor_name):
+    """Per-vendor drift tolerance — Vendor.reconciliation_threshold_pct,
+    falling back to DEFAULT_TOLERANCE_PCT when unset (0, None, or the
+    vendor predates this field). Previously hardcoded as one global
+    constant with no way for a hub admin to tune or disable this per
+    vendor; the field existed on the *vendor's own* Vendor Config for
+    their own separate reconciliation job (saathimart_vendor/tasks.py) but
+    had no equivalent here for this job, which the hub actually runs and
+    actually controls."""
+    pct = flt(frappe.db.get_value("Vendor", vendor_name, "reconciliation_threshold_pct"))
+    return pct if pct > 0 else DEFAULT_TOLERANCE_PCT
 
 
 def reconcile_stock_hourly():
     """Cron: hourly. Checks each vendor's stock against hub records."""
     vendors = frappe.get_all(
         "Vendor",
-        filters={"status": "Active", "hub_status": "Active"},
+        filters={"status": "Active", "hub_status": "Active", "reconciliation_enabled": 1},
         fields=["name", "vendor_name", "frappe_site_url"],
     )
     for v in vendors:
@@ -89,7 +102,8 @@ def correct_or_flag(vendor_name, vendor_stock_name, product, warehouse, hub_qty,
     Shared correction decision — same tolerance rule both the hourly
     per-product reconciliation and stock_snapshot's full-catalog discrepancy
     report use: auto-correct Vendor Stock toward the vendor's real qty
-    within TOLERANCE_PCT, otherwise leave it and let the caller flag it for
+    within this vendor's own threshold (Vendor.reconciliation_threshold_pct,
+    see _tolerance_pct), otherwise leave it and let the caller flag it for
     review. Extracted so a snapshot-reported discrepancy gets exactly the
     same correction the hourly job would eventually give it, instead of
     only being logged for a human to notice.
@@ -100,7 +114,7 @@ def correct_or_flag(vendor_name, vendor_stock_name, product, warehouse, hub_qty,
     if mismatch == 0:
         return "unchanged"
 
-    tolerance = max(flt(hub_qty) * TOLERANCE_PCT / 100, 1)
+    tolerance = max(flt(hub_qty) * _tolerance_pct(vendor_name) / 100, 1)
 
     if mismatch <= tolerance:
         frappe.db.set_value("Vendor Stock", vendor_stock_name, {

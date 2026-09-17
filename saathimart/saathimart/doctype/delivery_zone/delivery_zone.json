@@ -53,7 +53,7 @@
   {
    "fieldname": "section_loyalty",
    "fieldtype": "Section Break",
-   "label": "🎁 Loyalty & Onboarding"
+   "label": "\ud83c\udf81 Loyalty & Onboarding"
   },
   {
    "fieldname": "loyalty_multiplier",
@@ -92,6 +92,10 @@
    "fieldtype": "Tab Break",
    "label": "Connections",
    "show_dashboard": 1
+  },
+  {
+   "fieldname": "col_break_2",
+   "fieldtype": "Column Break"
   }
  ],
  "title_field": "zone_name",
@@ -143,6 +147,7 @@
   "col_break_1",
   "is_active",
   "delivery_charge",
+  "col_break_2",
   "free_delivery_above",
   "estimated_days",
   "section_loyalty",

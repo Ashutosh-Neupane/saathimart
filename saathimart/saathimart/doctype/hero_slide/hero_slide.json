@@ -16,7 +16,7 @@
   {
    "fieldname": "section_content",
    "fieldtype": "Section Break",
-   "label": "🖼️ Content"
+   "label": "\ud83d\uddbc\ufe0f Content"
   },
   {
    "fieldname": "title_lines",
@@ -62,7 +62,7 @@
   {
    "fieldname": "section_meta",
    "fieldtype": "Section Break",
-   "label": "ℹ️ Meta"
+   "label": "\u2139\ufe0f Meta"
   },
   {
    "fieldname": "sort_order",
@@ -81,6 +81,10 @@
    "fieldtype": "Tab Break",
    "label": "Connections",
    "show_dashboard": 1
+  },
+  {
+   "fieldname": "col_break_2",
+   "fieldtype": "Column Break"
   }
  ],
  "title_field": "slide_key",
@@ -120,6 +124,7 @@
   "col_break_1",
   "cta_label",
   "cta_href",
+  "col_break_2",
   "cta_secondary_label",
   "cta_secondary_href",
   "section_meta",

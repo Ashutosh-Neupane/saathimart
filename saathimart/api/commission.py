@@ -28,11 +28,16 @@ def get_default_commission_pct() -> float:
 
 
 def get_commission_pct_for_vendor(vendor: str | None) -> float:
-	"""Commission % for a vendor. Currently the platform-wide rate for every
-	vendor; a per-vendor override can slot in here later without changing
-	any caller (several tests and the reconciliation report already treat
-	vendors as sharing one rate).
+	"""Commission % for a vendor: the vendor's own contract rate from the
+	hub Vendor row (Vendor.commission_pct, set per vendor on the hub desk),
+	falling back to the platform-wide SaathiMart Settings rate when the
+	vendor has no explicit override. Reads hub-local data only — safe from
+	any hub process (accounting, payouts, reports, settlement push).
 	"""
+	if vendor:
+		pct = frappe.db.get_value("Vendor", vendor, "commission_pct")
+		if pct is not None and flt(pct) > 0:
+			return flt(pct)
 	return get_default_commission_pct()
 
 

@@ -51,7 +51,7 @@
   {
    "fieldname": "section_message",
    "fieldtype": "Section Break",
-   "label": "💬 Message"
+   "label": "\ud83d\udcac Message"
   },
   {
    "fieldname": "message",
@@ -64,6 +64,10 @@
    "fieldtype": "Tab Break",
    "label": "Connections",
    "show_dashboard": 1
+  },
+  {
+   "fieldname": "col_break_2",
+   "fieldtype": "Column Break"
   }
  ],
  "title_field": "full_name",
@@ -87,6 +91,7 @@
  "field_order": [
   "full_name",
   "email",
+  "col_break_2",
   "phone",
   "subject",
   "col_break_1",

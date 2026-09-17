@@ -10,6 +10,7 @@
   "ref_doctype",
   "docname",
   "action",
+  "col_break_main",
   "user",
   "changes",
   "old_value",
@@ -94,6 +95,10 @@
    "fieldtype": "Tab Break",
    "label": "Connections",
    "show_dashboard": 1
+  },
+  {
+   "fieldname": "col_break_main",
+   "fieldtype": "Column Break"
   }
  ],
  "title_field": "ref_doctype",

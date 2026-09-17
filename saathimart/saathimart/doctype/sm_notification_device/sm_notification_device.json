@@ -56,6 +56,10 @@
    "fieldtype": "Tab Break",
    "label": "Connections",
    "show_dashboard": 1
+  },
+  {
+   "fieldname": "col_break_2",
+   "fieldtype": "Column Break"
   }
  ],
  "permissions": [
@@ -89,6 +93,7 @@
   "col_break_1",
   "device_name",
   "app_version",
+  "col_break_2",
   "is_active",
   "last_seen",
   "tab_connections"

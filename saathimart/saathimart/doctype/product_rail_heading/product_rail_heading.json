@@ -40,6 +40,10 @@
    "fieldtype": "Tab Break",
    "label": "Connections",
    "show_dashboard": 1
+  },
+  {
+   "fieldname": "col_break_1",
+   "fieldtype": "Column Break"
   }
  ],
  "title_field": "title",
@@ -74,6 +78,7 @@
   "rail_key",
   "title",
   "subtitle",
+  "col_break_1",
   "published",
   "sort_order",
   "tab_connections"

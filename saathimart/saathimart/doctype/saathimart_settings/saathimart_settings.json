@@ -250,24 +250,14 @@
   {
    "fieldname": "section_redis",
    "fieldtype": "Section Break",
-   "label": "📬 Redis Queue"
-  },
-  {
-   "fieldname": "redis_queue_url",
-   "fieldtype": "Data",
-   "label": "Redis Queue URL",
-   "default": "redis://redis-queue:6379"
-  },
-  {
-   "fieldname": "col_break_redis",
-   "fieldtype": "Column Break",
-   "label": ""
+   "label": "📡 Event Broadcast"
   },
   {
    "fieldname": "event_channel",
    "fieldtype": "Data",
    "label": "Event Channel",
-   "default": "saathimart:events"
+   "default": "saathimart:events",
+   "description": "Redis pub/sub channel real-time subscribers listen on."
   },
   {
    "fieldname": "section_retention",
@@ -384,28 +374,6 @@
    "description": "Enable the daily batch sync from saathimart to ERPNext. Disable to pause syncing."
   },
   {
-   "fieldname": "section_streams",
-   "fieldtype": "Section Break",
-   "label": "📡 Streams (Redis Mirror)"
-  },
-  {
-   "fieldname": "stream_mirror_enabled",
-   "fieldtype": "Check",
-   "label": "Mirror Critical Events to Redis Streams",
-   "default": "0",
-   "description": "Also publish payment/order events to the vendor Redis Stream (durable second transport). The webhook path stays primary; the vendor consumes both idempotently. Requires Redis on the shared cache instance."
-  },
-  {
-   "fieldname": "col_break_streams",
-   "fieldtype": "Column Break"
-  },
-  {
-   "fieldname": "stream_redis_url",
-   "fieldtype": "Data",
-   "label": "Stream Redis URL",
-   "description": "Override only when the vendor consumes on a different Redis than this site's cache, e.g. redis://redis-cache:6379/1. Empty = use this site's cache Redis (same instance, same DB)."
-  },
-  {
    "fieldname": "tab_commerce",
    "fieldtype": "Tab Break",
    "label": "Commerce",
@@ -496,13 +464,7 @@
   "col_break_webhook",
   "max_webhook_retries",
   "section_redis",
-  "redis_queue_url",
-  "col_break_redis",
   "event_channel",
-  "section_streams",
-  "stream_mirror_enabled",
-  "col_break_streams",
-  "stream_redis_url",
   "tab_erpnext",
   "section_erpnext",
   "erpnext_site_url",

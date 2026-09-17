@@ -99,21 +99,6 @@ def _enqueue(event_type, payload, target_site=None, target_vendor=None, event_id
     if doc.target_site:
         _schedule_immediate_delivery(doc.name)
 
-    # Durable second transport: mirror critical events into the vendor's
-    # Redis Stream. Fail-safe by contract (see mirror_event_to_stream) —
-    # the webhook path above is never affected by stream problems. The
-    # vendor consumes both transports through the same idempotent
-    # dispatch_event, so whichever arrives first wins and duplicates are
-    # no-ops. The mirror carries the SAME event_id as the Webhook Event
-    # row — that key is what the vendor's dedup layer matches on.
-    try:
-        from saathimart.api.event_priority import get_priority
-        if get_priority(event_type) == 1:
-            from saathimart.streams.publisher import mirror_event_to_stream
-            mirror_event_to_stream(event_type, payload, target_vendor or "", event_id=event_id)
-    except Exception:
-        pass
-
 
 def _schedule_immediate_delivery(event_name):
     """
@@ -235,6 +220,7 @@ def publish_payment_received(order_id, amount=None, gateway="", reference=""):
     #   Loyalty points  → does NOT (platform-funded retention expense)
     # Slices are proportional to each vendor's share of the product base.
     from saathimart.api.totals import NEPAL_VAT_RATE
+    from saathimart.api.commission import get_commission_pct_for_vendor
 
     total_product_base = sum(
         flt(f.subtotal) for f in fulfillments if f.subtotal is not None
@@ -283,6 +269,16 @@ def publish_payment_received(order_id, amount=None, gateway="", reference=""):
             "platform_coupon_amount": rounded(platform_coupon, 2),
             "loyalty_amount": rounded(loyalty_amt, 2),
             "delivery_charge": flt(f.get("delivery_charge")),
+            # Same per-vendor contract rate publish_settlement already
+            # sends — without this, record_payment_accounting's fallback
+            # (10%/15%) silently applied to every vendor regardless of
+            # their actual Vendor.commission_pct/tds_rate, so a vendor on a
+            # negotiated rate had their per-order commission/TDS booked
+            # wrong at payment time even though settlement time (which
+            # already sent these) reconciled correctly — a real mismatch
+            # between the two, not just a missing feature.
+            "commission_pct": flt(get_commission_pct_for_vendor(f.vendor)),
+            "tds_rate": flt(frappe.db.get_value("Vendor", f.vendor, "tds_rate") or 15.0),
         }, target_site=vendor_url, target_vendor=f.vendor,
            event_id=f"payment.received.{doc.name}.{f.vendor}")
 
@@ -314,6 +310,11 @@ def publish_settlement(vendor_name, payout_id, amount, commission,
         "tds_amount": flt(tds_amount),
         "coupon_reimbursement": flt(coupon_reimbursement),
         "loyalty_reimbursement": flt(loyalty_reimbursement),
+        # Contract rates travel with the settlement so the vendor's books
+        # need no local copy of platform pricing (Vendor Config carries no
+        # commission/TDS any more — the hub Vendor row is the source).
+        "commission_pct": flt(frappe.db.get_value("Vendor", vendor_name, "commission_pct") or 0),
+        "tds_rate": flt(frappe.db.get_value("Vendor", vendor_name, "tds_rate") or 0),
     }, target_site=vendor_url, target_vendor=vendor_name,
        event_id=f"settlement.completed.{payout_id}")
 
@@ -379,6 +380,10 @@ def publish_platform_ledger_entry(voucher_type, voucher_no, entries, remarks="",
         "voucher_no": voucher_no,
         "remarks": remarks,
         "entries": entries,
+        # event_id travels IN the payload so the receiver can key its own
+        # idempotency (Journal Entry.sm_hub_ref) on it — at-least-once
+        # delivery must never double-book the platform's books.
+        "event_id": event_id,
     }, target_site=vendor_url, target_vendor=vendor_name, event_id=event_id)
 
 

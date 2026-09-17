@@ -91,15 +91,16 @@ def search_products(query="", page=1, page_size=20, category=None, brand=None,
     params = []
 
     if query:
-        # LIKE keeps search usable on sites that have not created the optional
-        # FULLTEXT index yet (including fresh native SaathiMart installs).
-        conditions.append("""
-            (p.product_name LIKE %s
-             OR p.slug LIKE %s
-             OR p.tags LIKE %s)
-        """)
-        like_term = "%{0}%".format(query)
-        params.extend([like_term, like_term, like_term])
+        # Synonym-expanded LIKE keeps search usable on sites that have not
+        # created the optional FULLTEXT index yet (including fresh native
+        # SaathiMart installs) — and makes "chiya" find "Tea Leaves".
+        from saathimart.api.search_synonyms import expand_terms, sql_like_clause
+        clause, like_params = sql_like_clause(
+            ["p.product_name", "p.slug", "p.tags"],
+            expand_terms(query),
+        )
+        conditions.append(clause)
+        params.extend(like_params)
 
     if category:
         conditions.append("p.category = %s")

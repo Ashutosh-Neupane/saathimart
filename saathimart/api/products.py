@@ -870,14 +870,16 @@ def list_products(category=None, vendor=None, search=None, page=1, page_size=20,
         if brand_names:
             filters["brand"] = ["in", brand_names]
 
-    # Search filter
+    # Search filter — synonym-expanded so Nepali queries ("chiya") hit
+    # English products ("Tea Leaves") and vice versa. The original query
+    # stays first in the term list, so exact matches always win.
     or_filters = None
     if search:
-        or_filters = [
-            ["product_name", "like", f"%{search}%"],
-            ["tags", "like", f"%{search}%"],
-            ["short_description", "like", f"%{search}%"],
-        ]
+        from saathimart.api.search_synonyms import expand_terms, or_like_filters
+        or_filters = or_like_filters(
+            ["product_name", "tags", "short_description"],
+            expand_terms(search),
+        )
 
     page = max(1, int(page))
     page_size = min(100, max(1, int(page_size)))
@@ -924,6 +926,33 @@ def list_products(category=None, vendor=None, search=None, page=1, page_size=20,
         limit_page_length=1000,
         order_by=order_by,
     )
+
+    # Typo fallback — when the synonym-expanded LIKE pass finds nothing,
+    # fuzzy-match the query against all active product names (pure-Python
+    # SequenceMatcher) and re-fetch those candidates. Only runs on the
+    # empty path, so the common hit path pays nothing extra.
+    if search and not products:
+        from saathimart.api.search_synonyms import fuzzy_matches
+        name_pool = frappe.get_all(
+            "Product",
+            filters={"status": "Active", "variant_of": ["is", "not set"]},
+            pluck="product_name",
+        )
+        matched = fuzzy_matches(search, name_pool, threshold=0.7, limit=60)
+        if matched:
+            products = frappe.get_list(
+                "Product",
+                filters={
+                    "status": "Active",
+                    "variant_of": ["is", "not set"],
+                    "product_name": ["in", matched],
+                },
+                fields=["name", "product_name", "slug", "category", "status",
+                        "short_description", "tags", "thumbnail", "avg_rating",
+                        "review_count", "brand", "has_variants"],
+                limit_page_length=1000,
+                order_by=order_by,
+            )
 
     # Batch-load all listing data for the candidate set (eliminates N+1)
     product_names = [p["name"] for p in products]

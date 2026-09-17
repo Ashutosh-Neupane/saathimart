@@ -51,8 +51,11 @@ def list_products_light(category=None, search=None, page=1, page_size=20,
         conditions.append("p.category = %s")
         params.append(category)
     if search:
-        conditions.append("p.product_name LIKE %s")
-        params.append("%{0}%".format(search))
+        # Synonym-expanded so Nepali queries find English-named products.
+        from saathimart.api.search_synonyms import expand_terms, sql_like_clause
+        clause, like_params = sql_like_clause(["p.product_name", "p.tags"], expand_terms(search))
+        conditions.append(clause)
+        params.extend(like_params)
 
     where = " AND ".join(conditions)
 

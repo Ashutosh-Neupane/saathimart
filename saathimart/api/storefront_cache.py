@@ -195,7 +195,14 @@ def notify_nextjs(tags, remark: str = ""):
 
 
 def _deliver_revalidation(url: str, secret: str, tags, remark: str = ""):
-    """Background job: one webhook POST. Logs, never raises."""
+    """Background job: one webhook POST. Logs failures, never raises.
+
+    Returns True only on HTTP 200 from the storefront route; False on any
+    non-2xx rejection (wrong secret → 401, disallowed tag → 400) or
+    transport error. The return value isn't consumed by the queue, but the
+    smoke tests assert it and honest semantics keep it useful for a future
+    retry/last-status layer.
+    """
     import requests
 
     try:
@@ -212,12 +219,13 @@ def _deliver_revalidation(url: str, secret: str, tags, remark: str = ""):
                 f"{(resp.text or '')[:300]} — tags={tags} ({remark})",
                 "Storefront Revalidation",
             )
+        return ok
     except Exception as e:
         frappe.log_error(
             f"Next.js revalidation request failed: {e} — tags={tags} ({remark})",
             "Storefront Revalidation",
         )
-    return True
+        return False
 
 
 # ── Tag mapping: hub doctypes → Next.js tags ───────────────────────────────

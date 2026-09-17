@@ -361,8 +361,9 @@ class TestCacheBust(unittest.TestCase):
             "sm_best_listing:P1:v1::",
             "sm_best_template:P1::",
             "sm_resolve_listing:P1::",
-            "sm_list_products:tea:::1:20:::",
-            "sm_list_products:staples:::1:20:::",
+            "sm_list_products:v0:tea:::1:20:::",
+            "sm_list_products:v0:staples:::1:20:::",
+            "sm_list_products:ver",
             "sm_stock:v1:P1",
             "sm_stock:v2:P2",
             "sm_stock_batch:v1",
@@ -373,26 +374,46 @@ class TestCacheBust(unittest.TestCase):
             "sm_dashboard_summary",    # unrelated — must survive
         ):
             store[key] = "x"
+        store["sm_list_products:ver"] = 0  # numeric, not the "x" seed
 
     def _store(self):
         from saathimart.api import storefront_cache as sc
         return sc.frappe.cache()._store
 
-    def test_bust_product_kills_product_and_list_families(self):
+    def test_bust_product_kills_product_families_and_bumps_list_version(self):
         storefront_cache.bust_product_cache("P1")
         store = self._store()
         for gone in (
             "sm_product:P1:hub::", "sm_product:P1:v1:27.7:85.3:5",
             "sm_best_listing:P1:v1::", "sm_best_template:P1::",
             "sm_resolve_listing:P1::",
-            "sm_list_products:tea:::1:20:::",   # list cache has no product
-            "sm_list_products:staples:::1:20:::",  # name in the key — all go
             "sm_brands_list",
         ):
             self.assertNotIn(gone, store, f"{gone} should be busted")
+        # The list cache is version-invalidated (O(1)), not pattern-deleted:
+        # the version moved, so stale pages won't be read again; the stored
+        # pages age out via their own 60s TTL.
+        self.assertEqual(store["sm_list_products:ver"], 1)
         # other products' stock + unrelated keys survive
         for kept in ("sm_stock:v1:P1", "sm_site_config", "sm_dashboard_summary"):
             self.assertIn(kept, store, f"{kept} must survive a product bust")
+
+    def test_list_version_semantics(self):
+        store = self._store()
+        store.pop("sm_list_products:ver", None)
+        self.assertEqual(storefront_cache.get_list_version(), 0)  # default
+        storefront_cache.bump_list_version()
+        storefront_cache.bump_list_version()
+        self.assertEqual(storefront_cache.get_list_version(), 2)
+
+    def test_version_key_survives_busts(self):
+        # The version key must not match any pattern a bust deletes —
+        # otherwise a bust would erase the very counter that invalidates.
+        storefront_cache.bust_product_cache("P1")
+        storefront_cache.bust_stock_cache(vendor="v1", product="P1")
+        storefront_cache.bust_brand_cache()
+        storefront_cache.bust_category_cache()
+        self.assertIn("sm_list_products:ver", self._store())
 
     def test_bust_stock_kills_only_that_vendor_product(self):
         storefront_cache.bust_stock_cache(vendor="v1", product="P1")
@@ -401,9 +422,10 @@ class TestCacheBust(unittest.TestCase):
         self.assertNotIn("sm_stock_batch:v1", store)
         # other vendor's stock row untouched
         self.assertIn("sm_stock:v2:P2", store)
-        # and the product-derived families went too (availability embedded)
+        # product-derived families went too (availability embedded) and the
+        # list cache was version-invalidated
         self.assertNotIn("sm_product:P1:hub::", store)
-        self.assertNotIn("sm_list_products:tea:::1:20:::", store)
+        self.assertGreaterEqual(store.get("sm_list_products:ver", 0), 1)
 
     def test_bust_totals_kills_all_total_keys(self):
         storefront_cache.bust_totals_cache()

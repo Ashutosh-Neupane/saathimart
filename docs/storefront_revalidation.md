@@ -53,6 +53,16 @@ Frappe save). Smoke tests: `saathimart/tests/test_storefront_revalidation.py`
 (mock HTTP receiver proves the wire bytes, the retry classes, and that
 permanent rejections are attempted exactly once).
 
+## Product-list cache: version-counter invalidation (O(1))
+
+`list_products` result pages are cached under keys stamped with a version
+number (`sm_list_products:v{N}:<filters>`). Invalidation is a single
+`bump_list_version()` on every product/stock/brand/category change —
+superseded pages age out via their own 60s TTL. This replaced a
+`sm_list_products:*` pattern (KEYS) delete per change, which is O(N) over
+the keyspace and collapses at catalog scale. (The list cache's write also
+previously had no matching read — both fixed together.)
+
 Tag universe emitted by the hub:
 - `catalog-list` — any product/listing/filter-level change
 - `catalog-product-{slug}` — that product's detail data

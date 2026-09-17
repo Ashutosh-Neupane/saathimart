@@ -882,6 +882,21 @@ def list_products(category=None, vendor=None, search=None, page=1, page_size=20,
     page = max(1, int(page))
     page_size = min(100, max(1, int(page_size)))
 
+    # Version-stamped cache read. Invalidation is a single version bump
+    # (storefront_cache.bump_list_version, fired by every product/stock/
+    # brand/category bust) — superseded pages age out via the 60s TTL
+    # instead of a KEYS scan per product change.
+    from saathimart.api.storefront_cache import get_list_version
+    cache_key = (
+        f"sm_list_products:v{get_list_version()}:{category or ''}:{vendor or ''}:{search or ''}:"
+        f"{page}:{page_size}:{sort or ''}:{lat or ''}:{lng or ''}:"
+        f"{delivery_zone or ''}:{min_price or ''}:{max_price or ''}:"
+        f"{in_stock or ''}:{tags or ''}:{radius_km or ''}:{brand or ''}"
+    )
+    cached_page = frappe.cache().get_value(cache_key)
+    if cached_page is not None:
+        return cached_page
+
     # Build order_by
     order_by = "creation desc"
     if sort == "price_asc":
@@ -1032,12 +1047,8 @@ def list_products(category=None, vendor=None, search=None, page=1, page_size=20,
             card["variant_count"] = meta["variant_count"]
             card["options"] = meta["options"]
 
-    cache_key = (
-        f"sm_list_products:{category or ''}:{vendor or ''}:{search or ''}:"
-        f"{page}:{page_size}:{sort or ''}:{lat or ''}:{lng or ''}:"
-        f"{delivery_zone or ''}:{min_price or ''}:{max_price or ''}:"
-        f"{in_stock or ''}:{tags or ''}:{radius_km or ''}:{brand or ''}"
-    )
+    # cache_key was built (and checked) at the top of this function with the
+    # current list version stamped in — reuse it for the write.
     frappe.cache().set_value(cache_key, {
         "items": serialized,
         "page": page,

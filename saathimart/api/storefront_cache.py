@@ -100,10 +100,10 @@ def _delete_pattern(pattern: str):
 def bust_product_cache(product: str):
     """Kill every hub Redis key derived from a Product.
 
-    Includes the list cache (`sm_list_products:*`): product changes (price,
-    stock, status, ratings) change what every product list shows even though
-    the list key never contains the product name — its dimensions are
-    category/vendor/search/sort, so the whole prefix must go.
+    Product changes (price, stock, status, ratings) change what every
+    product list shows even though list keys never contain the product
+    name — the list cache is invalidated by version bump (see
+    bump_list_version), not pattern delete.
     """
     if not product:
         return
@@ -112,9 +112,9 @@ def bust_product_cache(product: str):
         f"sm_best_listing:{product}:*",
         f"sm_best_template:{product}:*",
         f"sm_resolve_listing:{product}:*",
-        "sm_list_products:*",
     ):
         _delete_pattern(pattern)
+    bump_list_version()
     frappe.cache().delete_value("sm_brands_list")
     frappe.cache().delete_value("sm_listing_version")
 
@@ -139,12 +139,45 @@ def bust_totals_cache():
 
 def bust_brand_cache():
     frappe.cache().delete_value("sm_brands_list")
+    bump_list_version()
 
 
 def bust_category_cache():
     # Category tree itself is uncached (list_categories queries fresh), but
     # every product-list key carries a category dimension.
-    _delete_pattern("sm_list_products:*")
+    bump_list_version()
+
+
+# ── Product-list cache version (O(1) invalidation) ──────────────────────────
+# list_products caches full result pages under keys embedding a version
+# number. Invalidation = one INCR on the version key; superseded entries
+# age out via their own 60s TTL. A pattern delete here would instead run a
+# KEYS scan over the whole keyspace on EVERY product/stock/brand change —
+# O(N) work that collapses under a large catalog, which is why the list
+# cache never got wired up before.
+
+_LIST_VER_KEY = "sm_list_products:ver"
+
+
+def get_list_version() -> int:
+    try:
+        return int(frappe.cache().get_value(_LIST_VER_KEY) or 0)
+    except Exception:
+        return 0
+
+
+def bump_list_version():
+    """O(1) invalidation for the product-list cache.
+
+    Read-modify-write through the same prefixed get_value/set_value the
+    version READ uses (a raw redis INCR may bypass the wrapper's key
+    prefixing). A lost update in a concurrent bump only costs ≤60s
+    staleness — the superseded entries' TTL.
+    """
+    try:
+        frappe.cache().set_value(_LIST_VER_KEY, get_list_version() + 1)
+    except Exception:
+        pass
 
 
 # ── Next.js tag revalidation ────────────────────────────────────────────────

@@ -94,16 +94,21 @@ class TestRevalidationWireContract(unittest.TestCase):
             remark="smoke",
         )
         self.assertTrue(ok)
-        self.assertEqual(len(_Receiver.captured), 1)
+        # one POST per tag — the FE route accepts {"tag": t} only
+        self.assertEqual(len(_Receiver.captured), 2)
         req = _Receiver.captured[0]
         # exact endpoint path
         self.assertEqual(req["path"], "/api/revalidate")
         # exact header name + value (the route 401s without it)
         self.assertEqual(req["secret"], "correct-secret")
-        # body is {"tags": [...]} — array, not the legacy {tag: ...} shape
+        # body is {"tag": "<one>"} — the FE route's singular shape
         self.assertEqual(
             json.loads(req["body"]),
-            {"tags": ["catalog-list", "catalog-product-tea-500g"]},
+            {"tag": "catalog-list"},
+        )
+        self.assertEqual(
+            json.loads(_Receiver.captured[1]["body"]),
+            {"tag": "catalog-product-tea-500g"},
         )
 
     def test_sender_treats_401_as_failure(self):
@@ -135,6 +140,17 @@ class TestRevalidationWireContract(unittest.TestCase):
         self.assertFalse(ok)
         self.assertEqual(_Receiver.captured, [])
 
+    def test_partial_failure_reports_honestly(self):
+        # Two tags, second permanently rejected: first delivered, overall
+        # delivery reported as not-fully-successful.
+        _Receiver.response_codes = [200, 400]
+        ok = storefront_cache._deliver_revalidation(
+            url=self.url, secret="s",
+            tags=["catalog-list", "bad-prefix"], remark="smoke",
+        )
+        self.assertFalse(ok)
+        self.assertEqual(len(_Receiver.captured), 2)
+
     # ── Retry layer: transient retried, permanent not ─────────────────────
 
     def test_retries_transient_then_succeeds(self):
@@ -158,8 +174,7 @@ class TestRevalidationWireContract(unittest.TestCase):
                 _Receiver.captured = []
                 _Receiver.response_codes = [code]
                 ok = storefront_cache._deliver_revalidation(
-                    url=self.url, secret="s", tags=["catalog-list"],
-                    remark="smoke", attempts=4, base_delay=0.01,
+                url=self.url, secret="s", tags=["catalog-list"],
                 )
                 self.assertFalse(ok)
                 self.assertEqual(len(_Receiver.captured), 1)
@@ -302,9 +317,11 @@ class TestStatusRecording(unittest.TestCase):
                 url=self.url, secret="s", tags=["a", "b"],
                 remark="unit", attempts=3, base_delay=0.01,
             )
+        # tag "a" retried (503→200), tag "b" delivered first try; the
+        # overall status records per-tag delivery counts, not attempts.
         self.assertTrue(ok)
         self.assertEqual(len(calls), 1)
-        self.assertIn("delivered 2 tag(s) after 2 attempt(s)", calls[0])
+        self.assertIn("delivered 2/2 tag(s)", calls[0])
         self.assertIn("(unit)", calls[0])
 
     def test_success_first_attempt(self):
@@ -316,7 +333,7 @@ class TestStatusRecording(unittest.TestCase):
             )
         self.assertTrue(ok)
         self.assertEqual(len(calls), 1)
-        self.assertIn("after 1 attempt(s)", calls[0])
+        self.assertIn("delivered 1/1 tag(s)", calls[0])
 
     def test_rejection_records_no_retry(self):
         p1, calls = self._capture()
@@ -327,8 +344,7 @@ class TestStatusRecording(unittest.TestCase):
             )
         self.assertFalse(ok)
         self.assertEqual(len(calls), 1)
-        self.assertIn("rejected (no retry)", calls[0])
-        self.assertIn("HTTP 401", calls[0])
+        self.assertIn("delivered 0/1 tag(s) with failures", calls[0])
 
     def test_exhaustion_records_attempts(self):
         p1, calls = self._capture()
@@ -339,7 +355,7 @@ class TestStatusRecording(unittest.TestCase):
             )
         self.assertFalse(ok)
         self.assertEqual(len(calls), 1)
-        self.assertIn("failed after 2 attempts", calls[0])
+        self.assertIn("delivered 0/1 tag(s) with failures", calls[0])
 
 
 class TestCacheBust(unittest.TestCase):

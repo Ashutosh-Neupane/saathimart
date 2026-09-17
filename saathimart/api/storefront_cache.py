@@ -240,8 +240,8 @@ def notify_nextjs(tags, remark: str = ""):
     return True
 
 
-def _post_once(url: str, secret: str, tags, timeout: int = 8):
-    """One webhook POST. Returns (verdict, detail).
+def _post_once(url: str, secret: str, tag: str, timeout: int = 8):
+    """One webhook POST carrying a single tag. Returns (verdict, detail).
 
     verdict: "ok"    — HTTP 2xx
              "retry" — transient: transport error, timeout, 429, 5xx
@@ -255,7 +255,7 @@ def _post_once(url: str, secret: str, tags, timeout: int = 8):
     try:
         resp = requests.post(
             url,
-            json={"tags": list(tags)},
+            json={"tag": tag},
             headers={"x-revalidate-secret": secret},
             timeout=timeout,
         )
@@ -320,31 +320,60 @@ def _deliver_revalidation(
 
     attempts = max(1, int(attempts))
     detail = ""
+    delivered = 0
+    for tag in tags:  # one POST per tag — the FE route accepts {"tag": t}
+        ok = _deliver_one_tag(
+            url, secret, tag, remark, attempts, base_delay,
+        )
+        if ok:
+            delivered += 1
+    if not tags:
+        return False
+    if delivered == len(tags):
+        _record_last_status(
+            f"{_status_prefix()}delivered {delivered}/{len(tags)} tag(s) ({remark})"
+        )
+        return True
+    _record_last_status(
+        f"{_status_prefix()}delivered {delivered}/{len(tags)} tag(s) with failures ({remark})"
+    )
+    return False
+
+
+def _deliver_one_tag(url, secret, tag, remark, attempts, base_delay):
+    """Deliver one tag with bounded exponential backoff.
+
+    Retries only transient failures (transport errors, timeouts, 429, 5xx);
+    permanent 4xx rejections stop immediately. Backoff is 1s, 2s, 4s, …
+    (base_delay doubled per attempt); with the default 4 attempts and the
+    8s per-POST timeout the worst-case job occupancy is ~40s per tag,
+    which fits the queued job's 90s budget — revisit with a dedicated
+    retry queue if storefront outages ever become routine.
+
+    Never raises. Returns True only when some attempt got HTTP 2xx from
+    the storefront route; False on permanent rejection or attempt
+    exhaustion. The queue ignores the return value, but the smoke tests
+    assert it and it feeds a future last-status/audit layer.
+    """
+    import time
+
     for attempt in range(1, attempts + 1):
-        verdict, detail = _post_once(url, secret, tags)
+        verdict, detail = _post_once(url, secret, tag)
         if verdict == "ok":
-            _record_last_status(
-                f"{_status_prefix()}delivered {len(tags)} tag(s) after "
-                f"{attempt} attempt(s) ({remark})"
-            )
             return True
         if verdict == "fail":
             frappe.log_error(
                 f"Next.js revalidation rejected (permanent, no retry): "
-                f"{detail} — tags={tags} ({remark})",
+                f"{detail} — tag={tag} ({remark})",
                 "Storefront Revalidation",
             )
-            _record_last_status(f"{_status_prefix()}rejected (no retry): {detail}")
             return False
         if attempt < attempts:
             time.sleep(base_delay * (2 ** (attempt - 1)))
     frappe.log_error(
         f"Next.js revalidation failed after {attempts} attempts: "
-        f"{detail} — tags={tags} ({remark})",
+        f"{detail} — tag={tag} ({remark})",
         "Storefront Revalidation",
-    )
-    _record_last_status(
-        f"{_status_prefix()}failed after {attempts} attempts: {detail}"
     )
     return False
 

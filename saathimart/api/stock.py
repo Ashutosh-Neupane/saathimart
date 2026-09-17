@@ -81,8 +81,29 @@ def get_or_create(vendor, product, warehouse=None):
 
 
 def _invalidate_stock_cache(vendor, product):
+    """Central choke point for every stock write path (db.set_value or doc.save).
+
+    Beyond the stock keys themselves, clears the derived product/listing
+    caches that embed availability (get_effective_price / _get_best_listing
+    serve cached price+availability bundles) and pushes Next.js
+    revalidation — stock.py's raw db.set_value writes fire no doc_events, so
+    without this the storefront could serve a sold-out product as buyable
+    until the listing cache's TTL expires.
+    """
     frappe.cache().delete_key(f"sm_stock:{vendor}:{product}")
     frappe.cache().delete_key(f"sm_stock_batch:{vendor}")
+    try:
+        from saathimart.api.storefront_cache import (
+            bust_product_cache, bust_stock_cache, notify_nextjs, product_tags,
+        )
+
+        bust_stock_cache(vendor=vendor, product=product)
+        bust_product_cache(product)
+        notify_nextjs(product_tags(product), remark=f"Stock write {vendor}:{product}")
+    except Exception:
+        # The legacy keys above are already cleared; never fail a stock write
+        # over derived-cache busting.
+        frappe.log_error(frappe.get_traceback(), "_invalidate_stock_cache derived bust")
 
 
 def _resolve_product(hub_product, barcode):

@@ -50,11 +50,13 @@ doc_events = {
             "saathimart.events.publisher.on_order_created",
             "saathimart.api.order_events.on_order_created",
             "saathimart.api.audit.log_order_update",
+            "saathimart.api.storefront_cache.on_order_changed",
         ],
         "on_update": [
             "saathimart.events.publisher.on_order_updated",
             "saathimart.api.order_events.on_order_paid",
             "saathimart.api.audit.log_order_update",
+            "saathimart.api.storefront_cache.on_order_changed",
         ],
     },
     "Payment Log": {
@@ -67,94 +69,218 @@ doc_events = {
             "saathimart.events.publisher.on_product_created",
             "saathimart.api.audit.log_product_update",
             "saathimart.api.vector_search.index_product",
+            "saathimart.api.storefront_cache.on_product_changed",
         ],
         "on_update": [
             "saathimart.events.publisher.on_product_updated",
             "saathimart.api.audit.log_product_update",
             "saathimart.api.vector_search.index_product",
+            "saathimart.api.storefront_cache.on_product_changed",
         ],
-        "on_trash":     "saathimart.events.publisher.on_product_deleted",
+        "on_trash": [
+            "saathimart.events.publisher.on_product_deleted",
+            "saathimart.api.storefront_cache.on_product_changed",
+        ],
     },
     "Review": {
-        "on_update": "saathimart.api.reviews._update_product_rating",
-        "on_trash": "saathimart.api.reviews._update_product_rating",
+        "on_update": [
+            "saathimart.api.reviews._update_product_rating",
+            "saathimart.api.storefront_cache.on_review_changed",
+        ],
+        "on_trash": [
+            "saathimart.api.reviews._update_product_rating",
+            "saathimart.api.storefront_cache.on_review_changed",
+        ],
     },
     "SM Audit Log": {
         "after_insert": "saathimart.api.audit.log_audit_entry",
     },
     "Vendor Listing": {
-        "after_insert": "saathimart.events.publisher.on_vendor_listing_changed",
-        "on_update":    "saathimart.events.publisher.on_vendor_listing_changed",
-        "on_trash":     "saathimart.events.publisher.on_vendor_listing_changed",
+        "after_insert": [
+            "saathimart.events.publisher.on_vendor_listing_changed",
+            "saathimart.api.storefront_cache.on_vendor_listing_changed",
+        ],
+        "on_update": [
+            "saathimart.events.publisher.on_vendor_listing_changed",
+            "saathimart.api.storefront_cache.on_vendor_listing_changed",
+        ],
+        "on_trash": [
+            "saathimart.events.publisher.on_vendor_listing_changed",
+            "saathimart.api.storefront_cache.on_vendor_listing_changed",
+        ],
+    },
+    "Vendor Stock": {
+        "after_insert": "saathimart.api.storefront_cache.on_vendor_stock_changed",
+        "on_update":    "saathimart.api.storefront_cache.on_vendor_stock_changed",
+        "on_trash":     "saathimart.api.storefront_cache.on_vendor_stock_changed",
+    },
+    "Stock Ledger Entry": {
+        # SLE controller updates Product.stock_qty via raw db.set_value —
+        # these hooks are the only invalidation for those writes.
+        "after_insert": "saathimart.api.storefront_cache.on_stock_ledger_entry",
+    },
+    "Brand": {
+        "after_insert": [
+            "saathimart.api.storefront_cache.on_brand_changed",
+        ],
+        "on_update": [
+            "saathimart.api.storefront_cache.on_brand_changed",
+        ],
+        "on_trash": [
+            "saathimart.api.storefront_cache.on_brand_changed",
+        ],
+    },
+    "Category": {
+        "after_insert": [
+            "saathimart.api.storefront_cache.on_category_changed",
+        ],
+        "on_update": [
+            "saathimart.api.storefront_cache.on_category_changed",
+        ],
+        "on_trash": [
+            "saathimart.api.storefront_cache.on_category_changed",
+        ],
+    },
+    "Coupon": {
+        # Cached cart totals embed coupon discount math — bust sm_totals:* on
+        # any coupon edit (validate/usage-limit changes).
+        "on_update": "saathimart.api.storefront_cache.on_coupon_changed",
+        "on_trash": "saathimart.api.storefront_cache.on_coupon_changed",
     },
     "Vendor": {
         "on_update": "saathimart.events.publisher.on_vendor_updated",
     },
     "Site Config": {
-        "on_update": "saathimart.api.cms._bust_site_config_cache",
+        "on_update": [
+            "saathimart.api.cms._bust_site_config_cache",
+            "saathimart.api.storefront_cache.on_cms_changed",
+        ],
     },
     "Navigation Item": {
-        "on_update": "saathimart.api.cms._bust_navigation_cache",
+        "on_update": [
+            "saathimart.api.cms._bust_navigation_cache",
+            "saathimart.api.storefront_cache.on_cms_changed",
+        ],
     },
     "Banner": {
-        "on_update": "saathimart.api.cms._bust_banner_cache",
+        "on_update": [
+            "saathimart.api.cms._bust_banner_cache",
+            "saathimart.api.storefront_cache.on_cms_changed",
+        ],
     },
     "Site Page": {
-        "on_update": "saathimart.api.cms._bust_page_cache",
+        "on_update": [
+            "saathimart.api.cms._bust_page_cache",
+            "saathimart.api.storefront_cache.on_site_page_changed",
+        ],
     },
     "Blog Post": {
-        "on_update": "saathimart.api.cms._bust_blog_cache",
+        "on_update": [
+            "saathimart.api.cms._bust_blog_cache",
+            "saathimart.api.storefront_cache.on_cms_changed",
+        ],
     },
     "FAQ Category": {
-        "on_update": "saathimart.api.cms._bust_faq_category_cache",
+        "on_update": [
+            "saathimart.api.cms._bust_faq_category_cache",
+            "saathimart.api.storefront_cache.on_faq_changed",
+        ],
     },
     "FAQ Item": {
-        "on_update": "saathimart.api.cms._bust_faq_item_cache",
+        "on_update": [
+            "saathimart.api.cms._bust_faq_item_cache",
+            "saathimart.api.storefront_cache.on_faq_changed",
+        ],
     },
     "Offer": {
-        "on_update": "saathimart.api.cms._bust_offer_cache_on_update",
+        "on_update": [
+            "saathimart.api.cms._bust_offer_cache_on_update",
+            "saathimart.api.storefront_cache.on_offer_changed",
+        ],
     },
     "Popular Location": {
-        "on_update": "saathimart.api.cms._bust_location_cache_on_update",
+        "on_update": [
+            "saathimart.api.cms._bust_location_cache_on_update",
+            "saathimart.api.storefront_cache.on_cms_changed",
+        ],
     },
     "Hero Slide": {
-        "on_update": "saathimart.api.cms._bust_home_content_cache",
+        "on_update": [
+            "saathimart.api.cms._bust_home_content_cache",
+            "saathimart.api.storefront_cache.on_cms_changed",
+        ],
     },
     "Seasonal Banner": {
-        "on_update": "saathimart.api.cms._bust_home_content_cache",
+        "on_update": [
+            "saathimart.api.cms._bust_home_content_cache",
+            "saathimart.api.storefront_cache.on_cms_changed",
+        ],
     },
     "Trust Badge": {
-        "on_update": "saathimart.api.cms._bust_home_content_cache",
+        "on_update": [
+            "saathimart.api.cms._bust_home_content_cache",
+            "saathimart.api.storefront_cache.on_cms_changed",
+        ],
     },
     "Product Rail Heading": {
-        "on_update": "saathimart.api.cms._bust_home_content_cache",
+        "on_update": [
+            "saathimart.api.cms._bust_home_content_cache",
+            "saathimart.api.storefront_cache.on_cms_changed",
+        ],
     },
     "Homepage Settings": {
-        "on_update": "saathimart.api.cms._bust_home_content_cache",
+        "on_update": [
+            "saathimart.api.cms._bust_home_content_cache",
+            "saathimart.api.storefront_cache.on_cms_changed",
+        ],
     },
     "Website Content": {
-        "on_update": "saathimart.api.cms._bust_content_cache",
+        "on_update": [
+            "saathimart.api.cms._bust_content_cache",
+            "saathimart.api.storefront_cache.on_cms_changed",
+        ],
     },
     "About Us": {
-        "on_update": "saathimart.api.cms._bust_static_page_cache",
+        "on_update": [
+            "saathimart.api.cms._bust_static_page_cache",
+            "saathimart.api.storefront_cache.on_cms_changed",
+        ],
     },
     "Terms Page": {
-        "on_update": "saathimart.api.cms._bust_static_page_cache",
+        "on_update": [
+            "saathimart.api.cms._bust_static_page_cache",
+            "saathimart.api.storefront_cache.on_cms_changed",
+        ],
     },
     "Privacy Page": {
-        "on_update": "saathimart.api.cms._bust_static_page_cache",
+        "on_update": [
+            "saathimart.api.cms._bust_static_page_cache",
+            "saathimart.api.storefront_cache.on_cms_changed",
+        ],
     },
     "Cookies Page": {
-        "on_update": "saathimart.api.cms._bust_static_page_cache",
+        "on_update": [
+            "saathimart.api.cms._bust_static_page_cache",
+            "saathimart.api.storefront_cache.on_cms_changed",
+        ],
     },
     "Careers Page": {
-        "on_update": "saathimart.api.cms._bust_static_page_cache",
+        "on_update": [
+            "saathimart.api.cms._bust_static_page_cache",
+            "saathimart.api.storefront_cache.on_cms_changed",
+        ],
     },
     "Partner Page": {
-        "on_update": "saathimart.api.cms._bust_static_page_cache",
+        "on_update": [
+            "saathimart.api.cms._bust_static_page_cache",
+            "saathimart.api.storefront_cache.on_cms_changed",
+        ],
     },
     "Rider Page": {
-        "on_update": "saathimart.api.cms._bust_static_page_cache",
+        "on_update": [
+            "saathimart.api.cms._bust_static_page_cache",
+            "saathimart.api.storefront_cache.on_cms_changed",
+        ],
     },
 }
 

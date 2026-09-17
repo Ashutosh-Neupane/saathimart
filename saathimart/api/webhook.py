@@ -8,14 +8,16 @@ Usage:
     POST /api/method/saathimart.api.webhook.revalidate_nextjs
     {
         "paths": ["/products/rice-123", "/orders/SM-ORD-2026-00001"],
-        "tag": "product"  # optional: for tag-based revalidation
+        "tag": "product"  # optional: coarse area ("product"|"order"|"cms")
     }
 
     POST /api/method/saathimart.api.webhook.revalidate_all_products
     POST /api/method/saathimart.api.webhook.revalidate_all_orders
-"""
-import json
 
+Delivery (URL, secret header, tags body) lives in
+saathimart.api.storefront_cache — this module is the manual/admin surface
+on top of it.
+"""
 import frappe
 from frappe import _
 
@@ -23,61 +25,39 @@ from saathimart.api.responses import handle_api_errors
 from saathimart.api.utils import safe_enqueue
 
 
-# Next.js ISR revalidation secret (should match NEXTJS_ISR_SECRET env var)
-NEXTJS_REVALIDATE_SECRET = None
-
-
-def _get_revalidate_secret():
-    """Get the ISR revalidation secret from site config."""
-    global NEXTJS_REVALIDATE_SECRET
-    if NEXTJS_REVALIDATE_SECRET is None:
-        NEXTJS_REVALIDATE_SECRET = frappe.conf.get("nextjs_revalidate_secret", "")
-    return NEXTJS_REVALIDATE_SECRET
-
-
 def _call_nextjs_revalidate(paths, tag=None):
     """
     Call Next.js ISR revalidation endpoint.
     
+    Delegates to saathimart.api.storefront_cache.notify_nextjs, which speaks
+    the route's real contract: `x-revalidate-secret` header + `tags` array
+    body (the old `{secret, paths, tag}` body shape was never accepted by
+    the storefront's app/api/revalidate/route.ts). Path-based revalidation
+    maps onto the tag universe; a specific product name becomes its
+    catalog-product-{slug} tag when resolvable.
+    
     Args:
         paths: List of paths to revalidate (e.g., ["/products/rice"])
-        tag: Optional tag for tag-based revalidation
+        tag: Optional legacy coarse tag ("product", "order", "cms")
     """
-    import requests
-    
-    secret = _get_revalidate_secret()
-    if not secret:
-        frappe.log_error("Next.js ISR secret not configured", "Webhook Config Error")
-        return False
-    
-    # Next.js API route for revalidation
-    nextjs_url = frappe.conf.get("nextjs_url", "http://localhost:3000")
-    revalidate_endpoint = f"{nextjs_url}/api/revalidate"
-    
-    try:
-        response = requests.post(
-            revalidate_endpoint,
-            json={
-                "secret": secret,
-                "paths": paths,
-                "tag": tag,
-            },
-            timeout=5,  # Don't block on slow Next.js
-            headers={"Content-Type": "application/json"},
-        )
-        
-        if response.status_code == 200:
-            return True
-        else:
-            frappe.log_error(
-                f"Next.js revalidation failed: {response.status_code} {response.text}",
-                "Webhook Error"
-            )
-            return False
-            
-    except requests.exceptions.RequestException as e:
-        frappe.log_error(f"Next.js revalidation request failed: {str(e)}", "Webhook Error")
-        return False
+    from saathimart.api.storefront_cache import (
+        cms_tags, notify_nextjs, product_tags,
+    )
+
+    tags = []
+    if tag in ("product", None):
+        for p in paths or []:
+            slug = p.rstrip("/").rsplit("/", 1)[-1] if p else ""
+            product = frappe.db.get_value("Product", {"slug": slug}, "name") if slug else None
+            tags.extend(product_tags(product))
+        if not paths:
+            tags.append("catalog-list")
+    if tag in ("order", None):
+        tags.extend(f"orders-detail-{p.rstrip('/').rsplit('/', 1)[-1]}" for p in paths or [] if "/orders/" in p)
+    if tag in ("cms", None) or not tags:
+        tags.extend(cms_tags())
+
+    return notify_nextjs(tags, remark="webhook.py manual revalidate")
 
 
 def _notify_product_change(product_name, action="update"):

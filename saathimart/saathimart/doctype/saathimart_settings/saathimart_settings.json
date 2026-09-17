@@ -248,6 +248,33 @@
    "default": "3"
   },
   {
+   "fieldtype": "Section Break",
+   "label": "📣 Storefront Revalidation"
+  },
+  {
+   "default": "0",
+   "description": "Push tag-bust webhooks to the Next.js storefront when catalog/CMS data changes",
+   "fieldname": "enable_nextjs_revalidation",
+   "fieldtype": "Check",
+   "label": "Enable Storefront Revalidation"
+  },
+  {
+   "description": "e.g. http://localhost:3000 (no trailing slash) — target for revalidation webhooks",
+   "fieldname": "nextjs_base_url",
+   "fieldtype": "Data",
+   "label": "Storefront Base URL"
+  },
+  {
+   "fieldtype": "Column Break",
+   "label": ""
+  },
+  {
+   "description": "Same value as the storefront's REVALIDATION_SECRET env var",
+   "fieldname": "revalidation_secret",
+   "fieldtype": "Password",
+   "label": "Revalidation Secret"
+  },
+  {
    "fieldname": "section_redis",
    "fieldtype": "Section Break",
    "label": "📡 Event Broadcast"

@@ -598,6 +598,16 @@ def on_vendor_listing_changed(doc, method):
         "display_compare_price": max(compare_prices) if compare_prices else 0,
     }, update_modified=False)
 
+    # db.set_value fires no doc_events, so the product/listing caches that
+    # embed price (sm_product:*, sm_list_products:*, …) would serve the old
+    # price until their TTL. Bust them here — same contract the doc_event
+    # handlers would have provided for a doc-save write.
+    try:
+        from saathimart.api.storefront_cache import bust_product_cache
+        bust_product_cache(product)
+    except Exception:
+        frappe.log_error(frappe.get_traceback(), "display_price cache bust")
+
     # ── Auto-sync to vendor when sync_enabled + barcode present ──
     if method != "on_trash" and getattr(doc, "sync_enabled", 0) and getattr(doc, "barcode", None):
         vendor_url = frappe.db.get_value("Vendor", doc.vendor, "frappe_site_url")

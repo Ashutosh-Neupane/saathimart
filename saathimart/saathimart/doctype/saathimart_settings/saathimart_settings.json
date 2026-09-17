@@ -275,6 +275,14 @@
    "label": "Revalidation Secret"
   },
   {
+   "depends_on": "enable_nextjs_revalidation",
+   "description": "Outcome of the most recent revalidation delivery (written by the background job)",
+   "fieldname": "revalidation_last_status",
+   "fieldtype": "Small Text",
+   "label": "Last Revalidation Status",
+   "read_only": 1
+  },
+  {
    "fieldname": "section_redis",
    "fieldtype": "Section Break",
    "label": "📡 Event Broadcast"

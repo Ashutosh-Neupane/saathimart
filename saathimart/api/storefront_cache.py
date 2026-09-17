@@ -226,6 +226,33 @@ def _post_once(url: str, secret: str, tags, timeout: int = 8):
         return "retry", f"{type(e).__name__}: {e}"
 
 
+def _record_last_status(message: str):
+    """Best-effort write of the delivery outcome to the read-only
+    `revalidation_last_status` display field on Settings.
+
+    Raw db.set_value deliberately: it fires no on_update (no cache
+    invalidation churn) and, unlike doc.save(), cannot clobber a
+    concurrently-edited Settings doc from a background job. Truncated to
+    140 chars for a tidy form display. Never raises — status recording
+    must never break delivery.
+    """
+    try:
+        frappe.db.set_value(
+            "SaathiMart Settings", "SaathiMart Settings",
+            "revalidation_last_status", (message or "")[:140],
+            update_modified=False,
+        )
+    except Exception:
+        pass
+
+
+def _status_prefix() -> str:
+    try:
+        return frappe.utils.now_datetime().strftime("%Y-%m-%d %H:%M:%S ")
+    except Exception:
+        return ""
+
+
 def _deliver_revalidation(
     url: str, secret: str, tags, remark: str = "",
     attempts: int = 4, base_delay: float = 1.0,
@@ -251,6 +278,10 @@ def _deliver_revalidation(
     for attempt in range(1, attempts + 1):
         verdict, detail = _post_once(url, secret, tags)
         if verdict == "ok":
+            _record_last_status(
+                f"{_status_prefix()}delivered {len(tags)} tag(s) after "
+                f"{attempt} attempt(s) ({remark})"
+            )
             return True
         if verdict == "fail":
             frappe.log_error(
@@ -258,6 +289,7 @@ def _deliver_revalidation(
                 f"{detail} — tags={tags} ({remark})",
                 "Storefront Revalidation",
             )
+            _record_last_status(f"{_status_prefix()}rejected (no retry): {detail}")
             return False
         if attempt < attempts:
             time.sleep(base_delay * (2 ** (attempt - 1)))
@@ -265,6 +297,9 @@ def _deliver_revalidation(
         f"Next.js revalidation failed after {attempts} attempts: "
         f"{detail} — tags={tags} ({remark})",
         "Storefront Revalidation",
+    )
+    _record_last_status(
+        f"{_status_prefix()}failed after {attempts} attempts: {detail}"
     )
     return False
 

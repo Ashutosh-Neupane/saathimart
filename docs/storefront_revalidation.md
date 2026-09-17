@@ -25,6 +25,7 @@ Careers/Partner/Rider).
 | `enable_nextjs_revalidation` | master switch (default off) |
 | `nextjs_base_url` | storefront origin, e.g. `http://localhost:3000` |
 | `revalidation_secret` | Password field — must equal the storefront's `REVALIDATION_SECRET` env var |
+| `revalidation_last_status` | read-only; written by the delivery job after each attempt ("delivered N tag(s) after K attempt(s)…" / "rejected (no retry)…" / "failed after N attempts…") |
 
 ## Webhook contract (matches the FE reference repo's app/api/revalidate/route.ts)
 

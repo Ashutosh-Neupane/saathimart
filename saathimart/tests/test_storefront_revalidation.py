@@ -267,3 +267,164 @@ class TestTagMapping(unittest.TestCase):
             storefront_cache.cms_tags(slug="about", kind="page"),
             ["content-page:about", "content-site"],
         )
+
+
+class TestStatusRecording(unittest.TestCase):
+    """The delivery job records its outcome on Settings (ops visibility)."""
+
+    @classmethod
+    def setUpClass(cls):
+        cls.server, cls.base = _start_receiver()
+        cls.url = f"{cls.base}/api/revalidate"
+
+    @classmethod
+    def tearDownClass(cls):
+        cls.server.shutdown()
+        cls.server.server_close()
+
+    def _capture(self):
+        calls = []
+        return patch.object(
+            storefront_cache, "_record_last_status",
+            side_effect=lambda msg: calls.append(msg),
+        ), calls
+
+    def _receiver(self, codes):
+        return patch.object(_Receiver, "response_codes", codes)
+
+    def setUp(self):
+        _Receiver.captured = []
+
+    def test_success_message_after_transient(self):
+        p1, calls = self._capture()
+        with p1, self._receiver([503, 200]):
+            ok = storefront_cache._deliver_revalidation(
+                url=self.url, secret="s", tags=["a", "b"],
+                remark="unit", attempts=3, base_delay=0.01,
+            )
+        self.assertTrue(ok)
+        self.assertEqual(len(calls), 1)
+        self.assertIn("delivered 2 tag(s) after 2 attempt(s)", calls[0])
+        self.assertIn("(unit)", calls[0])
+
+    def test_success_first_attempt(self):
+        p1, calls = self._capture()
+        with p1, self._receiver([200]):
+            ok = storefront_cache._deliver_revalidation(
+                url=self.url, secret="s", tags=["a"],
+                remark="unit", attempts=2, base_delay=0.01,
+            )
+        self.assertTrue(ok)
+        self.assertEqual(len(calls), 1)
+        self.assertIn("after 1 attempt(s)", calls[0])
+
+    def test_rejection_records_no_retry(self):
+        p1, calls = self._capture()
+        with p1, self._receiver([401]):
+            ok = storefront_cache._deliver_revalidation(
+                url=self.url, secret="s", tags=["a"],
+                remark="unit", attempts=4, base_delay=0.01,
+            )
+        self.assertFalse(ok)
+        self.assertEqual(len(calls), 1)
+        self.assertIn("rejected (no retry)", calls[0])
+        self.assertIn("HTTP 401", calls[0])
+
+    def test_exhaustion_records_attempts(self):
+        p1, calls = self._capture()
+        with p1, self._receiver([503]):
+            ok = storefront_cache._deliver_revalidation(
+                url=self.url, secret="s", tags=["a"],
+                remark="unit", attempts=2, base_delay=0.01,
+            )
+        self.assertFalse(ok)
+        self.assertEqual(len(calls), 1)
+        self.assertIn("failed after 2 attempts", calls[0])
+
+
+class TestCacheBust(unittest.TestCase):
+    """Exact key targeting of the bust functions (against frappe.cache()).
+
+    Doc-event *integration* (a Product save actually invoking these) needs
+    a bench DB; these unit tests pin the key patterns, which is where a
+    silent typo would hide.
+    """
+
+    def setUp(self):
+        from saathimart.api import storefront_cache as sc
+        store = sc.frappe.cache()._store
+        store.clear()
+        # seed every key family the hub uses
+        for key in (
+            "sm_product:P1:hub::",
+            "sm_product:P1:v1:27.7:85.3:5",
+            "sm_best_listing:P1:v1::",
+            "sm_best_template:P1::",
+            "sm_resolve_listing:P1::",
+            "sm_list_products:tea:::1:20:::",
+            "sm_list_products:staples:::1:20:::",
+            "sm_stock:v1:P1",
+            "sm_stock:v2:P2",
+            "sm_stock_batch:v1",
+            "sm_totals:abc123",
+            "sm_totals:def456",
+            "sm_brands_list",
+            "sm_site_config",          # unrelated — must survive
+            "sm_dashboard_summary",    # unrelated — must survive
+        ):
+            store[key] = "x"
+
+    def _store(self):
+        from saathimart.api import storefront_cache as sc
+        return sc.frappe.cache()._store
+
+    def test_bust_product_kills_product_and_list_families(self):
+        storefront_cache.bust_product_cache("P1")
+        store = self._store()
+        for gone in (
+            "sm_product:P1:hub::", "sm_product:P1:v1:27.7:85.3:5",
+            "sm_best_listing:P1:v1::", "sm_best_template:P1::",
+            "sm_resolve_listing:P1::",
+            "sm_list_products:tea:::1:20:::",   # list cache has no product
+            "sm_list_products:staples:::1:20:::",  # name in the key — all go
+            "sm_brands_list",
+        ):
+            self.assertNotIn(gone, store, f"{gone} should be busted")
+        # other products' stock + unrelated keys survive
+        for kept in ("sm_stock:v1:P1", "sm_site_config", "sm_dashboard_summary"):
+            self.assertIn(kept, store, f"{kept} must survive a product bust")
+
+    def test_bust_stock_kills_only_that_vendor_product(self):
+        storefront_cache.bust_stock_cache(vendor="v1", product="P1")
+        store = self._store()
+        self.assertNotIn("sm_stock:v1:P1", store)
+        self.assertNotIn("sm_stock_batch:v1", store)
+        # other vendor's stock row untouched
+        self.assertIn("sm_stock:v2:P2", store)
+        # and the product-derived families went too (availability embedded)
+        self.assertNotIn("sm_product:P1:hub::", store)
+        self.assertNotIn("sm_list_products:tea:::1:20:::", store)
+
+    def test_bust_totals_kills_all_total_keys(self):
+        storefront_cache.bust_totals_cache()
+        store = self._store()
+        self.assertNotIn("sm_totals:abc123", store)
+        self.assertNotIn("sm_totals:def456", store)
+        self.assertIn("sm_product:P1:hub::", store)  # untouched
+
+    def test_on_coupon_changed_busts_totals(self):
+        from types import SimpleNamespace
+        doc = SimpleNamespace(doctype="Coupon", name="COUPON-1")
+        storefront_cache.on_coupon_changed(doc, "on_update")
+        store = self._store()
+        self.assertNotIn("sm_totals:abc123", store)
+
+    def test_delete_pattern_survives_old_wrappers(self):
+        # A wrapper lacking delete_keys_pattern must not raise out of a bust.
+        from saathimart.api import storefront_cache as sc
+        real = sc.frappe.cache().delete_keys_pattern
+        del type(sc.frappe.cache()).delete_keys_pattern
+        try:
+            storefront_cache.bust_product_cache("P1")  # must not raise
+        finally:
+            type(sc.frappe.cache()).delete_keys_pattern = real

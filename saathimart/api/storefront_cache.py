@@ -149,6 +149,29 @@ def bust_totals_cache():
     _delete_pattern("sm_totals:*")
 
 
+def bust_cms_cache():
+    """Invalidate every CMS/content cache family the storefront reads.
+
+    Called by the storefront content seeder and available for bulk CMS
+    edits; individual doctypes also bust their own keys via doc_events.
+    """
+    cache = frappe.cache()
+    for key in (
+        "sm_site_config",
+        "sm_home_content",
+        "sm_banners",
+        "sm_popular_cities",
+        "sm_locations:all",
+    ):
+        try:
+            cache.delete_value(key)
+        except Exception:
+            pass
+    _delete_pattern("sm_navigation:*")
+    _delete_pattern("sm_page:*")
+    _delete_pattern("sm_static_page:*")
+
+
 def bust_brand_cache():
     frappe.cache().delete_value("sm_brands_list")
     bump_list_version()

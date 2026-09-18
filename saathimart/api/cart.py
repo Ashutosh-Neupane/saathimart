@@ -256,6 +256,20 @@ def get_cart(session_id=None):
     return data
 
 
+def _resolve_product(value):
+    """Accept a Product name or a slug — the storefront's product id is the
+    slug (lib/data/catalog.ts maps id: p.slug), so cart callers send slugs.
+    """
+    if not value:
+        frappe.throw(_("Product is required"))
+    if frappe.db.exists("Product", value):
+        return value
+    name = frappe.db.get_value("Product", {"slug": value}, "name")
+    if name:
+        return name
+    frappe.throw(_("Product {0} not found").format(value))
+
+
 @frappe.whitelist(allow_guest=True)
 @handle_api_errors
 @commit_on_get
@@ -267,6 +281,7 @@ def add_to_cart(session_id=None, product=None, qty=1, vendor=None, delivery_zone
     if qty <= 0:
         frappe.throw(_("Qty must be positive"))
 
+    product = _resolve_product(product)
     product_doc = frappe.get_doc("Product", product)
     if product_doc.status != "Active":
         frappe.throw(_("Product is not available"))
@@ -367,6 +382,7 @@ def update_cart_item(session_id=None, product=None, qty=None, vendor=None):
     guest_rate_limit("cart.update", limit=60, window_seconds=60)
     qty = float(qty)
     vendor = vendor or None
+    product = _resolve_product(product)
     cart = _get_or_create_cart(session_id)
 
     matches = [item for item in cart.items if item.product == product]

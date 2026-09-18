@@ -155,6 +155,41 @@ HOMEPAGE_SETTINGS = {
     "marketplace_banner_link_label": "Become a vendor partner",
 }
 
+# Hero banners (CMS Banner doctype, banner_type="Hero") — the FE home hero
+# carousel reads these via get_banners("Hero"), NOT the Hero Slide doctype.
+# Copy mirrors HERO_SLIDES so both paths tell the same story.
+HERO_BANNERS = [
+    {
+        "title": "Fresh Groceries Delivered Fast",
+        "banner_type": "Hero",
+        "heading": "Fresh Groceries\nDelivered Fast",
+        "subheading": "Farm-fresh vegetables, dairy and daily staples from vendors near you.",
+        "cta_label": "Shop now",
+        "cta_url": "/categories",
+        "cta_secondary_label": "View offers",
+        "cta_secondary_url": "/offers",
+        "sort_order": 1,
+    },
+    {
+        "title": "Monsoon Personal Care",
+        "banner_type": "Hero",
+        "heading": "Monsoon Personal Care\nUp to 25% off",
+        "subheading": "Shampoo, skincare and hygiene essentials from trusted brands.",
+        "cta_label": "Grab the deals",
+        "cta_url": "/categories",
+        "sort_order": 2,
+    },
+    {
+        "title": "SaathiMart Membership",
+        "banner_type": "Hero",
+        "heading": "Membership\nFree delivery forever",
+        "subheading": "Unlimited free delivery, early access to deals and bonus loyalty points.",
+        "cta_label": "Learn more",
+        "cta_url": "/account",
+        "sort_order": 3,
+    },
+]
+
 # Promo Strip banners (CMS Banner doctype, consumed via get_banners)
 BANNERS = [
     {
@@ -466,6 +501,16 @@ def seed_storefront_content():
 
     for b in BANNERS:
         _upsert_doctype("Banner", {"title": b["title"]}, {**b, "is_active": 1})
+    for b in HERO_BANNERS:
+        _upsert_doctype("Banner", {"title": b["title"]}, {**b, "is_active": 1})
+
+    # Deactivate legacy "CMS Test*" banners left by cache-bust unit tests —
+    # the FE hero would otherwise headline test copy (kept, not deleted,
+    # so nothing referencing them by name breaks).
+    for name in frappe.get_all("Banner", filters=[["title", "like", "CMS Test%"]], pluck="name"):
+        if frappe.db.get_value("Banner", name, "is_active"):
+            frappe.db.set_value("Banner", name, "is_active", 0)
+    frappe.db.commit()
 
     # About Us single + its child tables (seeded only when empty —
     # admins may edit rows in the desk; we don't clobber them on re-run)

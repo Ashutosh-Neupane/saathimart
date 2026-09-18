@@ -420,6 +420,28 @@ def product_tags(product: str | None = None) -> list:
 
 CMS_CONTENT_TAGS = ("content-site",)
 
+# The FE's content layer (lib/content/cms.ts) caches every hub method call
+# under `content-<method-path><query>` — the coarse `content-site` tag in
+# its registry is never applied to those reads. Busting the coarse tag
+# alone was a no-op: hero/nav/footer served stale content for the full
+# 300s TTL. This list is the FE's actual cache-key universe; revalidateTag
+# on a key nothing read is a harmless no-op, so over-covering is safe.
+_CMS_API = "saathimart.api.cms"
+FE_CMS_CACHE_KEYS = (
+    f"content-{_CMS_API}.get_site_config",
+    f"content-{_CMS_API}.get_home_content",
+    f"content-{_CMS_API}.get_banners",
+    f"content-{_CMS_API}.get_banners?banner_type=Hero",
+    f"content-{_CMS_API}.get_banners?banner_type=Promo+Strip",
+    f"content-{_CMS_API}.get_trust_badges",
+    f"content-{_CMS_API}.get_product_rails",
+    f"content-{_CMS_API}.get_navigation?location=Header",
+    f"content-{_CMS_API}.get_navigation?location=Footer",
+) + tuple(
+    f"content-{_CMS_API}.get_static_page?page_type={t}"
+    for t in ("about", "terms", "privacy", "cookies", "careers", "partner", "rider")
+)
+
 
 def cms_tags(slug: str | None = None, kind: str = "content") -> list:
     if kind == "faq":
@@ -429,9 +451,14 @@ def cms_tags(slug: str | None = None, kind: str = "content") -> list:
         if slug:
             tags.append(f"cms-offer-{slug}")
         return tags
+    tags = list(FE_CMS_CACHE_KEYS)
     if kind == "page" and slug:
-        return [f"content-page:{slug}", "content-site"]
-    return list(CMS_CONTENT_TAGS)
+        # dynamic (non-static) Site Page read + the registry tags kept for
+        # forward-compat with the FE's declared content-page:{slug} scheme
+        tags.append(f"content-{_CMS_API}.get_page?slug={slug}")
+        tags.append(f"content-page:{slug}")
+    tags.append("content-site")
+    return tags
 
 
 # ── Hook handlers (wired in hooks.py doc_events) ────────────────────────────

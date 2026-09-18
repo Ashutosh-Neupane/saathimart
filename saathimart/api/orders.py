@@ -204,8 +204,8 @@ def checkout_async(session_id, customer_name, customer_phone, delivery_address,
     _set_checkout_state("inflight", session_id, {"job_id": job_id}, _CHECKOUT_INFLIGHT_TTL)
     _set_checkout_state("result", job_id, {"status": "queued"}, _CHECKOUT_RESULT_TTL)
 
-    from saathimart.api.payments import validate_payment_method
-    canonical_payment = validate_payment_method(payment_method) or "COD"
+    from saathimart.api.payments import payment_method_select_value
+    canonical_payment = payment_method_select_value(payment_method)
 
     frappe.enqueue(
         "saathimart.api.orders._async_checkout_job",
@@ -309,10 +309,6 @@ def _execute_checkout(session_id, customer_name, customer_phone, delivery_addres
     into separate Vendor Fulfillment rows, each with its own subtotal.
     Stock is reserved atomically per vendor.
     """
-    from saathimart.api.payments import validate_payment_method
-    from saathimart.api.totals import calculate_taxes_and_totals
-    from saathimart.saathimart.doctype.coupon.coupon import increment_coupon_usage
-    from saathimart.api.payments import validate_payment_method
     from saathimart.api.totals import calculate_taxes_and_totals
     from saathimart.saathimart.doctype.coupon.coupon import increment_coupon_usage
 
@@ -337,10 +333,12 @@ def _execute_checkout(session_id, customer_name, customer_phone, delivery_addres
         frappe.session.user if frappe.session.user != "Guest" else None
     )
 
-    # Validate against the Payment Mode registry and store the canonical
-    # mode name, so cron jobs filtering on payment_method="eSewa" keep
-    # matching no matter whether the storefront sent a name or a slug.
-    payment_method = validate_payment_method(payment_method) or "COD"
+    # Validate against the Payment Mode registry, then map to the Order
+    # Select vocabulary (COD/eSewa/Bank Transfer) — the registry row gates
+    # *whether* the method is allowed, the Select value is what the Order
+    # stores and the controller/settlement jobs compare against.
+    from saathimart.api.payments import payment_method_select_value
+    payment_method = payment_method_select_value(payment_method)
 
     # Group items by vendor for fulfillment splitting
     vendor_groups = {}

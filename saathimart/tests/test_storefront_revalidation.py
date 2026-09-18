@@ -272,16 +272,28 @@ class TestTagMapping(unittest.TestCase):
             )
 
     def test_cms_tags(self):
-        self.assertEqual(storefront_cache.cms_tags(), ["content-site"])
+        # default tags = the FE's real per-method cache keys (cms.ts caches
+        # every hub call under content-<method><query>) + the coarse tag
+        tags = storefront_cache.cms_tags()
+        self.assertIn("content-site", tags)
+        self.assertIn("content-saathimart.api.cms.get_site_config", tags)
+        self.assertIn(
+            "content-saathimart.api.cms.get_banners?banner_type=Hero", tags
+        )
+        self.assertIn(
+            "content-saathimart.api.cms.get_static_page?page_type=about", tags
+        )
         self.assertEqual(storefront_cache.cms_tags(kind="faq"), ["cms-faq"])
         self.assertEqual(
             storefront_cache.cms_tags(slug="monsoon", kind="offers"),
             ["cms-offers", "cms-offer-monsoon"],
         )
-        self.assertEqual(
-            storefront_cache.cms_tags(slug="about", kind="page"),
-            ["content-page:about", "content-site"],
+        page_tags = storefront_cache.cms_tags(slug="about", kind="page")
+        self.assertIn("content-page:about", page_tags)
+        self.assertIn(
+            "content-saathimart.api.cms.get_page?slug=about", page_tags
         )
+        self.assertIn("content-site", page_tags)
 
 
 class TestStatusRecording(unittest.TestCase):

@@ -154,6 +154,33 @@ def validate_payment_method(value):
     return row.name
 
 
+def payment_method_select_value(value):
+    """Map any checkout payment_method value onto the Order.payment_method
+    Select vocabulary (COD / eSewa / Bank Transfer).
+
+    The Payment Mode registry row is the source of truth for *whether* a
+    method may be used, but its name ("Cash on Delivery") can't go into the
+    Select field — the Order controller compares `payment_method == "COD"`
+    (COD-collection emails, esewa settlement jobs), and Select validation
+    rejects anything outside the vocabulary.
+    """
+    value = (value or "").strip()
+    row = resolve_payment_method(value)
+    if row is not None:
+        if (row.gateway or "").strip() == "eSewa":
+            return "eSewa"
+        if row.is_online:
+            return "Bank Transfer"
+        return "COD"
+    # Empty registry (pre-seed install): best-effort spelling map, else COD
+    lowered = value.lower()
+    if "esewa" in lowered:
+        return "eSewa"
+    if "bank" in lowered:
+        return "Bank Transfer"
+    return "COD"
+
+
 # ── Initiate ──────────────────────────────────────────────────────────────────
 
 @frappe.whitelist(allow_guest=True)

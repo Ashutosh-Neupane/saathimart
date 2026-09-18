@@ -807,7 +807,8 @@ def _serialize_product(doc, _listings_map=None, _stock_map=None, _vendor_locatio
 @cached_response(ttl=30, key_prefix="product_list")
 def list_products(category=None, vendor=None, search=None, page=1, page_size=20,
                   sort=None, in_stock=None, min_price=None, max_price=None, tags=None,
-                  brand=None, delivery_zone=None, lat=None, lng=None, radius_km=5):
+                  brand=None, delivery_zone=None, lat=None, lng=None, radius_km=5,
+                  slugs=None):
     """
     Blinkit-style product listing with rich filters and sorting.
 
@@ -836,6 +837,13 @@ def list_products(category=None, vendor=None, search=None, page=1, page_size=20,
     # (see get_product's `variants` list), so the grid doesn't end up with
     # one card per size/color of the same item.
     filters = {"status": "Active", "variant_of": ["is", "not set"]}
+
+    # Slug-batch filter — fetch specific products by slug (wishlist page,
+    # recently-viewed rails). Takes precedence over category when given.
+    if slugs:
+        slug_list = [s.strip() for s in str(slugs).split(",") if s.strip()]
+        if slug_list:
+            filters["slug"] = ["in", slug_list]
 
     # Category filter — accept a single slug/name or a comma-separated list
     if category:

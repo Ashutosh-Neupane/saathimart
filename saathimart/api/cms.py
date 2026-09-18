@@ -661,6 +661,10 @@ def get_static_page(page_type):
 
     doc = frappe.get_single(doctype)
     data = doc.as_dict()
+    # The route slug isn't a field on these Singles — include it so API
+    # consumers can echo identity back without tracking the request arg
+    # (the FE's page guard requires a non-empty slug).
+    data.setdefault("slug", page_type)
     # Single DocTypes omit empty fields — ensure all expected keys exist
     for field in ("title", "breadcrumb_label", "subtitle", "meta_title",
                   "meta_description", "hero_title", "hero_subtitle",

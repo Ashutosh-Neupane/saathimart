@@ -92,6 +92,7 @@ def send_dispatch_notification(email, order_id, vendor_name=""):
 
 # ── Notification Preferences ───────────────────────────────────────────────────
 
+@frappe.whitelist()
 def get_notification_preferences():
     """Return the current user's notification preference toggles.
 

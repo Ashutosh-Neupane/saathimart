@@ -306,6 +306,29 @@ def _get_published_slides(doctype, key_field, order_field):
     return result
 
 
+@frappe.whitelist(allow_guest=True)
+def get_trust_badges():
+    """Published trust badges for the storefront home page.
+
+    The saathimart-fe reference calls this method name directly; the
+    internal assembler lives in get_site_content — this keeps the FE
+    contract stable while sharing the same source.
+    """
+    from saathimart.api.responses import raw
+    return {"trust_badges": raw(_get_published_trust_badges)()}
+
+
+@frappe.whitelist(allow_guest=True)
+def get_product_rails():
+    """Published product-rail headings for the storefront home page.
+
+    Same deal as get_trust_badges: FE calls this name; get_site_content
+    assembles the same data among others.
+    """
+    from saathimart.api.responses import raw
+    return {"product_rails": raw(_get_product_rail_headings)()}
+
+
 def _get_published_trust_badges():
     items = frappe.get_list(
         "Trust Badge",

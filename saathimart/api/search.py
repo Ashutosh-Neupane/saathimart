@@ -9,7 +9,7 @@ Semantic search is powered by Qdrant + Sentence Transformers:
 """
 import frappe
 from frappe import _
-from frappe.utils import cint, now_datetime
+from frappe.utils import cint, flt, now_datetime
 from saathimart.api.responses import handle_api_errors
 from saathimart.api.cache import cached, TTL_LISTING
 
@@ -172,6 +172,40 @@ def search_products(query="", page=1, page_size=20, category=None, brand=None,
     search_params = []
     results = frappe.db.sql(sql, search_params + params + [page_size, offset], as_dict=True)
 
+    # Typo fallback — mirror list_products: when the synonym-expanded LIKE
+    # pass finds nothing, fuzzy-match the query against active product
+    # names (pure-Python SequenceMatcher) and re-run with those exact
+    # names as an IN filter. Only runs on the empty path, so the common
+    # hit path pays nothing. The LIKE clause is always conditions[1]
+    # (query is the first filter built), so the swap + params splice is
+    # deterministic — like_params were the first params appended.
+    if query and not results:
+        from saathimart.api.search_synonyms import fuzzy_matches
+        name_pool = frappe.get_all(
+            "Product", filters={"status": "Active"}, pluck="product_name",
+        )
+        matched = fuzzy_matches(query, name_pool, threshold=0.7, limit=60)
+        if matched:
+            params = [tuple(matched)] + params[len(like_params):]
+            conditions[1] = "p.product_name IN %s"
+            where_clause = " AND ".join(conditions)
+            total = frappe.db.sql(
+                "SELECT COUNT(DISTINCT p.name) AS count FROM `tabProduct` p WHERE {0}".format(where_clause),
+                params, as_dict=True,
+            )[0].get("count", 0)
+            sql = """
+                SELECT p.name, p.product_name, p.slug, p.thumbnail, p.category,
+                       p.short_description, p.brand, p.avg_rating, p.review_count,
+                       p.has_variants, p.variant_of,
+                       0 AS relevance
+                FROM `tabProduct` p
+                WHERE {0}
+                GROUP BY p.name
+                ORDER BY p.product_name ASC
+                LIMIT %s OFFSET %s
+            """.format(where_clause)
+            results = frappe.db.sql(sql, params + [page_size, offset], as_dict=True)
+
     # Reorder results by semantic search priority if available
     if semantic_ids:
         results = _filter_results_by_semantic_order(results, semantic_ids)
@@ -217,6 +251,9 @@ def search_products(query="", page=1, page_size=20, category=None, brand=None,
 
     return {
         "results": enriched,
+        # FE contract (lib/api searchProducts) reads `items` — same list,
+        # aliased so both names stay valid for external consumers.
+        "items": enriched,
         "total": total,
         "page": page,
         "page_size": page_size,
@@ -330,7 +367,7 @@ def record_search_term(key, term, result_count):
 
     Uses INSERT ... ON DUPLICATE KEY UPDATE for concurrency safety.
     """
-    from frappe.utils import cint, now_datetime
+    from frappe.utils import cint, flt, now_datetime
     try:
         frappe.db.sql(
             """

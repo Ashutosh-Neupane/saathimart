@@ -365,6 +365,17 @@ def _calculate_loyalty_discount(doc):
         _set(doc, "loyalty_points_earned", 0.0)
         return
 
+    # A persisted order's redemption is frozen accounting history — same
+    # convention as the coupon guard below: re-validating on every later save
+    # would re-check the CAPPED points against the CURRENT balance and the
+    # program minimum, either of which can have moved since placement (points
+    # spent on another order, expired, or simply capped below min_points_to_
+    # redeem by the first calculation) — silently zeroing a PAID order's
+    # discount and desyncing every reconciliation against its redemption row.
+    if doc.get("name") and not doc.get("__islocal") and \
+            frappe.db.exists("Loyalty Point Entry", {"order": doc.name, "entry_type": "Redeemed"}):
+        return
+
     customer_email = doc.get("customer_email") or ""
     net_after_discounts = (
         flt(doc.get("net_total") or 0)
@@ -377,9 +388,16 @@ def _calculate_loyalty_discount(doc):
         from saathimart.api.loyalty import calculate_redemption_discount
         result = calculate_redemption_discount(customer_email, points, net_after_discounts)
         _set(doc, "loyalty_discount", flt(result.get("discount") or 0))
-        _set(doc, "loyalty_points_redeemed", flt(result.get("points_used") or 0))
+        # loyalty_points_redeemed keeps the CUSTOMER'S REQUEST — the capped
+        # actually-debited count lands in loyalty_points_used. Overwriting the
+        # request with the capped value made this engine non-idempotent:
+        # validate() re-runs it on every save, and the capped value (e.g.
+        # 64.42 pts) can fall below the program's min_points_to_redeem (100),
+        # zeroing the discount on the very insert that first computed it.
+        _set(doc, "loyalty_points_used", flt(result.get("points_used") or 0))
     except Exception:
         _set(doc, "loyalty_discount", 0.0)
+        _set(doc, "loyalty_points_used", 0.0)
 
 
 # ── Step 7: grand total ───────────────────────────────────────────────────────

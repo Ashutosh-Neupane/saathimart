@@ -73,11 +73,50 @@ def rate_limit(key, limit=10, window_seconds=60):
     return True
 
 
+def _get_server_api_token():
+    """Decrypted Server API Token (Password field → lives in __Auth, so
+    db.get_single_value returns None). Cached 60s — this runs on every
+    guest request. Absent/empty token → no bypass, normal rate limits."""
+    cache_key = "sm_server_api_token"
+    cached = frappe.cache().get_value(cache_key)
+    if cached is not None:
+        return cached or None
+    token = None
+    try:
+        from frappe.utils.password import get_decrypted_password
+        token = get_decrypted_password(
+            "SaathiMart Settings", "SaathiMart Settings",
+            "server_api_token", raise_exception=False,
+        ) or None
+    except Exception:
+        token = None
+    frappe.cache().set_value(cache_key, token or "", expires_in_sec=60)
+    return token
+
+
 def guest_rate_limit(endpoint, limit=60, window_seconds=60):
     """
     Rate limit a guest endpoint by client IP.
     Falls back to 'unknown' if IP cannot be determined.
+
+    Trusted-server bypass: the Next.js server (SSR/prerender) calls these
+    same guest endpoints on behalf of EVERY visitor from ONE source IP —
+    under the default per-IP key all its users share a single bucket and
+    the storefront starts 429-ing under modest traffic. A server that
+    presents SaathiMart Settings > Server API Token in the X-Server-Token
+    header is treated as trusted infrastructure: no bucket, no limit. The
+    token is compared with a constant-time compare and never logged.
     """
+    server_token = _get_server_api_token()
+    if server_token:
+        # No request context (background jobs, bench scripts) → header reads
+        # raise RuntimeError; treat as "no token presented" there.
+        try:
+            presented = frappe.get_request_header("X-Server-Token", "") or ""
+        except Exception:
+            presented = ""
+        if presented and hmac.compare_digest(str(presented), str(server_token)):
+            return True
     try:
         ip = frappe.get_request_header("X-Forwarded-For", "").split(",")[0].strip()
         if not ip:

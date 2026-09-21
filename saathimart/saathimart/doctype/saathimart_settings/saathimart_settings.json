@@ -278,6 +278,13 @@
   },
   {
    "depends_on": "enable_nextjs_revalidation",
+   "description": "Header the Next.js server sends on SSR catalog reads to bypass guest rate limits — shared servers otherwise exhaust one per-IP bucket for every visitor. Same value as the storefront's SERVER_API_TOKEN env var.",
+   "fieldname": "server_api_token",
+   "fieldtype": "Password",
+   "label": "Server API Token"
+  },
+  {
+   "depends_on": "enable_nextjs_revalidation",
    "description": "Outcome of the most recent revalidation delivery (written by the background job)",
    "fieldname": "revalidation_last_status",
    "fieldtype": "Small Text",

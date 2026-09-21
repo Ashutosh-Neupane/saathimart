@@ -232,6 +232,39 @@ def _create_sle(product, qty_change, voucher_type, voucher_no, source_site, vend
 
 @frappe.whitelist()
 @handle_api_errors
+def _pooled_stock(vendor, product, fields):
+    """Read stock for (vendor, product) pooled across ALL of the vendor's
+    Warehouse rows, preferring the `-default` row as the base when several
+    exist. This mirrors the write side: atomic_reserve / atomic_release_batch
+    UPDATE with `WHERE vendor=... AND product=...` (no warehouse filter), so
+    a vendor whose rows were created warehouse-aware (real-warehouse suffix
+    in the row name — e.g. the platform's own main.localhost stock pushed via
+    the vendor-stock API) was invisible to every reader that looked up the
+    `-default` row only: cart showed "out of stock" while atomic_reserve
+    would happily have reserved the units. Reader and writer semantics must
+    agree — both pool now."""
+    all_fields = list(dict.fromkeys(["name"] + list(fields)))
+    rows = frappe.db.get_all(
+        "Vendor Stock",
+        filters={"vendor": vendor, "product": product},
+        fields=all_fields,
+    )
+    if not rows:
+        return None
+    if len(rows) == 1:
+        return rows[0]
+    default_name = _row_name(vendor, product)
+    base = next((r for r in rows if r.get("name") == default_name), rows[0])
+    qty_fields = ("available_qty", "reserved_qty", "physical_qty")
+    for r in rows:
+        if r is base:
+            continue
+        for f in qty_fields:
+            if f in base:
+                base[f] = flt(base.get(f) or 0) + flt(r.get(f) or 0)
+    return base
+
+
 def get_vendor_stock(vendor, product):
     """
     Called by saathimart-vendor's hourly reconciliation task
@@ -243,10 +276,7 @@ def get_vendor_stock(vendor, product):
     if cached:
         return cached
 
-    row = frappe.db.get_value(
-        "Vendor Stock", _row_name(vendor, product),
-        ["available_qty", "reserved_qty", "physical_qty"], as_dict=True,
-    )
+    row = _pooled_stock(vendor, product, ["available_qty", "reserved_qty", "physical_qty"])
     if not row:
         row = {"available_qty": 0, "reserved_qty": 0, "physical_qty": 0}
     frappe.cache().set_value(cache_key, row, expires_in_sec=30)
@@ -281,11 +311,10 @@ def get_vendor_stock_batch(vendor, products):
 
     result = {}
     for r in rows:
-        result[r.product] = {
-            "available_qty": flt(r.available_qty or 0),
-            "reserved_qty": flt(r.reserved_qty or 0),
-            "physical_qty": flt(r.physical_qty or 0),
-        }
+        agg = result.setdefault(r.product, {"available_qty": 0, "reserved_qty": 0, "physical_qty": 0})
+        agg["available_qty"] += flt(r.available_qty or 0)
+        agg["reserved_qty"] += flt(r.reserved_qty or 0)
+        agg["physical_qty"] += flt(r.physical_qty or 0)
     frappe.cache().set_value(cache_key, result, expires_in_sec=30)
     return result
 
@@ -317,9 +346,8 @@ def atomic_reserve(vendor, product, qty):
     affected = frappe.db._cursor.rowcount
 
     if not affected:
-        current = flt(frappe.db.get_value(
-            "Vendor Stock", _row_name(vendor, product), "available_qty"
-        ) or 0)
+        pooled = _pooled_stock(vendor, product, ["available_qty"]) or {}
+        current = flt(pooled.get("available_qty") or 0)
         frappe.throw(_(
             "Only {0} unit(s) left with this vendor for this product."
         ).format(current))
@@ -421,6 +449,14 @@ def confirm_deduction(vendor, product, qty, order_id=None):
         {"qty": qty, "vendor": vendor, "product": product, "now": now_datetime()},
     )
     row_name = _row_name(vendor, product)
+    if not frappe.db.exists("Vendor Stock", row_name):
+        # warehouse-aware row (e.g. platform's own stock): write to the
+        # vendor's first real row for this product instead of silently no-op
+        alt = frappe.db.get_value(
+            "Vendor Stock", {"vendor": vendor, "product": product}, "name"
+        )
+        if alt:
+            row_name = alt
     frappe.db.set_value("Vendor Stock", row_name, {
         "physical_qty": flt(frappe.db.get_value("Vendor Stock", row_name, "available_qty") or 0)
                        + flt(frappe.db.get_value("Vendor Stock", row_name, "reserved_qty") or 0),

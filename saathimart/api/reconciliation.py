@@ -99,29 +99,33 @@ def _reconcile_vendor(vendor_name):
 
 def correct_or_flag(vendor_name, vendor_stock_name, product, warehouse, hub_qty, vendor_qty, reserved_qty=0):
     """
-    Shared correction decision — same tolerance rule both the hourly
-    per-product reconciliation and stock_snapshot's full-catalog discrepancy
-    report use: auto-correct Vendor Stock toward the vendor's real qty
-    within this vendor's own threshold (Vendor.reconciliation_threshold_pct,
-    see _tolerance_pct), otherwise leave it and let the caller flag it for
-    review. Extracted so a snapshot-reported discrepancy gets exactly the
-    same correction the hourly job would eventually give it, instead of
-    only being logged for a human to notice.
+    Shared correction decision used by the hourly per-product
+    reconciliation and stock_snapshot's full-catalog discrepancy report:
+    the vendor's ERPNext Bin is the source of truth, so Vendor Stock is
+    ALWAYS corrected toward the vendor's real qty. The per-vendor
+    threshold (Vendor.reconciliation_threshold_pct) no longer decides
+    *whether* we fix the hub's number — only whether the fix is
+    "quiet" (within tolerance, routine drift) or logged to an Issue so
+    a human can investigate WHY the vendor's own stock.* events missed
+    that much (theft, unreported manual adjustment, missed event...).
+    Flagging used to mean leaving the stale qty live on the storefront
+    indefinitely — worse for customers than the drift itself.
 
-    Returns "corrected", "flagged", or "unchanged" (mismatch was 0).
+    Returns "corrected" (within tolerance), "flagged" (corrected AND
+    beyond tolerance — caller raises an Issue), or "unchanged".
     """
     mismatch = abs(flt(hub_qty) - flt(vendor_qty))
     if mismatch == 0:
         return "unchanged"
 
-    tolerance = max(flt(hub_qty) * _tolerance_pct(vendor_name) / 100, 1)
+    frappe.db.set_value("Vendor Stock", vendor_stock_name, {
+        "physical_qty": vendor_qty,
+        "available_qty": flt(vendor_qty) - flt(reserved_qty or 0),
+        "last_updated": now_datetime(),
+    })
 
+    tolerance = max(flt(hub_qty) * _tolerance_pct(vendor_name) / 100, 1)
     if mismatch <= tolerance:
-        frappe.db.set_value("Vendor Stock", vendor_stock_name, {
-            "physical_qty": vendor_qty,
-            "available_qty": flt(vendor_qty) - flt(reserved_qty or 0),
-            "last_updated": now_datetime(),
-        })
         return "corrected"
 
     return "flagged"
@@ -151,9 +155,16 @@ def _get_vendor_stock_qty(vendor_name, product, warehouse="default"):
     ts = str(int(datetime.now(timezone.utc).timestamp()))
 
     try:
+        # "default" is a placeholder, not a real warehouse — omit it so the
+        # vendor falls back to its own Vendor Config default_warehouse.
+        # Sending it made the vendor query a non-existent Bin("default")
+        # and answer qty 0, flagging every unsynced row as a mismatch.
+        params = {"product": product}
+        if warehouse and warehouse != "default":
+            params["warehouse"] = warehouse
         resp = requests.get(
             f"{target_url}/api/method/saathimart_vendor.api.stock.get_stock_qty",
-            params={"product": product, "warehouse": warehouse},
+            params=params,
             headers={
                 "Host": host_header,
                 "X-Vendor-ID": vendor_name,
@@ -176,9 +187,10 @@ def _create_reconciliation_issue(vendor_name, issues):
     lines = [f"Stock reconciliation issues for {vendor_name_display}:"]
     for issue in issues:
         lines.append(
-            f"  Product: {issue['product']}, Warehouse: {issue['warehouse']}, "
-            f"Hub: {issue['hub_qty']}, Vendor: {issue['vendor_qty']}, "
-            f"Mismatch: {issue['mismatch']}"
+            f"  Product: {issue['product']}, Warehouse: {issue['warehouse']}: "
+            f"hub had {issue['hub_qty']}, vendor truth {issue['vendor_qty']} "
+            f"(diff {issue['mismatch']}) — corrected to vendor qty; investigate "
+            f"why the vendor's stock events missed this."
         )
 
     # Create Issue doctype if it exists (ERPNext)

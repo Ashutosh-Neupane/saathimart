@@ -851,6 +851,13 @@ def _deliver_event(evt, secret, max_retries):
         # Last resort before giving up entirely — pull-based or email
         # delivery (api/fallback_delivery.py) instead of straight to Dead.
         delivered_via_fallback = False
+        # vendor_doc is defined for every path: the fallback import sits
+        # inside `if target_vendor:` below, so an event WITHOUT a target
+        # vendor used to hit the call with the name unbound — raising
+        # UnboundLocalError out of _deliver_event, which left the event
+        # Queued forever (the status writes in this branch never ran) and
+        # every drain sweep re-crashed on it.
+        vendor_doc = {}
         if target_vendor:
             from saathimart.api.fallback_delivery import deliver_with_fallback
             from frappe.utils.password import get_decrypted_password
@@ -864,6 +871,7 @@ def _deliver_event(evt, secret, max_retries):
             vendor_doc["webhook_secret"] = get_decrypted_password(
                 "Vendor", target_vendor, "webhook_secret", raise_exception=False
             ) or ""
+        from saathimart.api.fallback_delivery import deliver_with_fallback
         ok, fallback_method, _err = deliver_with_fallback(evt, vendor_doc)
         delivered_via_fallback = ok
 

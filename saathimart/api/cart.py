@@ -227,12 +227,8 @@ def _get_vendor_stock(vendor, product):
     the duplication is exactly how the two drifted out of sync the first
     time.
     """
-    from saathimart.api.stock import _row_name
-    row = frappe.db.get_value(
-        "Vendor Stock", _row_name(vendor, product),
-        ["available_qty", "reserved_qty"],
-        as_dict=True,
-    )
+    from saathimart.api.stock import _pooled_stock
+    row = _pooled_stock(vendor, product, ["available_qty", "reserved_qty"])
     if not row:
         row = {"available_qty": 0, "reserved_qty": 0}
     row["track_inventory"] = 1

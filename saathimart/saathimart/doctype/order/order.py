@@ -44,7 +44,12 @@ class Order(Document):
         redeem_points(
             self.customer_email,
             self.name,
-            self.loyalty_points_redeemed,
+            # Debit the CAPPED count actually granted (loyalty_points_used),
+            # falling back to the requested count for legacy orders created
+            # before the used field existed. Debiting the raw request would
+            # silently overdraw the customer's balance whenever the 20%-of-
+            # bill cap bit.
+            self.loyalty_points_used or self.loyalty_points_redeemed,
             self.loyalty_discount,
         )
 

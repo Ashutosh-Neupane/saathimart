@@ -234,7 +234,7 @@ def _calculate_coupon_discount(doc):
             doc.get("customer_phone") or None,
             # Vendor scope: the coupon's applicable_vendors list is enforced
             # against the vendors this order actually buys from.
-            order_vendors=[i.vendor for i in (doc.get("items") or []) if i.get("vendor")],
+            order_vendors=[i.get("vendor") for i in (doc.get("items") or []) if i.get("vendor")],
         )
         _set(doc, "coupon_discount", flt(result.get("discount") or 0))
         _set(doc, "free_delivery", 1 if result.get("free_delivery") else 0)
@@ -399,6 +399,13 @@ def _calculate_loyalty_discount(doc):
         # zeroing the discount on the very insert that first computed it.
         _set(doc, "loyalty_points_used", flt(result.get("points_used") or 0))
     except Exception:
+        # Never silently zero a customer's requested redemption — log the
+        # real reason so redemption bugs are diagnosable from the desk.
+        import traceback
+        frappe.log_error(
+            message=traceback.format_exc(),
+            title=f"Loyalty redemption failed for {doc.get('name') or 'new order'}",
+        )
         _set(doc, "loyalty_discount", 0.0)
         _set(doc, "loyalty_points_used", 0.0)
 
@@ -442,24 +449,60 @@ def _round_totals(doc):
 
 @frappe.whitelist(allow_guest=True)
 @handle_api_errors
-def preview_order_totals(items, delivery_zone=None, coupon_code=None,
-                          loyalty_points=0, customer_email=None):
+def preview_order_totals(items=None, delivery_zone=None, coupon_code=None,
+                          loyalty_points=0, customer_email=None, session_id=None,
+                          customer_phone=None):
     """
     Frontend calls this to get a live totals preview before placing order.
     items = JSON list of {product, qty, vendor?}
     vendor on each item drives price resolution — vendor-a and vendor-b
     can return different prices for the same product.
+
+    Two call shapes are supported: explicit items, or session_id — the
+    storefront's server actions send the cart session (middleware-era
+    contract) and the cart is the source of truth. With a session, items
+    come from the cart's SELECTED rows so the preview matches what partial
+    checkout will actually charge.
     """
     import json, hashlib
     from saathimart.api.products import get_effective_price
 
     if isinstance(items, str):
         items = json.loads(items)
+    if not items and (session_id or frappe.session.user != "Guest"):
+        # Resolve exactly like _get_or_create_cart does (user-keyed first,
+        # then session-keyed) — the FE's summary and this preview must
+        # always agree on WHICH cart is being priced.
+        from saathimart.api.cart import find_active_cart
+
+        cart = find_active_cart(session_id)
+        if cart:
+            rows = frappe.get_all(
+                "Cart Item", filters={"parent": cart, "parenttype": "Cart", "selected": 1},
+                fields=["product", "vendor", "qty"], order_by="idx",
+            )
+            items = [
+                {"product": r.product, "vendor": r.vendor, "qty": r.qty}
+                for r in rows if r.product
+            ]
+        if not items:
+            return {
+                "items": [], "subtotal": 0, "net_total": 0, "total_taxes": 0,
+                "coupon_discount": 0, "coupon_error": None,
+                "onboarding_discount": 0, "onboarding_order_sequence": 0,
+                "membership_discount": 0, "membership_breakdown": [],
+                "loyalty_discount": 0, "total_discount": 0, "delivery_charge": 0,
+                "grand_total": 0, "loyalty_points_earned_preview": 0,
+                "currency": "NPR",
+            }
+    if not items:
+        frappe.throw(_("items or session_id is required"))
 
     cache_key = "sm_totals:" + hashlib.md5(
         json.dumps({"items": items, "delivery_zone": delivery_zone,
                     "coupon_code": coupon_code, "loyalty_points": loyalty_points,
-                    "customer_email": customer_email},
+                    "customer_email": customer_email, "session_id": session_id,
+                    "customer_phone": customer_phone},
                    sort_keys=True).encode()
     ).hexdigest()
     cached = frappe.cache().get_value(cache_key)
@@ -497,6 +540,7 @@ def preview_order_totals(items, delivery_zone=None, coupon_code=None,
         "coupon_code":             coupon_code or "",
         "loyalty_points_redeemed": flt(loyalty_points),
         "customer_email":          customer_email or frappe.session.user,
+        "customer_phone":          customer_phone or "",
         "discount_amount":         0,
         "taxes":                   [],
     }
@@ -516,7 +560,10 @@ def preview_order_totals(items, delivery_zone=None, coupon_code=None,
             validate_coupon(
                 coupon_code,
                 flt(order_dict.get("net_total") or 0),
-                None,
+                # Per-user limits key on phone — without it max_uses_per_user
+                # is skipped here and the cart shows a discount checkout then
+                # refuses (preview must match placement exactly).
+                customer_phone or None,
                 order_vendors=[i.get("vendor") for i in resolved_items if i.get("vendor")],
             )
         except frappe.ValidationError as e:
@@ -564,6 +611,11 @@ def preview_order_totals(items, delivery_zone=None, coupon_code=None,
         "membership_discount":          order_dict["membership_discount"],
         "membership_breakdown":         membership_breakdown,
         "loyalty_discount":             order_dict["loyalty_discount"],
+        # Echo back what was actually accepted (capped etc.) so the FE can
+        # pass the REAL applied value to checkout — the raw request may be
+        # capped by program limits and must not be re-sent blindly.
+        "loyalty_points_applied":        flt(order_dict.get("loyalty_points_used") or 0),
+        "loyalty_points_requested":     flt(loyalty_points or 0),
         "total_discount":               order_dict["total_discount"],
         "delivery_charge":              order_dict["delivery_charge"],
         "grand_total":                  order_dict["grand_total"],

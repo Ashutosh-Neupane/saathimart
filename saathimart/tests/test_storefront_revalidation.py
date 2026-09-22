@@ -370,6 +370,46 @@ class TestStatusRecording(unittest.TestCase):
         self.assertIn("delivered 0/1 tag(s) with failures", calls[0])
 
 
+class _DictView:
+    """Dict-style adapter over Frappe 16's RedisWrapper.
+
+    The old `frappe.cache()._store` dict shim is gone in Frappe 16 — these
+    tests only need dict semantics (set/contains/get/pop/clear) over the
+    same keys the bust functions target, so go through set_value/get_value
+    /exists with the site prefix handled by the wrapper itself.
+    """
+
+    def __init__(self, cache):
+        self.c = cache
+
+    def __setitem__(self, key, value):
+        self.c.set_value(key, value)
+
+    def __contains__(self, key):
+        return bool(self.c.exists(key))
+
+    def __getitem__(self, key):
+        value = self.c.get_value(key)
+        if value is None:
+            raise KeyError(key)
+        return value
+
+    def get(self, key, default=None):
+        value = self.c.get_value(key)
+        return default if value is None else value
+
+    def pop(self, key, default=None):
+        existed = bool(self.c.exists(key))
+        self.c.delete_value(key)
+        return default if not existed else True
+
+    def clear(self):
+        prefix = f"{frappe.local.site}:sm_"
+        for raw in self.c.keys(f"{prefix}*") or []:
+            key = raw.decode() if isinstance(raw, bytes) else raw
+            self.c.delete(key)
+
+
 class TestCacheBust(unittest.TestCase):
     """Exact key targeting of the bust functions (against frappe.cache()).
 
@@ -380,7 +420,7 @@ class TestCacheBust(unittest.TestCase):
 
     def setUp(self):
         from saathimart.api import storefront_cache as sc
-        store = sc.frappe.cache()._store
+        store = _DictView(sc.frappe.cache())
         store.clear()
         # seed every key family the hub uses
         for key in (
@@ -406,7 +446,7 @@ class TestCacheBust(unittest.TestCase):
 
     def _store(self):
         from saathimart.api import storefront_cache as sc
-        return sc.frappe.cache()._store
+        return _DictView(sc.frappe.cache())
 
     def test_bust_product_kills_product_families_and_bumps_list_version(self):
         storefront_cache.bust_product_cache("P1")

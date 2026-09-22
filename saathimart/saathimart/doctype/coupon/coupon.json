@@ -100,7 +100,8 @@
   {
    "fieldname": "applicable_vendors",
    "fieldtype": "Small Text",
-   "label": "Applicable Vendors (comma separated, blank = all)"
+   "label": "Applicable Vendors",
+   "description": "Comma-separated Vendor names. Empty = valid for ALL vendors. Checkout fails when none of the order's vendors are in this list."
   },
   {
    "fieldname": "section_accounting",

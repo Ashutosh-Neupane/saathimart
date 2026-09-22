@@ -10,7 +10,7 @@ import frappe
 from frappe import _
 from frappe.utils import flt, nowdate, add_days, today
 from saathimart.api.responses import handle_api_errors
-from saathimart.api.utils import guest_rate_limit, verify_hub_secret
+from saathimart.api.utils import guest_rate_limit, rate_limited, verify_hub_secret
 from saathimart.api.cached import cached_response
 
 
@@ -804,6 +804,7 @@ def _serialize_product(doc, _listings_map=None, _stock_map=None, _vendor_locatio
 
 @frappe.whitelist(allow_guest=True)
 @handle_api_errors
+@rate_limited("products.list", limit=300, window_seconds=60)
 @cached_response(ttl=30, key_prefix="product_list")
 def list_products(category=None, vendor=None, search=None, page=1, page_size=20,
                   sort=None, in_stock=None, min_price=None, max_price=None, tags=None,

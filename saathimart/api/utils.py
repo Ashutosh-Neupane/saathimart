@@ -8,6 +8,7 @@ Single source of truth for:
 - Vendor->hub push authentication
 """
 import hashlib
+from functools import wraps
 import hmac
 import json
 import os
@@ -126,6 +127,31 @@ def guest_rate_limit(endpoint, limit=60, window_seconds=60):
     except Exception:
         ip = "unknown"
     return rate_limit(f"{endpoint}:{ip}", limit=limit, window_seconds=window_seconds)
+
+
+def rate_limited(endpoint, limit=60, window_seconds=60):
+    """
+    Decorator form of guest_rate_limit. Stack it ABOVE cached_response so
+    the limiter sees every request — a cache hit would otherwise absorb
+    the call before the limiter ever runs, letting a hot cached URL be
+    hammered past its limit for free.
+
+        @frappe.whitelist(allow_guest=True)
+        @handle_api_errors
+        @rate_limited("products.list", limit=300, window_seconds=60)
+        @cached_response(ttl=30, key_prefix="product_list")
+        def list_products(...): ...
+    """
+
+    def decorator(fn):
+        @wraps(fn)
+        def wrapper(*args, **kwargs):
+            guest_rate_limit(endpoint, limit=limit, window_seconds=window_seconds)
+            return fn(*args, **kwargs)
+
+        return wrapper
+
+    return decorator
 
 
 def compute_hmac_signature(secret, timestamp, body):

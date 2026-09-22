@@ -36,6 +36,14 @@
    "in_list_view": 1
   },
   {
+   "default": "1",
+   "description": "Unchecked lines stay in the cart when the shopper checks out — Daraz/Amazon-style partial checkout",
+   "fieldname": "selected",
+   "fieldtype": "Check",
+   "in_list_view": 1,
+   "label": "Selected"
+  },
+  {
    "fieldname": "rate",
    "fieldtype": "Currency",
    "label": "Rate",

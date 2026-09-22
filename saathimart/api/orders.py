@@ -340,9 +340,16 @@ def _execute_checkout(session_id, customer_name, customer_phone, delivery_addres
     from saathimart.api.payments import payment_method_select_value
     payment_method = payment_method_select_value(payment_method)
 
+    # Daraz/Amazon-style partial checkout: only the lines the shopper kept
+    # checked become the order. Unchecked lines stay in the cart for next
+    # time (old rows predate the flag — default them to selected).
+    checkout_items = [ci for ci in cart.items if ci.get("selected", 1)]
+    if not checkout_items:
+        frappe.throw(_("Nothing is selected — check at least one item to check out"))
+
     # Group items by vendor for fulfillment splitting
     vendor_groups = {}
-    for ci in cart.items:
+    for ci in checkout_items:
         v = ci.vendor or ""
         if v not in vendor_groups:
             vendor_groups[v] = []
@@ -369,7 +376,7 @@ def _execute_checkout(session_id, customer_name, customer_phone, delivery_addres
     if customer_lng is not None:
         order.delivery_lng = flt(customer_lng)
 
-    for ci in cart.items:
+    for ci in checkout_items:
         order.append("items", {
             "product":      ci.product,
             "product_name": ci.product_name,
@@ -379,15 +386,17 @@ def _execute_checkout(session_id, customer_name, customer_phone, delivery_addres
             "vendor_listing": _resolve_vendor_listing(ci.product, ci.vendor),
         })
 
-    # Delivery charge from zone
+    # Delivery charge from zone — a named-but-inactive zone must fail the
+    # checkout, not silently deliver free.
     if delivery_zone:
         zone = frappe.get_doc("Delivery Zone", delivery_zone)
-        if zone.is_active:
-            subtotal_est = sum(flt(i.qty) * flt(i.rate) for i in cart.items)
-            order.delivery_charge = (
-                0 if (zone.free_delivery_above and subtotal_est >= zone.free_delivery_above)
-                else flt(zone.delivery_charge)
-            )
+        if not zone.is_active:
+            frappe.throw(_("Delivery zone {0} is not available").format(delivery_zone))
+        subtotal_est = sum(flt(i.qty) * flt(i.rate) for i in checkout_items)
+        order.delivery_charge = (
+            0 if (zone.free_delivery_above and subtotal_est >= zone.free_delivery_above)
+            else flt(zone.delivery_charge)
+        )
 
     # Create vendor fulfillments — find nearest warehouse for each vendor
     from saathimart.api.warehouses import find_nearest_warehouse
@@ -448,7 +457,19 @@ def _execute_checkout(session_id, customer_name, customer_phone, delivery_addres
         except Exception:
             frappe.log_error(frappe.get_traceback(), f"Coupon usage record failed for {order.name}")
 
-    cart.db_set("status", "CheckedOut")
+    # Partial checkout: drop only the lines that just became the order —
+    # unchecked lines stay in this cart so the shopper can check them out
+    # separately later. A full save (not db_set) is required or the child
+    # rows aren't rewritten; rows were just reserved for the checked lines,
+    # so their reservation flags must go with them. A cart drained fully
+    # by selection is marked CheckedOut (the pre-partial-checkout
+    # contract); a partially-emptied one stays Active for the next round.
+    remaining = [ci for ci in cart.items if not ci.get("selected", 1)]
+    for ci in remaining:
+        ci.selected = 1
+    cart.set("items", remaining)
+    cart.status = "CheckedOut" if not remaining else "Active"
+    cart.save(ignore_permissions=True)
 
     if email:
         try:

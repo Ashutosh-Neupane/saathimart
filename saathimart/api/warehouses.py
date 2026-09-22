@@ -91,6 +91,8 @@ def find_nearest_warehouse(vendor_name, customer_lat, customer_lng, product=None
     # Score each warehouse: distance is primary, stock availability is bonus
     best_with_stock = None
     best_any = None
+    _candidates_with_stock = []
+    _candidates_any = []
     for wh in warehouses:
         if not wh.lat or not wh.lng:
             continue
@@ -106,18 +108,38 @@ def find_nearest_warehouse(vendor_name, customer_lat, customer_lng, product=None
             "available_qty": stock_by_wh.get(wh_name, 0) if product else None,
         }
 
+        _candidates_any.append(entry)
         if best_any is None or dist < best_any["distance_km"]:
             best_any = entry
 
-        if has_stock and (best_with_stock is None or dist < best_with_stock["distance_km"]):
-            best_with_stock = entry
+        if has_stock:
+            _candidates_with_stock.append(entry)
+            if best_with_stock is None or dist < best_with_stock["distance_km"]:
+                best_with_stock = entry
 
-    # Prefer nearest warehouse with stock; fall back to nearest overall
-    best = best_with_stock or best_any
+    # Prefer nearest warehouse with stock; fall back to nearest overall.
+    # Ties on distance break by the admin-set priority (higher wins), then
+    # name — deterministic routing instead of list-order luck.
+    def _rank(e):
+        return (e["distance_km"], -flt(e.get("priority") or 0), e["warehouse_name"])
+
+    best = None
+    if best_with_stock:
+        best = min(_candidates_with_stock, key=_rank) if _candidates_with_stock else best_with_stock
+    if not best:
+        best = min(_candidates_any, key=_rank) if _candidates_any else best_any
 
     # Fall back to default if no warehouse with coordinates found
     if not best:
         dw = get_default_warehouse(vendor_name)
+        if dw:
+            # Routing degrades silently without coordinates — surface it so
+            # the admin configures lat/lng instead of orders forever using
+            # the default with no distance data.
+            frappe.logger("warehouse_routing").warn(
+                {"event": "routing_without_coordinates", "vendor": vendor_name,
+                 "fallback": dw}
+            )
         return {"warehouse_name": dw, "distance_km": None} if dw else None
 
     return best

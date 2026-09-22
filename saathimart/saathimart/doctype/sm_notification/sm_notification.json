@@ -16,7 +16,7 @@
    "fieldtype": "Select",
    "label": "Kind",
    "reqd": 1,
-   "options": "order\npromotion\nsystem",
+   "options": "order\npromotion\nsystem\nmembership",
    "in_list_view": 1
   },
   {

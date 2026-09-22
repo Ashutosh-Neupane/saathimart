@@ -80,6 +80,31 @@ def get_or_create(vendor, product, warehouse=None):
     return doc
 
 
+def _stock_row_for_warehouse(vendor, product, warehouse_name):
+    """The Vendor Stock row whose `warehouse` matches an ERPNext warehouse
+    name (real-warehouse row — e.g. main.localhost's `-Stores - SM`), else
+    the legacy `-default` row, else the pooled sum across all rows. Mirrors
+    the write side: reservations pool all warehouse rows, so a routed read
+    must see them too — a warehouse-filtered miss degrading to the pool keeps
+    routed and pooled readers consistent with what atomic_reserve would
+    actually take."""
+    rows = frappe.get_all(
+        "Vendor Stock",
+        filters={"vendor": vendor, "product": product},
+        fields=["name", "warehouse", "available_qty"],
+    )
+    if not rows:
+        return 0.0
+    if warehouse_name:
+        for r in rows:
+            if r.warehouse == warehouse_name:
+                return flt(r.available_qty or 0)
+    for r in rows:
+        if (r.warehouse or "default") == "default":
+            return flt(r.available_qty or 0)
+    return sum(flt(r.available_qty or 0) for r in rows)
+
+
 def _invalidate_stock_cache(vendor, product):
     """Central choke point for every stock write path (db.set_value or doc.save).
 
@@ -376,11 +401,15 @@ def atomic_reserve_batch(reservations):
         products = [p for p, _ in items]
         qtys = {p: q for p, q in items}
 
-        case_available = " + ".join(
+        # One WHEN branch per (vendor, product) — each row matched by the
+        # WHERE clause hits exactly one branch, so the per-row subtraction
+        # is correct. (Joining branches with " + " produced invalid SQL and
+        # crashed every multi-line checkout with a programming error.)
+        case_available = "\n                ".join(
             f"WHEN vendor={frappe.db.escape(vendor)} AND product={frappe.db.escape(p)} THEN {flt(q)}"
             for p, q in items
         )
-        case_reserved = " + ".join(
+        case_reserved = "\n                ".join(
             f"WHEN vendor={frappe.db.escape(vendor)} AND product={frappe.db.escape(p)} THEN {flt(q)}"
             for p, q in items
         )
@@ -390,11 +419,17 @@ def atomic_reserve_batch(reservations):
 
         sql = f"""
             UPDATE `tabVendor Stock`
-            SET available_qty = available_qty - CASE {case_available} END,
-                reserved_qty  = reserved_qty  + CASE {case_reserved} END,
+            SET available_qty = available_qty - CASE
+                {case_available}
+                ELSE 0 END,
+                reserved_qty  = reserved_qty + CASE
+                {case_reserved}
+                ELSE 0 END,
                 last_updated  = %(now)s
             WHERE (vendor, product) IN ({in_clause})
-              AND available_qty >= CASE {case_available} END
+              AND available_qty >= CASE
+                {case_available}
+                ELSE 0 END
         """
         frappe.db.sql(sql, {"now": now_datetime()})
         affected = frappe.db._cursor.rowcount

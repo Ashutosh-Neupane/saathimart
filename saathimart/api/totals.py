@@ -232,6 +232,9 @@ def _calculate_coupon_discount(doc):
             coupon_code,
             flt(doc.get("net_total") or 0),
             doc.get("customer_phone") or None,
+            # Vendor scope: the coupon's applicable_vendors list is enforced
+            # against the vendors this order actually buys from.
+            order_vendors=[i.vendor for i in (doc.get("items") or []) if i.get("vendor")],
         )
         _set(doc, "coupon_discount", flt(result.get("discount") or 0))
         _set(doc, "free_delivery", 1 if result.get("free_delivery") else 0)
@@ -500,6 +503,25 @@ def preview_order_totals(items, delivery_zone=None, coupon_code=None,
 
     calculate_taxes_and_totals(order_dict)
 
+    # Surface WHY a coupon didn't apply — the internal calculator swallows
+    # the ValidationError and zeroes the discount silently, which the cart
+    # renders as "coupon did nothing". Re-validating here is idempotent (no
+    # usage is incremented on validation) and only runs when a code was
+    # supplied. Vendor scope is enforced with the same vendor set checkout
+    # will use, so the preview error matches the placement error exactly.
+    coupon_error = None
+    if coupon_code:
+        try:
+            from saathimart.saathimart.doctype.coupon.coupon import validate_coupon
+            validate_coupon(
+                coupon_code,
+                flt(order_dict.get("net_total") or 0),
+                None,
+                order_vendors=[i.get("vendor") for i in resolved_items if i.get("vendor")],
+            )
+        except frappe.ValidationError as e:
+            coupon_error = str(e)
+
     earned_preview = 0.0
     s = frappe.get_single("SaathiMart Settings")
     if s.enable_loyalty and s.loyalty_program:
@@ -536,6 +558,7 @@ def preview_order_totals(items, delivery_zone=None, coupon_code=None,
         "net_total":                    order_dict["net_total"],
         "total_taxes":                  order_dict["total_taxes"],
         "coupon_discount":              order_dict["coupon_discount"],
+        "coupon_error":                 coupon_error,
         "onboarding_discount":          order_dict["onboarding_discount"],
         "onboarding_order_sequence":    order_dict["onboarding_order_sequence"],
         "membership_discount":          order_dict["membership_discount"],

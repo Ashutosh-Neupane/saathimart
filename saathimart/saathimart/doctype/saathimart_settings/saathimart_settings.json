@@ -134,13 +134,6 @@
    "description": "Leave blank for default production/sandbox URL"
   },
   {
-   "fieldname": "esewa_mode_of_payment",
-   "fieldtype": "Link",
-   "label": "eSewa Payment Mode",
-   "options": "Payment Mode",
-   "description": "App Payment Mode entry to use for eSewa transactions (the app's own Payment Mode doctype — the hub has no ERPNext, so ERPNext's Mode of Payment does not exist here)"
-  },
-  {
    "fieldname": "section_payment_portal",
    "fieldtype": "Section Break",
    "label": "💻 Payment Portal"
@@ -191,20 +184,6 @@
    "fieldtype": "Column Break"
   },
   {
-   "fieldname": "loyalty_points_per_npr",
-   "fieldtype": "Float",
-   "label": "Points per NPR Spent",
-   "default": "1",
-   "description": "How many loyalty points earned per NPR spent"
-  },
-  {
-   "fieldname": "loyalty_point_value_npr",
-   "fieldtype": "Float",
-   "label": "Point Value (NPR)",
-   "default": "0.1",
-   "description": "How much each loyalty point is worth in NPR"
-  },
-  {
    "fieldname": "section_coupons",
    "fieldtype": "Section Break",
    "label": "🎟️ Coupons"
@@ -218,13 +197,6 @@
   {
    "fieldname": "col_break_coupons",
    "fieldtype": "Column Break"
-  },
-  {
-   "fieldname": "max_coupon_uses_per_user",
-   "fieldtype": "Int",
-   "label": "Max Uses Per User",
-   "default": "1",
-   "description": "Limit how many times a single user can use the same coupon"
   },
   {
    "fieldname": "section_webhook",

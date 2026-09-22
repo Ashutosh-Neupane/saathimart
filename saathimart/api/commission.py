@@ -37,8 +37,27 @@ def get_commission_pct_for_vendor(vendor: str | None) -> float:
 	if vendor:
 		pct = frappe.db.get_value("Vendor", vendor, "commission_pct")
 		if pct is not None and flt(pct) > 0:
+			_stamp_effective_rate_note(vendor, flt(pct), "vendor")
 			return flt(pct)
-	return get_default_commission_pct()
+	default = get_default_commission_pct()
+	if vendor:
+		_stamp_effective_rate_note(vendor, default, "default")
+	return default
+
+
+def _stamp_effective_rate_note(vendor: str, pct: float, source: str) -> None:
+	"""Show on the Vendor form WHICH rate source won, so an admin never has to
+	guess whether a payout used the vendor contract or the platform default.
+	Written only when the provenance actually changes (hot path — this runs on
+	every order calculation); a failed stamp must never break accounting.
+	"""
+	note = f"{pct:g}% ({'vendor contract rate' if source == 'vendor' else 'platform default'})"
+	try:
+		if frappe.db.get_value("Vendor", vendor, "commission_effective_note") != note:
+			frappe.db.set_value("Vendor", vendor, "commission_effective_note",
+								note, update_modified=False)
+	except Exception:
+		frappe.log_error(f"commission note stamp failed for {vendor}", "Commission")
 
 
 def get_platform_ledger_vendor() -> str | None:

@@ -307,6 +307,116 @@ def expire_memberships():
     return len(lapsed)
 
 
+# ── Auto-renewal ────────────────────────────────────────────────────────────
+
+_EXPIRY_REMINDER_DAYS = 7
+
+
+def process_membership_renewals():
+    """Daily — auto-renew memberships whose auto_renew is set, and remind
+    everyone else before their plan lapses.
+
+    Renewal = a fresh Customer Membership row for the same plan starting at
+    the old expiry (no gap stacking), price taken from the plan at renewal
+    time. Payment capture is deliberately NOT automated here: until a stored
+    credential flow exists (eSewa mandates), "renewal" extends the ledger
+    and emails an invoice-style notice; a Paid check keeps the ledger honest
+    if an admin marks it unpaid later.
+    """
+    today = nowdate()
+    renewed, reminded = 0, 0
+
+    due = frappe.get_all(
+        "Customer Membership",
+        filters={
+            "status": "Active",
+            "auto_renew": 1,
+            "expires_on": ["<=", today],
+        },
+        fields=["name", "customer_email", "plan", "expires_on"],
+        limit_page_length=0,
+    )
+    for m in due:
+        plan = frappe.db.get_value(
+            "Membership Plan", m.plan,
+            ["name", "plan_name", "price", "duration_days"], as_dict=True,
+        )
+        if not plan or not plan.duration_days:
+            continue
+        start = m.expires_on  # renew from expiry, never stack mid-cycle
+        expiry = frappe.utils.add_days(start, int(plan.duration_days))
+        doc = frappe.new_doc("Customer Membership")
+        doc.customer_email = m.customer_email
+        doc.plan = plan.name
+        doc.status = "Active"
+        doc.auto_renew = 1
+        doc.started_on = start
+        doc.expires_on = expiry
+        doc.amount_paid = flt(plan.price)
+        doc.remarks = f"Auto-renewal of {m.name}"
+        try:
+            doc.insert(ignore_permissions=True)
+            frappe.db.set_value("Customer Membership", m.name, "status", "Renewed")
+            _membership_notification(
+                m.customer_email, "membership_renewed",
+                f"Your SaathiMart {plan.plan_name} membership renewed automatically — "
+                f"active until {expiry}.",
+            )
+            renewed += 1
+        except Exception:
+            frappe.log_error(frappe.get_traceback(), f"membership auto-renew failed: {m.name}")
+
+    # Expiry reminders — non-auto-renew members get a heads-up before lapse.
+    horizon = frappe.utils.add_days(today, _EXPIRY_REMINDER_DAYS)
+    expiring = frappe.get_all(
+        "Customer Membership",
+        filters={
+            "status": "Active",
+            "auto_renew": 0,
+            "expires_on": ["between", [today, horizon]],
+        },
+        fields=["name", "customer_email", "plan", "expires_on"],
+        limit_page_length=0,
+    )
+    for m in expiring:
+        plan_name = frappe.db.get_value("Membership Plan", m.plan, "plan_name") or m.plan
+        _membership_notification(
+            m.customer_email, "membership_expiring",
+            f"Your SaathiMart {plan_name} membership expires on {m.expires_on}. "
+            f"Renew now to keep your benefits.",
+        )
+        reminded += 1
+
+    if renewed or reminded:
+        frappe.db.commit()
+    return {"renewed": renewed, "reminded": reminded}
+
+
+def _membership_notification(email, kind, message):
+    """Notify through the same channels order notifications use (Notification
+    Log + email). kind ∈ {membership_renewed, membership_expiring} — also
+    stamped into the Notification Log subject prefix so the inbox reads well."""
+    if not email:
+        return
+    prefix = "Membership renewed" if kind == "membership_renewed" else "Membership expiring"
+    try:
+        log = frappe.new_doc("Notification Log")
+        log.subject = f"{prefix}: {message}"
+        log.type = "Information"
+        log.from_user = "Administrator"
+        log.insert(ignore_permissions=True)
+    except Exception:
+        pass
+    try:
+        frappe.sendmail(
+            recipients=[email],
+            subject=f"SaathiMart — {prefix}",
+            message=f"<p>{message}</p>",
+        )
+    except Exception:
+        pass
+
+
 # ── Whitelisted ──────────────────────────────────────────────────────────────
 
 @frappe.whitelist()

@@ -297,6 +297,8 @@ scheduler_events = {
         "saathimart.api.loyalty.expire_old_points",
         "saathimart.api.loyalty.check_birthday_rewards",
         "saathimart.api.membership.expire_memberships",
+        # Auto-renew auto_renew-flagged memberships + expiry reminders
+        "saathimart.api.membership.process_membership_renewals",
         "saathimart.api.archival.archive_old_data",
         # Purge expired OTP rows from the verification store.
         "saathimart.api.auth_full.cleanup_expired_verifications",

@@ -84,7 +84,7 @@
   {
    "fieldname": "section_payment",
    "fieldtype": "Section Break",
-   "label": "\ud83d\udcb8 Payment"
+   "label": "💸 Payment"
   },
   {
    "fieldname": "payment_method",
@@ -97,11 +97,6 @@
    "label": "Payment Reference"
   },
   {
-   "fieldname": "paid_at",
-   "fieldtype": "Datetime",
-   "label": "Paid At"
-  },
-  {
    "fieldname": "notes",
    "fieldtype": "Small Text",
    "label": "Notes"
@@ -109,13 +104,6 @@
   {
    "fieldname": "col_break_3",
    "fieldtype": "Column Break"
-  },
-  {
-   "fieldname": "created_by",
-   "fieldtype": "Link",
-   "label": "Created By",
-   "options": "User",
-   "read_only": 1
   },
   {
    "fieldname": "tab_connections",

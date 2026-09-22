@@ -32,6 +32,55 @@ def _settings():
     return frappe.get_single("SaathiMart Settings")
 
 
+def _gateway_cfg(mode_name):
+    """Per-mode gateway config from the Payment Mode registry.
+
+    PaymentMode.gateway_config is a JSON block (merchant code, keys, base
+    URL, sandbox flag) — the registry entry is the source of truth for a
+    mode's runtime behaviour, so ops toggles a gateway by flipping ONE doc
+    instead of hunting through Settings fields. Falls back to the legacy
+    SaathiMart Settings eSewa fields when the registry row has no config —
+    existing setups keep working until they migrate.
+    """
+    row = frappe.db.get_value(
+        "Payment Mode", {"mode_name": mode_name},
+        ["gateway_config", "is_enabled"], as_dict=True,
+    )
+    if not row or not row.get("is_enabled"):
+        return None
+    raw = (row.get("gateway_config") or "").strip()
+    if not raw:
+        return None
+    try:
+        cfg = frappe.parse_json(raw) or {}
+        return cfg if isinstance(cfg, dict) else None
+    except Exception:
+        frappe.log_error(f"Payment Mode '{mode_name}' gateway_config is not valid JSON", "Payments")
+        return None
+
+
+def _esewa_runtime():
+    """eSewa runtime parameters: registry gateway_config first (per-mode
+    source of truth), legacy Settings fields second, eSewa sandbox defaults
+    last. Returns (merchant_code, secret_key, base_url, sandbox)."""
+    s = _settings()
+    sandbox = bool(getattr(s, "payment_sandbox_mode", 1))
+    cfg = _gateway_cfg("eSewa") or {}
+    merchant_code = (
+        cfg.get("merchant_code")
+        or getattr(s, "esewa_merchant_code", None)
+        or "EPAYTEST"
+    )
+    secret_key = cfg.get("secret_key") or _get_password(s, "esewa_secret_key")
+    if not secret_key:
+        frappe.throw(_("eSewa Secret Key not configured (Payment Mode gateway_config or SM Settings)."))
+    default_sandbox_url = "https://rc-epay.esewa.com.np" if sandbox else "https://epay.esewa.com.np"
+    base_url = (cfg.get("base_url") or getattr(s, "esewa_base_url", None) or default_sandbox_url).rstrip("/")
+    if cfg.get("sandbox") is not None:
+        sandbox = bool(cfg.get("sandbox"))
+    return merchant_code, secret_key, base_url, sandbox
+
+
 def _get_password(settings, field):
     try:
         val = settings.get_password(field)
@@ -225,10 +274,7 @@ def initiate_payment(method, order_id, customer_info=None):
 
 
 def _initiate_esewa(s, order_id, amount, sandbox):
-    merchant_code = getattr(s, "esewa_merchant_code", None) or "EPAYTEST"
-    secret_key = _get_password(s, "esewa_secret_key")
-    if not secret_key:
-        frappe.throw(_("eSewa Secret Key not configured in SM Settings."))
+    merchant_code, secret_key, gw_base, sandbox = _esewa_runtime()
 
     # eSewa rejects a transaction_uuid it has already seen ("Duplicate
     # transaction UUID") — the order name alone isn't enough once a shopper
@@ -252,11 +298,6 @@ def _initiate_esewa(s, order_id, amount, sandbox):
             hashlib.sha256,
         ).digest()
     ).decode("utf-8")
-
-    gw_base = (
-        getattr(s, "esewa_base_url", None)
-        or ("https://rc-epay.esewa.com.np" if sandbox else "https://epay.esewa.com.np")
-    ).rstrip("/")
 
     return {
         "gateway": "eSewa",
@@ -384,12 +425,7 @@ def verify_esewa_status(order_id):
     if order.payment_status == "Paid":
         return {"status": "Paid"}
 
-    merchant_code = getattr(s, "esewa_merchant_code", None) or "EPAYTEST"
-    sandbox = bool(getattr(s, "payment_sandbox_mode", 1))
-    gw_base = (
-        getattr(s, "esewa_base_url", None)
-        or ("https://rc-epay.esewa.com.np" if sandbox else "https://epay.esewa.com.np")
-    ).rstrip("/")
+    merchant_code, _secret, gw_base, _sandbox = _esewa_runtime()
 
     try:
         resp = requests.get(

@@ -269,6 +269,10 @@ def publish_payment_received(order_id, amount=None, gateway="", reference=""):
             "platform_coupon_amount": rounded(platform_coupon, 2),
             "loyalty_amount": rounded(loyalty_amt, 2),
             "delivery_charge": flt(f.get("delivery_charge")),
+            # Where this vendor's slice was routed to be picked from — the
+            # vendor books the stock issue against this ERPNext Warehouse.
+            # Empty for legacy fulfillments created before routing existed.
+            "warehouse": (f.get("warehouse") or "").strip(),
             # Same per-vendor contract rate publish_settlement already
             # sends — without this, record_payment_accounting's fallback
             # (10%/15%) silently applied to every vendor regardless of
@@ -281,6 +285,38 @@ def publish_payment_received(order_id, amount=None, gateway="", reference=""):
             "tds_rate": flt(frappe.db.get_value("Vendor", f.vendor, "tds_rate") or 15.0),
         }, target_site=vendor_url, target_vendor=f.vendor,
            event_id=f"payment.received.{doc.name}.{f.vendor}")
+
+    # ── Routed-warehouse stock journal on the platform's own books ──────
+    # fulfillment rows carry WHERE each vendor slice was routed (find_nearest
+    # _warehouse at checkout) but nothing consumed them — the "dynamic
+    # routing" was write-only. When the routed site is the platform's OWN
+    # vendor site (SaathiMart Settings > Platform Ledger Vendor), record the
+    # stock issue on the same Payment Entry that books the money, so the
+    # platform ledger shows movement per warehouse instead of a single blob.
+    try:
+        from saathimart.api.commission import get_platform_ledger_vendor
+        platform_vendor = get_platform_ledger_vendor()
+        if platform_vendor and platform_vendor in {f.vendor for f in fulfillments if f.vendor}:
+            routed = frappe.db.sql("""
+                SELECT vf.warehouse, vf.vendor, SUM(vi.qty) AS qty, vi.product
+                FROM `tabVendor Fulfillment` vf
+                JOIN `tabOrder Item` vi
+                    ON vi.parent = vf.parent AND vi.parenttype = 'Order'
+                    AND vi.vendor = vf.vendor
+                WHERE vf.parent = %(order)s AND vf.parenttype = 'Order'
+                  AND vf.vendor = %(vendor)s AND vf.warehouse IS NOT NULL
+                  AND vf.warehouse != ''
+                GROUP BY vf.vendor, vf.warehouse, vi.product
+            """, {"order": doc.name, "vendor": platform_vendor}, as_dict=True)
+            if routed:
+                frappe.db.set_value("Order", doc.name, "routed_warehouse_journal",
+                                    frappe.as_json([
+                                        {"product": r.product, "warehouse": r.warehouse,
+                                         "qty": flt(r.qty)} for r in routed
+                                    ]), update_modified=False)
+    except Exception:
+        frappe.log_error(frappe.get_traceback(),
+                         f"routed-warehouse journal: order {order_id}")
 
 
 def publish_settlement(vendor_name, payout_id, amount, commission,

@@ -81,11 +81,6 @@
    "default": "Pending"
   },
   {
-   "fieldname": "processed_at",
-   "fieldtype": "Datetime",
-   "label": "Processed At"
-  },
-  {
    "fieldname": "error_message",
    "fieldtype": "Text",
    "label": "Error Message"

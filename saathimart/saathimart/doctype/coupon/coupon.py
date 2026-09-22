@@ -12,20 +12,24 @@ class Coupon(Document):
             frappe.throw(_("Discount amount must be greater than 0"))
 
 
-def validate_coupon(coupon_code, order_subtotal, customer_phone=None):
+def validate_coupon(coupon_code, order_subtotal, customer_phone=None, order_vendors=None):
     """Returns dict with discount amount and free_delivery flag, or raises ValidationError.
 
     `customer_phone` is the per-customer limit key rather than email or user:
     checkout is open to guests, who supply a phone and no account, so keying
     the limit on the logged-in user would let anyone bypass max_uses_per_user
     by checking out as a guest.
+
+    `order_vendors` is the set of vendors the cart actually buys from — used
+    to enforce the coupon's applicable_vendors scope (empty on the coupon =
+    valid marketplace-wide).
     """
     doc = frappe.db.get_value(
         "Coupon",
         {"coupon_code": coupon_code, "is_active": 1},
         ["name", "coupon_type", "discount_percentage", "discount_amount",
          "min_order_amount", "max_discount_amount", "max_uses", "used_count",
-         "max_uses_per_user", "valid_from", "valid_to"],
+         "max_uses_per_user", "valid_from", "valid_to", "applicable_vendors"],
         as_dict=True,
     )
     if not doc:
@@ -37,6 +41,19 @@ def validate_coupon(coupon_code, order_subtotal, customer_phone=None):
         frappe.throw(_("Coupon has expired"))
     if doc.max_uses and (doc.used_count or 0) >= doc.max_uses:
         frappe.throw(_("Coupon usage limit reached"))
+    # Vendor scoping — applicable_vendors is a comma-separated Vendor-name
+    # list on the coupon; empty means the coupon works across the whole
+    # marketplace. A coupon scoped to vendor A must not discount an order
+    # fulfilled entirely by vendor B, so reject when the cart's vendor set
+    # and the allowed set don't intersect. Shared-vendor carts pass (the
+    # coupon was placed against an order that includes that vendor).
+    scope = (doc.applicable_vendors or "").strip()
+    if scope:
+        allowed = {v.strip() for v in scope.split(",") if v.strip()}
+        bought_from = {v for v in (order_vendors or []) if v}
+        if allowed and bought_from and not (bought_from & allowed):
+            frappe.throw(_("This coupon is not valid for the vendors in this cart"))
+
     if (doc.min_order_amount or 0) > 0 and order_subtotal < doc.min_order_amount:
         frappe.throw(_("Minimum order amount for this coupon is NPR {0}").format(doc.min_order_amount))
 

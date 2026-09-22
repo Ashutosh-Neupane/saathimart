@@ -10,7 +10,7 @@ Cart identity:
 """
 import frappe
 from frappe import _
-from frappe.utils import add_days, flt, now_datetime
+from frappe.utils import add_days, cint, flt, now_datetime
 
 from saathimart.api.auth import get_session_id, _set_session_cookie
 from saathimart.api.products import select_best_vendor, get_effective_price
@@ -348,6 +348,9 @@ def add_to_cart(session_id=None, product=None, qty=1, vendor=None, delivery_zone
     if existing_item:
         existing_item.qty = total_qty
         existing_item.amount = existing_item.qty * existing_item.rate
+        # Re-adding a line the shopper had unchecked means they want it
+        # back in the next checkout — Daraz/Amazon behave the same way.
+        existing_item.selected = 1
         cart.save(ignore_permissions=True)
         return cart.as_dict()
 
@@ -408,6 +411,45 @@ def update_cart_item(session_id=None, product=None, qty=None, vendor=None):
 
     cart.save(ignore_permissions=True)
     return cart.as_dict()
+
+
+@frappe.whitelist(allow_guest=True)
+@handle_api_errors
+@commit_on_get
+def set_item_selected(session_id=None, product=None, selected=1, vendor=None):
+    """
+    Check/uncheck one cart line (Daraz-style partial selection). Unchecked
+    lines stay in the cart and are skipped by checkout().
+    """
+    guest_rate_limit("cart.select", limit=120, window_seconds=60)
+    product = _resolve_product(product)
+    cart = _get_or_create_cart(session_id)
+    matches = [item for item in cart.items if item.product == product]
+    if vendor:
+        matches = [item for item in matches if (item.get("vendor") or None) == vendor]
+    elif len(matches) > 1:
+        frappe.throw(_(
+            "This product is in your cart from more than one vendor — specify which one"
+        ))
+    if not matches:
+        frappe.throw(_("Item not in cart"))
+    matches[0].selected = 1 if cint(selected) else 0
+    cart.save(ignore_permissions=True)
+    return {"ok": True}
+
+
+@frappe.whitelist(allow_guest=True)
+@handle_api_errors
+@commit_on_get
+def set_all_selected(session_id=None, selected=1):
+    """Select-all / deselect-all across every line of the cart."""
+    guest_rate_limit("cart.select", limit=60, window_seconds=60)
+    cart = _get_or_create_cart(session_id)
+    flag = 1 if cint(selected) else 0
+    for item in cart.items:
+        item.selected = flag
+    cart.save(ignore_permissions=True)
+    return {"ok": True}
 
 
 @frappe.whitelist(allow_guest=True)
@@ -474,7 +516,14 @@ def get_cart_summary(session_id=None):
             "vendor": item.vendor or "",
             "vendor_listing": vendor_listing or "",
             "thumbnail": thumbnail,
+            "selected": bool(item.get("selected", 1)),
         })
+    # Selection-aware totals: the storefront checkout bar bills only the
+    # checked lines; unchecked ones ride along in the cart. `item_count` /
+    # `subtotal` stay ALL-items so existing badges don't change meaning.
+    selected_items = [i for i in items if i["selected"]]
+    selected_qty = sum(i["qty"] for i in selected_items)
+    selected_subtotal = round(sum(i["amount"] for i in selected_items), 2)
     return {
         "cart_id": cart.name,
         "item_count": total_qty,
@@ -483,6 +532,10 @@ def get_cart_summary(session_id=None):
         "items": items,
         "status": cart.status,
         "vendor_count": len(vendors_in_cart),
+        "selected_count": len(selected_items),
+        "selected_qty": selected_qty,
+        "selected_subtotal": selected_subtotal,
+        "unselected_count": len(items) - len(selected_items),
         "will_split_into_multiple_deliveries": len(vendors_in_cart) > 1,
     }
 
@@ -746,6 +799,7 @@ def _serialize_cart(cart):
             "rate": ci.rate,
             "amount": flt(ci.qty) * flt(ci.rate),
             "thumbnail": ci.thumbnail or "",
+            "selected": bool(ci.get("selected", 1)),
         })
     return {
         "name": cart.name,

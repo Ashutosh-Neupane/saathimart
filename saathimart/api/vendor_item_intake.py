@@ -63,15 +63,37 @@ def _ensure_brand(brand_name: str) -> str | None:
 	return doc.name
 
 
-def _resolve_product(barcode: str, item_name: str, category, brand) -> str:
+def _resolve_product(barcode: str, item_name: str, category, brand,
+					 specifications=None) -> str:
 	"""Match an existing hub product by barcode (listing first, then legacy
-	Product.sku), otherwise create one."""
+	Product.sku), otherwise create one.
+
+	`specifications` is the vendor Item's structured Website Specifications
+	([{label, value}, ...]) — stored on the Product so the storefront PDP can
+	render a spec table. New products get them on create; an existing product
+	matched by barcode gets them only when it has none yet (first sync wins,
+	so repeated button pushes can't clobber curated content).
+	"""
+	spec_rows = [
+		{"label": (r.get("label") or "").strip(), "value": (r.get("value") or "").strip()}
+		for r in (specifications or [])
+		if isinstance(r, dict) and (r.get("label") or "").strip()
+	]
+
 	if barcode:
 		via_listing = frappe.db.get_value("Vendor Listing", {"barcode": barcode}, "product")
 		if via_listing:
+			if spec_rows and not frappe.db.count(
+				"Product Specification", {"parent": via_listing, "parenttype": "Product"}
+			):
+				_fulfill_specs(via_listing, spec_rows)
 			return via_listing
 		via_sku = frappe.db.get_value("Product", {"sku": barcode}, "name")
 		if via_sku:
+			if spec_rows and not frappe.db.count(
+				"Product Specification", {"parent": via_sku, "parenttype": "Product"}
+			):
+				_fulfill_specs(via_sku, spec_rows)
 			return via_sku
 
 	doc = frappe.new_doc("Product")
@@ -83,14 +105,26 @@ def _resolve_product(barcode: str, item_name: str, category, brand) -> str:
 		doc.category = category
 	if brand:
 		doc.brand = brand
+	for row in spec_rows:
+		doc.append("specifications", row)
 	doc.insert(ignore_permissions=True)
 	return doc.name
+
+
+def _fulfill_specs(product: str, spec_rows: list) -> None:
+	"""Backfill specification rows onto an existing Product (no-overwrite
+	semantics — callers check emptiness first)."""
+	doc = frappe.get_doc("Product", product)
+	for row in spec_rows:
+		doc.append("specifications", row)
+	doc.save(ignore_permissions=True)
 
 
 @frappe.whitelist(allow_guest=True)
 @handle_api_errors
 def register_item(item_code=None, item_name=None, barcode=None, price=0,
-                  qty=0, category=None, brand=None, description=None, uom=None):
+                  qty=0, category=None, brand=None, description=None, uom=None,
+                  specifications=None):
 	"""Upsert one vendor ERPNext Item into the hub catalog + listing + stock.
 
 	Called by saathimart_vendor.api.item_sync.sync_item_to_saathi (the Item
@@ -112,7 +146,8 @@ def register_item(item_code=None, item_name=None, barcode=None, price=0,
 
 	category_name = _ensure_category((category or "").strip())
 	brand_name = _ensure_brand((brand or "").strip())
-	product = _resolve_product(barcode, item_name, category_name, brand_name)
+	product = _resolve_product(barcode, item_name, category_name, brand_name,
+							   specifications=specifications)
 
 	# 3. Listing with the vendor's own price — canonical writer.
 	from saathimart.api.products import create_vendor_listing

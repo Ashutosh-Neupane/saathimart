@@ -51,7 +51,7 @@
   {
    "fieldname": "section_items",
    "fieldtype": "Section Break",
-   "label": "\ud83e\uddfe Items"
+   "label": "🧾 Items"
   },
   {
    "fieldname": "items",
@@ -63,7 +63,7 @@
   {
    "fieldname": "section_fulfillments",
    "fieldtype": "Section Break",
-   "label": "\ud83e\udd1d Vendor Fulfillments"
+   "label": "🤝 Vendor Fulfillments"
   },
   {
    "fieldname": "vendor_fulfillments",
@@ -74,7 +74,7 @@
   {
    "fieldname": "section_amounts",
    "fieldtype": "Section Break",
-   "label": "\ud83e\uddee Amounts"
+   "label": "🧮 Amounts"
   },
   {
    "fieldname": "subtotal",
@@ -99,7 +99,7 @@
    "fieldtype": "Currency",
    "label": "Taxable Value (pre-VAT)",
    "read_only": 1,
-   "description": "Customer bill minus VAT \u2014 the VAT-Act s.12 taxable value reported to CBMS"
+   "description": "Customer bill minus VAT — the VAT-Act s.12 taxable value reported to CBMS"
   },
   {
    "fieldname": "total_taxes",
@@ -147,7 +147,7 @@
   {
    "fieldname": "section_delivery",
    "fieldtype": "Section Break",
-   "label": "\ud83d\ude9a Delivery"
+   "label": "🚚 Delivery"
   },
   {
    "fieldname": "delivery_zone",
@@ -173,18 +173,13 @@
   {
    "fieldname": "section_vendor",
    "fieldtype": "Section Break",
-   "label": "\ud83c\udfea Vendor"
+   "label": "🏪 Vendor"
   },
   {
    "fieldname": "vendor",
    "fieldtype": "Link",
    "label": "Vendor",
    "options": "Vendor"
-  },
-  {
-   "fieldname": "vendor_order_id",
-   "fieldtype": "Data",
-   "label": "Vendor Order ID"
   },
   {
    "fieldname": "notes",
@@ -194,7 +189,7 @@
   {
    "fieldname": "section_payment_detail",
    "fieldtype": "Section Break",
-   "label": "\ud83d\udcb3 Payment Detail"
+   "label": "💳 Payment Detail"
   },
   {
    "fieldname": "payment_reference",
@@ -209,7 +204,7 @@
   {
    "fieldname": "section_loyalty",
    "fieldtype": "Section Break",
-   "label": "\ud83c\udf81 Loyalty Points"
+   "label": "🎁 Loyalty Points"
   },
   {
    "fieldname": "loyalty_points_redeemed",
@@ -265,7 +260,7 @@
    "label": "Onboarding Discount",
    "default": "0",
    "read_only": 1,
-   "description": "Auto-applied first/second-order discount from the delivery zone's onboarding rates \u2014 see Delivery Zone.first_order_discount_pct"
+   "description": "Auto-applied first/second-order discount from the delivery zone's onboarding rates — see Delivery Zone.first_order_discount_pct"
   },
   {
    "fieldname": "onboarding_order_sequence",
@@ -289,12 +284,12 @@
    "label": "Membership Discount",
    "default": "0",
    "read_only": 1,
-   "description": "Sum of per-line category benefits \u2014 see Membership Saving Entry for the rule-by-rule breakdown"
+   "description": "Sum of per-line category benefits — see Membership Saving Entry for the rule-by-rule breakdown"
   },
   {
    "fieldname": "section_erpnext_sync",
    "fieldtype": "Section Break",
-   "label": "\u21c4 ERPNext Sync",
+   "label": "⇄ ERPNext Sync",
    "collapsible": 1
   },
   {
@@ -349,7 +344,7 @@
    "label": "Net After Discount",
    "read_only": 1,
    "fieldname": "net_after_discount",
-   "description": "Computed: net_total \u2212 total_discount. Taxes and delivery apply on top of this."
+   "description": "Computed: net_total − total_discount. Taxes and delivery apply on top of this."
   },
   {
    "fieldname": "tab_delivery_vendor",
@@ -374,6 +369,14 @@
    "fieldtype": "Tab Break",
    "label": "Connections",
    "show_dashboard": 1
+  },
+  {
+   "fieldname": "routed_warehouse_journal",
+   "fieldtype": "Small Text",
+   "label": "Routed Warehouse Journal",
+   "read_only": 1,
+   "no_copy": 1,
+   "description": "Audit trail: which warehouse each vendor slice of this order was routed to (recorded when payment is received). Written by events.publisher.publish_payment_received when the routed vendor is the platform's own ledger site."
   }
  ],
  "search_fields": "customer_name,customer_email,customer_phone",
@@ -496,7 +499,8 @@
   "erpnext_sync_status",
   "erpnext_sync_error",
   "erpnext_synced_at",
-  "tab_connections"
+  "tab_connections",
+  "routed_warehouse_journal"
  ],
  "sort_field": "modified",
  "sort_order": "DESC",

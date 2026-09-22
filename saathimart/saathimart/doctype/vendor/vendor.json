@@ -37,7 +37,7 @@
   {
    "fieldname": "section_connection",
    "fieldtype": "Section Break",
-   "label": "\ud83d\udd17 Connection"
+   "label": "🔗 Connection"
   },
   {
    "fieldname": "frappe_site_url",
@@ -69,7 +69,7 @@
   {
    "fieldname": "section_commission",
    "fieldtype": "Section Break",
-   "label": "\ud83d\udcb0 Commission & TDS"
+   "label": "💰 Commission & TDS"
   },
   {
    "fieldname": "commission_pct",
@@ -85,7 +85,7 @@
    "label": "TDS Rate on Commission %",
    "default": "15",
    "non_negative": 1,
-   "description": "Withholding applied to the commission under Income Tax Act 2058 s88 \u2014 the vendor deposits it with IRD and certifies it to the platform."
+   "description": "Withholding applied to the commission under Income Tax Act 2058 s88 — the vendor deposits it with IRD and certifies it to the platform."
   },
   {
    "fieldname": "col_break_commission",
@@ -100,7 +100,7 @@
   {
    "fieldname": "section_webhook_meta",
    "fieldtype": "Section Break",
-   "label": "\ud83c\udf10 Webhook Sync State"
+   "label": "🌐 Webhook Sync State"
   },
   {
    "fieldname": "webhook_secret_old",
@@ -113,7 +113,7 @@
    "fieldtype": "Datetime",
    "label": "Webhook Secret Last Rotated",
    "read_only": 1,
-   "description": "Set by api/secret_rotation.py:rotate_vendor_secret on success. Blank means never rotated since this field was added \u2014 api/secret_rotation.py:check_stale_secrets treats that as due, using the vendor's creation date as the baseline."
+   "description": "Set by api/secret_rotation.py:rotate_vendor_secret on success. Blank means never rotated since this field was added — api/secret_rotation.py:check_stale_secrets treats that as due, using the vendor's creation date as the baseline."
   },
   {
    "fieldname": "col_break_whmeta",
@@ -132,26 +132,26 @@
    "fieldtype": "Int",
    "label": "Last Processed Event Seq",
    "read_only": 1,
-   "description": "Highest event_seq successfully delivered to this vendor, in order. Used to hold later-sequenced events until earlier gaps are filled \u2014 see api/event_ordering.py."
+   "description": "Highest event_seq successfully delivered to this vendor, in order. Used to hold later-sequenced events until earlier gaps are filled — see api/event_ordering.py."
   },
   {
    "fieldname": "section_sync_health",
    "fieldtype": "Section Break",
-   "label": "\ud83d\udc93 Sync Health"
+   "label": "💓 Sync Health"
   },
   {
    "fieldname": "clock_skew_seconds",
    "fieldtype": "Float",
    "label": "Clock Skew (seconds)",
    "read_only": 1,
-   "description": "Measured difference between this vendor's clock and the hub's, from inbound request timestamps. Positive = vendor ahead. Widens the HMAC timestamp tolerance for this vendor \u2014 see api/clock_sync.py."
+   "description": "Measured difference between this vendor's clock and the hub's, from inbound request timestamps. Positive = vendor ahead. Widens the HMAC timestamp tolerance for this vendor — see api/clock_sync.py."
   },
   {
    "fieldname": "error_count",
    "fieldtype": "Int",
    "label": "Error Count (DB Fallback)",
    "read_only": 1,
-   "description": "Delivery error counter used only when Redis is unavailable \u2014 see api/partial_failure.py._db_record_error. Not the live error-budget counter (that lives in cache)."
+   "description": "Delivery error counter used only when Redis is unavailable — see api/partial_failure.py._db_record_error. Not the live error-budget counter (that lives in cache)."
   },
   {
    "fieldname": "col_break_health",
@@ -175,7 +175,7 @@
   {
    "fieldname": "section_contact",
    "fieldtype": "Section Break",
-   "label": "\ud83d\udcde Contact"
+   "label": "📞 Contact"
   },
   {
    "fieldname": "contact_email",
@@ -201,7 +201,7 @@
   {
    "fieldname": "section_location",
    "fieldtype": "Section Break",
-   "label": "\ud83d\udccd Location & Delivery"
+   "label": "📍 Location & Delivery"
   },
   {
    "fieldname": "lat",
@@ -227,7 +227,7 @@
   {
    "fieldname": "section_stock",
    "fieldtype": "Section Break",
-   "label": "\ud83d\udce6 Stock & Location"
+   "label": "📦 Stock & Location"
   },
   {
    "fieldname": "warehouses",
@@ -262,7 +262,7 @@
   {
    "fieldname": "section_credentials_info",
    "fieldtype": "Section Break",
-   "label": "\ud83d\udd10 Credentials Info"
+   "label": "🔐 Credentials Info"
   },
   {
    "fieldname": "credentials_info",
@@ -274,7 +274,7 @@
   {
    "fieldname": "section_meta",
    "fieldtype": "Section Break",
-   "label": "\u2139\ufe0f Meta"
+   "label": "ℹ️ Meta"
   },
   {
    "fieldname": "notes",
@@ -327,6 +327,91 @@
    "label": "Drift Threshold (%)",
    "default": "5",
    "description": "Auto-correct silently within this percentage drift; beyond it, flag for review instead."
+  },
+  {
+   "fieldname": "tab_accounting",
+   "fieldtype": "Tab Break",
+   "label": "Accounting"
+  },
+  {
+   "fieldname": "section_accounts",
+   "fieldtype": "Section Break",
+   "label": "GL Account Overrides"
+  },
+  {
+   "fieldname": "accounts_help",
+   "fieldtype": "HTML",
+   "options": "<p>Optional per-vendor GL account names for the vendor's own ERPNext books. Left blank, accounts resolve by standard name / fuzzy match on the vendor site. Set these when the vendor's Chart of Accounts uses non-standard names — unresolvable accounts now fail LOUD instead of posting unbalanced GL.</p><p><b>Push to vendor site:</b> copy these keys into Vendor Config → Account Overrides (JSON) on the vendor's Frappe site.</p>"
+  },
+  {
+   "fieldname": "acct_cash_bank",
+   "fieldtype": "Data",
+   "label": "Cash / Bank",
+   "depends_on": "eval:doc.acct_revenue || doc.acct_clearing_platform || 1"
+  },
+  {
+   "fieldname": "acct_revenue",
+   "fieldtype": "Data",
+   "label": "Revenue (Sales)",
+   "depends_on": "eval:doc.acct_revenue || doc.acct_clearing_platform || 1"
+  },
+  {
+   "fieldname": "acct_vat_output",
+   "fieldtype": "Data",
+   "label": "VAT Output",
+   "depends_on": "eval:doc.acct_revenue || doc.acct_clearing_platform || 1"
+  },
+  {
+   "fieldname": "acct_vat_input",
+   "fieldtype": "Data",
+   "label": "VAT Input",
+   "depends_on": "eval:doc.acct_revenue || doc.acct_clearing_platform || 1"
+  },
+  {
+   "fieldname": "acct_clearing_platform",
+   "fieldtype": "Data",
+   "label": "SaathiMart Clearing",
+   "depends_on": "eval:doc.acct_revenue || doc.acct_clearing_platform || 1"
+  },
+  {
+   "fieldname": "acct_tds_payable",
+   "fieldtype": "Data",
+   "label": "TDS Payable",
+   "depends_on": "eval:doc.acct_revenue || doc.acct_clearing_platform || 1"
+  },
+  {
+   "fieldname": "acct_commission_expense",
+   "fieldtype": "Data",
+   "label": "Commission Expense",
+   "depends_on": "eval:doc.acct_revenue || doc.acct_clearing_platform || 1"
+  },
+  {
+   "fieldname": "acct_platform_coupon_income",
+   "fieldtype": "Data",
+   "label": "Platform Coupon Reimbursement",
+   "depends_on": "eval:doc.acct_revenue || doc.acct_clearing_platform || 1"
+  },
+  {
+   "fieldname": "acct_loyalty_income",
+   "fieldtype": "Data",
+   "label": "Loyalty Reimbursement",
+   "depends_on": "eval:doc.acct_revenue || doc.acct_clearing_platform || 1"
+  },
+  {
+   "fieldname": "acct_accounts_receivable",
+   "fieldtype": "Data",
+   "label": "Accounts Receivable",
+   "depends_on": "eval:doc.acct_revenue || doc.acct_clearing_platform || 1"
+  },
+  {
+   "fieldname": "acct_accounts_payable",
+   "fieldtype": "Data",
+   "label": "Accounts Payable",
+   "depends_on": "eval:doc.acct_revenue || doc.acct_clearing_platform || 1"
+  },
+  {
+   "fieldname": "col_break_acct",
+   "fieldtype": "Column Break"
   }
  ],
  "title_field": "vendor_name",
@@ -439,6 +524,26 @@
   "default_warehouse_name",
   "total_physical_qty",
   "tab_more_info",
+  "section_commission",
+  "commission_pct",
+  "tds_rate",
+  "col_break_commission",
+  "commission_effective_note",
+  "tab_accounting",
+  "section_accounts",
+  "accounts_help",
+  "acct_cash_bank",
+  "acct_revenue",
+  "acct_vat_output",
+  "acct_vat_input",
+  "acct_clearing_platform",
+  "acct_tds_payable",
+  "acct_commission_expense",
+  "acct_platform_coupon_income",
+  "acct_loyalty_income",
+  "acct_accounts_receivable",
+  "acct_accounts_payable",
+  "col_break_acct",
   "section_credentials_info",
   "credentials_info",
   "section_meta",

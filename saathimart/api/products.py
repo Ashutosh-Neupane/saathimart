@@ -786,6 +786,12 @@ def _serialize_product(doc, _listings_map=None, _stock_map=None, _vendor_locatio
         "is_on_sale": compare > price,
         "discount_pct": discount,
         "tags": getattr(doc, "tags", "") or "",
+        # Structured spec table for the PDP (fed by vendor item intake —
+        # ERPNext Website Specifications flow through register_item).
+        "specifications": [
+            {"label": r.label, "value": r.value}
+            for r in (getattr(doc, "specifications", None) or [])
+        ],
         "sku": sku,
         "barcode": barcode,
         "vendor_product_id": vendor_product_id,

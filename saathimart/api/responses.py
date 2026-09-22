@@ -136,6 +136,31 @@ def _extract_server_message(payload):
 	return _strip_markup(" ".join(t for t in texts if t))
 
 
+def _is_request_signature_error(exc: TypeError, fn) -> bool:
+	"""Is this TypeError just bad argument binding from the HTTP request?
+
+	A guest calling a whitelisted endpoint without a required query param
+	arrives as `fn() missing 1 required positional argument` — the client's
+	fault, not a server bug. Distinguish it from genuine TypeErrors raised
+	inside the endpoint body (comparisons, None arithmetic, wrong return
+	types): those must keep surfacing as 500 + Error Log. Binding errors
+	mention the function's own name and an argument; internal ones carry
+	arbitrary operand/attribute text.
+	"""
+	text = str(exc)
+	if fn.__name__ not in text:
+		return False
+	return any(
+		phrase in text
+		for phrase in (
+			"missing 1 required positional argument",
+			"missing required positional argument",
+			"unexpected keyword argument",
+			"positional argument but",
+		)
+	)
+
+
 def _message_from_exception(exc):
 	"""Recover the user-facing text `frappe.throw` queued, not the repr.
 
@@ -198,6 +223,17 @@ def handle_api_errors(fn):
 	def wrapper(*args, **kwargs):
 		try:
 			return fn(*args, **kwargs)
+		except TypeError as exc:
+			# Malformed requests: a missing required query arg reaches the
+			# endpoint as a TypeError from Python argument binding. Returning a
+			# raw 500 for a client's bad request both misreports the cause (the
+			# client cannot fix a server error) and pollutes the Error Log with
+			# non-bugs. 417 + VALIDATION_ERROR matches every other bad-input path.
+			if _is_request_signature_error(exc, fn):
+				return error_response(
+					_("Missing or invalid parameter"), VALIDATION_ERROR, set_status=True
+				)
+			raise
 		except frappe.AuthenticationError as exc:
 			return error_response(_message_from_exception(exc), UNAUTHORIZED, set_status=True)
 		except frappe.PermissionError as exc:

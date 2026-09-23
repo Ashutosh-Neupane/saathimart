@@ -58,6 +58,12 @@
    "description": "Comma-separated tip amounts (NPR) offered at checkout. Empty falls back to 0, 20, 50, 100."
   },
   {
+   "fieldname": "google_client_id_allowlist",
+   "fieldtype": "Small Text",
+   "label": "Google Client ID Allowlist",
+   "description": "Newline- or comma-separated Google OAuth Client IDs allowed to sign in to the storefront. Leave empty to disable Google sign-in."
+  },
+  {
    "fieldname": "tds_rate",
    "fieldtype": "Float",
    "label": "TDS Rate on Commission %",
@@ -482,6 +488,7 @@
   "enable_coupons",
   "col_break_coupons",
   "max_coupon_uses_per_user",
+  "google_client_id_allowlist",
   "tab_sync_webhooks",
   "section_webhook",
   "webhook_secret",

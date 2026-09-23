@@ -689,7 +689,7 @@
    "hidden": 0,
    "is_query_report": 0,
    "label": "System",
-   "link_count": 12,
+   "link_count": 11,
    "link_type": "DocType",
    "onboard": 0,
    "type": "Card Break"
@@ -803,6 +803,45 @@
    "link_type": "DocType",
    "onboard": 0,
    "type": "Link"
+  },
+  {
+   "hidden": 0,
+   "is_query_report": 0,
+   "label": "Reports",
+   "link_count": 3,
+   "link_type": "DocType",
+   "onboard": 0,
+   "type": "Card Break"
+  },
+  {
+   "hidden": 0,
+   "is_query_report": 1,
+   "label": "Abandoned Carts",
+   "link_count": 0,
+   "link_to": "Abandoned Carts",
+   "link_type": "Report",
+   "onboard": 0,
+   "type": "Link"
+  },
+  {
+   "hidden": 0,
+   "is_query_report": 1,
+   "label": "Vendor Settlement Aging",
+   "link_count": 0,
+   "link_to": "Vendor Settlement Aging",
+   "link_type": "Report",
+   "onboard": 0,
+   "type": "Link"
+  },
+  {
+   "hidden": 0,
+   "is_query_report": 0,
+   "label": "Ops Dashboard",
+   "link_count": 0,
+   "link_to": "ops-dashboard",
+   "link_type": "Page",
+   "onboard": 0,
+   "type": "Link"
   }
  ],
  "module": "Saathimart",
@@ -894,6 +933,11 @@
    "label": "Dead Letter Log",
    "link_to": "Dead Letter Log",
    "type": "DocType"
+  },
+  {
+   "label": "Ops Dashboard",
+   "link_to": "/app/ops-dashboard",
+   "type": "URL"
   }
  ],
  "title": "SaathiMart"

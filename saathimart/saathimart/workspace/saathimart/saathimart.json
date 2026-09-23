@@ -816,40 +816,64 @@
  "sequence_id": 25.0,
  "shortcuts": [
   {
-   "color": "Blue",
    "label": "Orders",
-   "link_to": "/app/order",
-   "type": "URL"
+   "link_to": "Order",
+   "type": "DocType"
   },
   {
-   "color": "Green",
    "label": "Products",
-   "link_to": "/app/product",
-   "type": "URL"
+   "link_to": "Product",
+   "type": "DocType"
   },
   {
-   "color": "Orange",
    "label": "Vendors",
-   "link_to": "/app/vendor",
-   "type": "URL"
+   "link_to": "Vendor",
+   "type": "DocType"
   },
   {
-   "color": "Purple",
+   "label": "Vendor Listings",
+   "link_to": "Vendor Listing",
+   "type": "DocType"
+  },
+  {
    "label": "Coupons",
-   "link_to": "/app/coupon",
-   "type": "URL"
+   "link_to": "Coupon",
+   "type": "DocType"
   },
   {
-   "color": "Red",
+   "label": "Offers",
+   "link_to": "Offer",
+   "type": "DocType"
+  },
+  {
    "label": "Payouts",
-   "link_to": "/app/vendor-payout",
-   "type": "URL"
+   "link_to": "Vendor Payout",
+   "type": "DocType"
   },
   {
-   "color": "Yellow",
-   "label": "Settings",
-   "link_to": "/app/saathi-mart-settings",
-   "type": "URL"
+   "label": "Reviews",
+   "link_to": "Review",
+   "type": "DocType"
+  },
+  {
+   "label": "Stock Ledger",
+   "link_to": "Stock Ledger Entry",
+   "type": "DocType"
+  },
+  {
+   "label": "Brands",
+   "link_to": "Brand",
+   "type": "DocType"
+  },
+  {
+   "label": "Categories",
+   "link_to": "Category",
+   "type": "DocType"
+  },
+  {
+   "label": "SaathiMart Settings",
+   "link_to": "SaathiMart Settings",
+   "type": "DocType"
   }
  ],
  "title": "SaathiMart"

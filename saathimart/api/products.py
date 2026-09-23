@@ -132,6 +132,28 @@ def _attach_vendor_stock(listings):
         l["total_stock_qty"] = totals.get(l.get("product"), 0)
 
 
+def _filter_active_vendors(listings):
+    """Drop listings whose Vendor is not Active.
+
+    Pending/Suspended vendors must never win routing: a vendor without an
+    approved site URL cannot receive order events, so an order routed to it
+    is silently dropped (no vendor order, no books). Used by every listing
+    query that feeds vendor selection."""
+    vendors = {l.vendor for l in listings if getattr(l, "vendor", None)}
+    if not vendors:
+        return listings
+    blocked = set(
+        frappe.get_all(
+            "Vendor",
+            filters={"name": ["in", list(vendors)], "status": ["!=", "Active"]},
+            pluck="name",
+        )
+    )
+    if not blocked:
+        return listings
+    return [l for l in listings if l.vendor not in blocked]
+
+
 def _listings_with_stock(filters, order_by):
     """Load Vendor Listings with live Vendor Stock attached (see
     _attach_vendor_stock). Replaces direct get_list reads that used the
@@ -139,6 +161,7 @@ def _listings_with_stock(filters, order_by):
     listings = frappe.get_list(
         "Vendor Listing", filters=filters, fields=LISTING_FIELDS, order_by=order_by,
     )
+    listings = _filter_active_vendors(listings)
     _attach_vendor_stock(listings)
     return listings
 
@@ -165,7 +188,7 @@ def _preload_listing_data(product_names, customer_lat=None, customer_lng=None):
                COALESCE(NULLIF(v.vendor_name, ''), v.name) AS vendor_name
         FROM `tabVendor Listing` vl
         JOIN `tabVendor` v ON v.name = vl.vendor
-        WHERE vl.product IN %s AND vl.status = 'Active'
+        WHERE vl.product IN %s AND vl.status = 'Active' AND v.status = 'Active'
         ORDER BY vl.priority DESC, vl.price ASC
     """, (tuple(product_names),), as_dict=True)
 
@@ -258,6 +281,7 @@ def _get_best_vendor_listing(product_name, vendor=None, delivery_zone=None,
                     "priority", "sku", "vendor_product_id", "warehouse", "allow_backorder"],
             order_by="priority desc, price asc",
         )
+        listings = _filter_active_vendors(listings)
         vendor_location_map = {}
         if listings:
             vendor_names = [l.vendor for l in listings if l.vendor]
@@ -811,11 +835,39 @@ def _serialize_product(doc, _listings_map=None, _stock_map=None, _vendor_locatio
 @frappe.whitelist(allow_guest=True)
 @handle_api_errors
 @rate_limited("products.list", limit=300, window_seconds=60)
+@cached_response(ttl=60, key_prefix="product_price_bounds")
+def price_bounds():
+    """Min/max selling price across the live catalogue (Active listings only).
+
+    The FE categories page uses this to scale its price slider to the real
+    catalogue instead of a hardcoded ceiling that drifts out of sync.
+    """
+    row = frappe.db.sql(
+        """SELECT MIN(vl.price) AS pmin, MAX(vl.price) AS pmax
+           FROM `tabVendor Listing` vl
+           JOIN `tabVendor` v ON v.name = vl.vendor AND v.status = 'Active'
+           WHERE vl.status = 'Active'""",
+        as_dict=True,
+    )
+    pmin = flt(row[0].pmin) if row and row[0].pmin is not None else 0
+    pmax = flt(row[0].pmax) if row and row[0].pmax is not None else 0
+    if pmax <= pmin:
+        pmax = pmin + 1000
+    # Round to sensible slider steps.
+    import math
+    pmin = math.floor(pmin / 10) * 10
+    pmax = math.ceil(pmax / 100) * 100
+    return {"min": pmin, "max": pmax}
+
+
+@frappe.whitelist(allow_guest=True)
+@handle_api_errors
+@rate_limited("products.list", limit=300, window_seconds=60)
 @cached_response(ttl=30, key_prefix="product_list")
 def list_products(category=None, vendor=None, search=None, page=1, page_size=20,
                   sort=None, in_stock=None, min_price=None, max_price=None, tags=None,
                   brand=None, delivery_zone=None, lat=None, lng=None, radius_km=5,
-                  slugs=None):
+                  slugs=None, min_rating=None):
     """
     Blinkit-style product listing with rich filters and sorting.
 
@@ -1014,6 +1066,15 @@ def list_products(category=None, vendor=None, search=None, page=1, page_size=20,
             tag_list = [t.strip() for t in str(tags).split(",") if t.strip()]
             product_tags = (p.get("tags") or "").lower()
             if not any(tag.lower() in product_tags for tag in tag_list):
+                continue
+
+        # Minimum rating filter — server-side so pages/pagination stay honest.
+        if min_rating is not None:
+            try:
+                _mr = flt(min_rating)
+            except Exception:
+                _mr = 0
+            if _mr > 0 and flt(p.get("avg_rating", 0) or 0) < _mr:
                 continue
 
         # Distance and availability check. The Vendor document is the source
@@ -1466,7 +1527,7 @@ def lookup_by_barcode(barcode):
         ["product", "vendor", "price"],
         as_dict=True,
     )
-    if vl:
+    if vl and frappe.db.get_value("Vendor", vl.vendor, "status") == "Active":
         doc = frappe.get_doc("Product", vl.product)
         return {
             "name": doc.name,
@@ -1600,6 +1661,7 @@ def get_effective_price(product_doc, price_type="Site Price", qty=1,
             fields=["vendor", "delivery_zone", "price"],
             order_by="delivery_zone ASC, price ASC",
         )
+        listings = _filter_active_vendors(listings)
         if vendor:
             candidates = [l for l in listings if l.vendor == vendor]
             if delivery_zone:
@@ -1713,6 +1775,7 @@ def get_vendor_listings_by_location(product_slug, lat=None, lng=None, radius_km=
         fields=LISTING_FIELDS,
         order_by="price asc",
     )
+    listings = _filter_active_vendors(listings)
     _attach_vendor_stock(listings)
 
     if not listings:

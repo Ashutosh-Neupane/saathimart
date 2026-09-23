@@ -174,7 +174,16 @@ def _make_cart(session_id="test-session-001"):
 
 def _make_vendor(name, slug=None, zone=None):
     if frappe.db.exists("Vendor", {"vendor_name": name}):
-        return frappe.get_doc("Vendor", {"vendor_name": name})
+        doc = frappe.get_doc("Vendor", {"vendor_name": name})
+        # The daily vendor-hygiene pass suspends Active vendors that have no
+        # frappe_site_url — which prior fixture runs left behind. Fixtures
+        # reuse those rows, so restore Active status (tests never deliver
+        # events to the vendor site, so a URL is not needed here).
+        if doc.status != "Active":
+            doc.status = "Active"
+            doc.save(ignore_permissions=True)
+            frappe.db.commit()
+        return doc
     doc = frappe.new_doc("Vendor")
     doc.vendor_name = name
     doc.slug = slug or frappe.scrub(name).replace("_", "-")

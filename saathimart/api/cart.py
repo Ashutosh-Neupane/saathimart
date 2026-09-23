@@ -746,13 +746,16 @@ def sync_cart_offline(session_id=None, client_cart=None, sync_token=None):
                 )
                 rate = vl or 0
             elif product:
-                # Try to find any vendor for this product
+                # Try to find any vendor for this product (active vendors only —
+                # a Pending/Suspended vendor cannot receive order events)
                 vl = frappe.db.get_value(
                     "Vendor Listing",
                     {"product": product, "status": "Active"},
                     ["vendor", "price"],
                     as_dict=True,
                 )
+                if vl and frappe.db.get_value("Vendor", vl.vendor, "status") != "Active":
+                    vl = None
                 if vl:
                     best_vendor = vl.vendor
                     rate = vl.price

@@ -111,11 +111,11 @@ def search_products(query="", page=1, page_size=20, category=None, brand=None,
         params.append(brand)
 
     if min_price:
-        conditions.append(" EXISTS (SELECT 1 FROM `tabVendor Listing` vl WHERE vl.product = p.name AND vl.price >= %s)")
+        conditions.append(" EXISTS (SELECT 1 FROM `tabVendor Listing` vl JOIN `tabVendor` v ON v.name = vl.vendor WHERE vl.product = p.name AND vl.status = 'Active' AND v.status = 'Active' AND vl.price >= %s)")
         params.append(float(min_price))
 
     if max_price:
-        conditions.append(" EXISTS (SELECT 1 FROM `tabVendor Listing` vl WHERE vl.product = p.name AND vl.price <= %s)")
+        conditions.append(" EXISTS (SELECT 1 FROM `tabVendor Listing` vl JOIN `tabVendor` v ON v.name = vl.vendor WHERE vl.product = p.name AND vl.status = 'Active' AND v.status = 'Active' AND vl.price <= %s)")
         params.append(float(max_price))
 
     if in_stock:

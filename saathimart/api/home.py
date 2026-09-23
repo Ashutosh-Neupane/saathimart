@@ -171,7 +171,9 @@ def _get_deals(limit=20, customer_lat=None, customer_lng=None, max_radius=None):
                p.thumbnail, p.category, p.short_description, p.tags
         FROM `tabVendor Listing` vl
         JOIN `tabProduct` p ON vl.product = p.name
+        JOIN `tabVendor` v ON vl.vendor = v.name
         WHERE vl.status = 'Active'
+          AND v.status = 'Active'
           AND vl.compare_price > vl.price
           AND p.status = 'Active'
         ORDER BY vl.price ASC

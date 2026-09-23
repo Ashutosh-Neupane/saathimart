@@ -302,6 +302,10 @@ scheduler_events = {
         "saathimart.api.archival.archive_old_data",
         # Purge expired OTP rows from the verification store.
         "saathimart.api.auth_full.cleanup_expired_verifications",
+        # Keep listings of Pending/Suspended vendors out of the live catalog.
+        "saathimart.api.vendor_hygiene.deactivate_listings_of_inactive_vendors",
+        # Active vendors without a site URL can never receive events — suspend them.
+        "saathimart.api.vendor_hygiene.suspend_unroutable_vendors",
         # Digest of dead/stuck webhook events — emailed to System Managers
         "saathimart.events.monitoring.daily_sync_health_report",
         # Dead letter auto-recovery: retry recent dead events

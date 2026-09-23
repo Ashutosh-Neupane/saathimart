@@ -114,6 +114,7 @@ def nearest_vendor_for_product(product, lat, lng, radius_km=5):
                    OR vs.warehouse IS NULL)
         WHERE vl.product = %s
           AND vl.status = 'Active'
+          AND v.status = 'Active'
           AND v.lat IS NOT NULL AND v.lng IS NOT NULL
           AND v.lat != 0 AND v.lng != 0
           AND ST_Distance_Sphere(

@@ -51,6 +51,13 @@
    "description": "Default commission rate for new vendors"
   },
   {
+   "fieldname": "rider_tip_options",
+   "fieldtype": "Data",
+   "label": "Rider Tip Presets",
+   "default": "0, 20, 50, 100",
+   "description": "Comma-separated tip amounts (NPR) offered at checkout. Empty falls back to 0, 20, 50, 100."
+  },
+  {
    "fieldname": "tds_rate",
    "fieldtype": "Float",
    "label": "TDS Rate on Commission %",
@@ -444,6 +451,7 @@
   "col_break_marketplace",
   "default_commission_pct",
   "tds_rate",
+  "rider_tip_options",
   "tab_commerce",
   "section_cart",
   "cart_expiry_days",

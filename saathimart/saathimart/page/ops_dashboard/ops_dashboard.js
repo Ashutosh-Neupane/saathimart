@@ -30,6 +30,30 @@ class OpsDashboard {
 
 	bind_actions() {
 		this.page.set_primary_action(__("Refresh"), () => this.refresh());
+		// Delegated: the cards re-render on every refresh.
+		this.$container.on("click", ".sm-replay", (e) => this.replay(e));
+	}
+
+	replay(e) {
+		const $btn = $(e.currentTarget);
+		$btn.prop("disabled", true).text(__("Replaying..."));
+		frappe
+			.call({
+				method:
+					"saathimart.api.dead_letter.replay_dead_letters",
+				args: { limit: 100 },
+			})
+			.then((r) => {
+				const m = r.message || {};
+				frappe.show_alert({
+					message: m.message || __("Done"),
+					indicator: m.requeued ? "green" : "orange",
+				});
+				this.refresh();
+			})
+			.catch(() => {
+				$btn.prop("disabled", false).text(__("Replay"));
+			});
 	}
 
 	refresh() {
@@ -56,11 +80,15 @@ class OpsDashboard {
 			);
 			sec.cards.forEach((c) => {
 				const warn = c.warn ? "border-left:3px solid var(--warning);" : "";
+				const action = c.action
+					? `<button class="btn btn-xs btn-warning sm-replay" style="margin-top:6px;" data-action="${c.action}">${__("Replay")}</button>`
+					: "";
 				$grid.append(
 					`<div class="sm-ops-card" style="background:var(--card-bg);border-radius:8px;padding:12px;${warn}">
 						<div style="font-size:12px;color:var(--text-muted);">${c.label}</div>
 						<div style="font-size:22px;font-weight:700;">${c.value}</div>
 						${c.sub ? `<div style="font-size:11px;color:var(--text-muted);">${c.sub}</div>` : ""}
+						${action}
 					</div>`
 				);
 			});

@@ -69,6 +69,7 @@ def get_snapshot():
             "value": dead_letters,
             "warn": dead_letters > 0,
             "sub": _("needs manual replay") if dead_letters else _("clean"),
+            "action": "replay_dead_letters" if dead_letters else None,
         },
     ]
 

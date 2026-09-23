@@ -9,7 +9,7 @@ Three entry points:
 """
 import frappe
 from frappe import _
-from frappe.utils import add_to_date, now_datetime
+from frappe.utils import add_to_date, cint, now_datetime
 
 
 MAX_RETRY_AGE_DAYS = 7     # don't retry events older than this
@@ -32,13 +32,14 @@ def retry_dead_letters():
         limit=50,
     )
 
-    if not dead_events:
-        return
+    return _requeue(dead_events)
 
+
+def _requeue(dead_events):
+    """Shared requeue: reset retry bookkeeping, then kick the delivery queue."""
     retried = 0
     for evt in dead_events:
         try:
-            # Reset retry count and re-queue
             frappe.db.set_value("Webhook Event", evt.name, {
                 "status": "Queued",
                 "retry_count": 0,
@@ -54,9 +55,57 @@ def retry_dead_letters():
 
     if retried:
         frappe.db.commit()
-        frappe.logger("dead_letter").info(
-            f"Retried {retried} dead-letter events"
-        )
+        # Delivery workers pick up Queued events from drain_event_queue;
+        # enqueue it now so the replay doesn't wait for the next scheduler
+        # tick to actually deliver.
+        try:
+            frappe.enqueue(
+                "saathimart.events.publisher.drain_event_queue", queue="short"
+            )
+        except Exception:
+            # Scheduler drains on its own schedule regardless; delivery is
+            # never lost, just possibly delayed to the next tick.
+            frappe.logger("dead_letter").info(
+                "drain_event_queue enqueue failed; scheduler will pick up"
+            )
+        frappe.logger("dead_letter").info(f"Retried {retried} dead-letter events")
+
+    return retried
+
+
+@frappe.whitelist()
+def replay_dead_letters(limit=100):
+    """Desk action behind the Ops Dashboard dead-letter Replay button.
+
+    Requeues Dead events within the retry window (oldest first) and returns
+    what happened so the UI can toast a precise result. Permission-gated to
+    the same roles the Ops Dashboard page itself is limited to.
+    """
+    if not frappe.has_permission("Webhook Event", "write"):
+        frappe.throw(_("Not permitted"), frappe.PermissionError)
+
+    cutoff = add_to_date(now_datetime(), days=-MAX_RETRY_AGE_DAYS)
+    dead_events = frappe.get_all(
+        "Webhook Event",
+        filters={
+            "status": "Dead",
+            "creation": (">=", cutoff),
+            "target_site": ["!=", ""],
+        },
+        fields=["name"],
+        order_by="creation asc",
+        limit=cint(limit) or 100,
+    )
+
+    retried = _requeue(dead_events)
+    remaining = frappe.db.count("Webhook Event", {"status": "Dead"})
+    return {
+        "requeued": retried,
+        "remaining_dead": remaining,
+        "message": _("{0} events requeued for delivery").format(retried)
+        if retried
+        else _("Nothing to replay"),
+    }
 
 
 def archive_old_events():

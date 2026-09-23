@@ -1110,6 +1110,7 @@ def list_products(category=None, vendor=None, search=None, page=1, page_size=20,
         p["vendor_lng"] = flt(getattr(best, "vendor_lng", 0) or 0)
         p["vendor_service_radius_km"] = flt(getattr(best, "vendor_service_radius_km", 0) or 0)
         p["distance_km"] = distance
+        p["delivery_minutes"] = flt(getattr(best, "estimated_delivery_minutes", 0) or 0)
         p["sku"] = best.sku or ""
         p["barcode"] = best.barcode or ""
         p["vendor_product_id"] = best.vendor_product_id or ""
@@ -1831,3 +1832,141 @@ def get_vendor_listings_by_location(product_slug, lat=None, lng=None, radius_km=
         result.sort(key=lambda x: x.get("price", 0))
 
     return result
+
+def _active_listing_counts(group_field):
+    """Count sellable products grouped by `group_field` (category or brand).
+
+    "Sellable" mirrors routing: an Active Vendor Listing on an Active
+    vendor, joined to the Product so templates and inactive rows never
+    inflate counts.
+    """
+    rows = frappe.db.sql(
+        f"""
+        SELECT COALESCE(p.{group_field}, '') AS key_name, COUNT(DISTINCT p.name) AS cnt
+        FROM `tabVendor Listing` vl
+        JOIN `tabVendor` v ON v.name = vl.vendor AND v.status = 'Active'
+        JOIN `tabProduct` p ON p.name = vl.product AND p.status = 'Active'
+        WHERE vl.status = 'Active'
+        GROUP BY COALESCE(p.{group_field}, '')
+        """,
+        as_dict=True,
+    )
+    return {r.key_name: r.cnt for r in rows}
+
+
+@frappe.whitelist(allow_guest=True)
+@handle_api_errors
+@cached_response(ttl=300, key_prefix="category_tree")
+def category_tree():
+    """Category tree for the website nav: roots with nested children.
+
+    Counts are sellable-product counts (see _active_listing_counts) so the
+    nav never advertises an empty shelf. Child counts roll up into the
+    parent for display.
+    """
+    cats = frappe.get_all(
+        "Category",
+        filters={"is_active": 1},
+        fields=["name", "category_name", "slug", "image", "parent_category", "sort_order"],
+        order_by="sort_order asc, category_name asc",
+    )
+    counts = _active_listing_counts("category")
+
+    nodes = {}
+    for c in cats:
+        nodes[c.name] = {
+            "id": c.name,
+            "name": c.category_name,
+            "slug": c.slug,
+            "image": c.image or "",
+            "count": counts.get(c.name, 0),
+            "children": [],
+        }
+
+    roots = []
+    for c in cats:
+        node = nodes[c.name]
+        parent = c.parent_category
+        if parent and parent in nodes and parent != c.name:
+            nodes[parent]["children"].append(node)
+        else:
+            roots.append(node)
+
+    # Roll child counts up into ancestors.
+    def rollup(node):
+        total = node["count"]
+        for ch in node["children"]:
+            total += rollup(ch)
+        node["count"] = total
+        return total
+
+    for r in roots:
+        rollup(r)
+
+    # Drop roots with nothing sellable anywhere in their subtree.
+    return [r for r in roots if r["count"] > 0]
+
+
+@frappe.whitelist(allow_guest=True)
+@handle_api_errors
+@rate_limited("products.list", limit=300, window_seconds=60)
+@cached_response(ttl=60, key_prefix="facet_counts")
+def facet_counts(category=None, search=None, vendor=None):
+    """Live filter facet counts for the categories sidebar.
+
+    Mirrors list_products' candidate pool (sellable products under the same
+    Active-vendor/Active-listing rules, optionally narrowed by search and
+    vendor), then counts per brand and per category **within that pool** —
+    the Daraz behaviour where counts update as you filter, instead of the
+    static catalogue-wide numbers a plain brands list returns.
+    """
+    pool_sql = """
+        FROM `tabVendor Listing` vl
+        JOIN `tabVendor` v ON v.name = vl.vendor AND v.status = 'Active'
+        JOIN `tabProduct` p ON p.name = vl.product AND p.status = 'Active'
+        WHERE vl.status = 'Active' AND p.variant_of IS NULL
+    """
+    params = []
+    if category:
+        cat_names = []
+        for token in str(category).split(","):
+            token = token.strip()
+            if not token:
+                continue
+            cat_name = frappe.db.get_value("Category", {"slug": token}, "name") or token
+            cat_names.append(cat_name)
+        if cat_names:
+            pool_sql += " AND p.category IN %s"
+            params.append(tuple(cat_names))
+    if vendor:
+        pool_sql += " AND vl.vendor = %s"
+        params.append(vendor)
+    if search:
+        like = f"%{str(search).strip()}%"
+        pool_sql += " AND (p.product_name LIKE %s OR p.tags LIKE %s)"
+        params.extend([like, like])
+
+    brand_rows = frappe.db.sql(
+        f"SELECT p.brand AS key_name, COUNT(DISTINCT p.name) AS cnt {pool_sql} GROUP BY p.brand",
+        params,
+        as_dict=True,
+    )
+    cat_rows = frappe.db.sql(
+        f"SELECT p.category AS key_name, COUNT(DISTINCT p.name) AS cnt {pool_sql} GROUP BY p.category",
+        params,
+        as_dict=True,
+    )
+    total_row = frappe.db.sql(
+        f"SELECT COUNT(DISTINCT p.name) AS cnt {pool_sql}",
+        params,
+        as_dict=True,
+    )
+
+    def as_map(rows):
+        return {r.key_name: r.cnt for r in rows if r.key_name}
+
+    return {
+        "total": total_row[0].cnt if total_row else 0,
+        "brands": as_map(brand_rows),
+        "categories": as_map(cat_rows),
+    }

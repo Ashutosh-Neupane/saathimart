@@ -874,6 +874,26 @@
    "label": "SaathiMart Settings",
    "link_to": "SaathiMart Settings",
    "type": "DocType"
+  },
+  {
+   "label": "Vendor Sales Summary",
+   "link_to": "Vendor Sales Summary",
+   "type": "Report"
+  },
+  {
+   "label": "Sales by Category",
+   "link_to": "Sales by Category",
+   "type": "Report"
+  },
+  {
+   "label": "Webhook Events",
+   "link_to": "Webhook Event",
+   "type": "DocType"
+  },
+  {
+   "label": "Dead Letter Log",
+   "link_to": "Dead Letter Log",
+   "type": "DocType"
   }
  ],
  "title": "SaathiMart"

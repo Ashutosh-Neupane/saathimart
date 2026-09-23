@@ -1,0 +1,13 @@
+{
+ "name": "Sales by Category",
+ "module": "Saathimart",
+ "doctype": "Report",
+ "custom": 0,
+ "report_name": "Sales by Category",
+ "is_standard": "Yes",
+ "ref_doctype": "Order",
+ "report_type": "Script Report",
+ "roles": [
+  {"role": "SM Admin"}
+ ]
+}

@@ -51,9 +51,15 @@
    "default": "1"
   },
   {
+   "fieldname": "eta_minutes",
+   "fieldtype": "Int",
+   "label": "ETA Minutes",
+   "description": "Typical delivery time in minutes for express display (e.g. 10, 60). 0 = not set."
+  },
+  {
    "fieldname": "section_loyalty",
    "fieldtype": "Section Break",
-   "label": "\ud83c\udf81 Loyalty & Onboarding"
+   "label": "🎁 Loyalty & Onboarding"
   },
   {
    "fieldname": "loyalty_multiplier",
@@ -150,6 +156,7 @@
   "col_break_2",
   "free_delivery_above",
   "estimated_days",
+  "eta_minutes",
   "section_loyalty",
   "loyalty_multiplier",
   "col_break_loyalty",

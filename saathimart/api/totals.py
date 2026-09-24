@@ -105,7 +105,9 @@ def _apply_default_nepal_vat(doc):
         if flt(t.get("rate") or 0) > 0 and not t.get("included_in_price"):
             return  # explicit tax configuration present — respect it
 
-    grand_total = flt(doc.get("grand_total") or 0)
+    # The rider tip is not part of the taxable sale (gratuity, not a supply
+    # of goods) — exclude it from the VAT back-out base.
+    grand_total = flt(doc.get("grand_total") or 0) - flt(doc.get("rider_tip") or 0)
     if grand_total <= 0:
         return
 
@@ -425,11 +427,16 @@ def _calculate_grand_total(doc):
     if doc.get("free_delivery"):
         delivery_charge = 0.0
 
+    # Rider tip is a voluntary gratuity paid to the delivery person, not a
+    # supply of goods — it joins the customer's bill AFTER the VAT-inclusive
+    # sale is formed, so it must not enter the VAT back-out base.
+    rider_tip = flt(doc.get("rider_tip") or 0)
+
     total_discount = (
         coupon_discount + onboarding_discount + membership_discount
         + loyalty_discount + manual_discount
     )
-    grand_total = net_total + total_taxes - total_discount + delivery_charge
+    grand_total = net_total + total_taxes - total_discount + delivery_charge + rider_tip
     _set(doc, "net_after_discount", rounded(max(net_total - total_discount, 0), 2))
     _set(doc, "grand_total", rounded(max(grand_total, 0), 2))
     _set(doc, "total_discount", rounded(total_discount, 2))

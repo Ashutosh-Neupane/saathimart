@@ -202,7 +202,21 @@ def _process_inbound_event(webhook_event_name):
     an explicit commit (a worker job doesn't get the auto-commit a web
     request does).
     """
-    evt = frappe.get_doc("Webhook Event", webhook_event_name)
+    evt = frappe.db.get_value(
+        "Webhook Event",
+        webhook_event_name,
+        ["event_type", "payload"],
+        as_dict=True,
+    )
+    if not evt:
+        # The event row can vanish between enqueue and job execution (the
+        # weekly archive job deletes aged events; a manual cleanup can too).
+        # That is not an application error - the job must not crash-loop or
+        # pollute the Error Log with DoesNotExist tracebacks.
+        frappe.logger("events").info(
+            f"Inbound event {webhook_event_name} no longer exists; skipping"
+        )
+        return
     event = (evt.event_type or "").removeprefix("inbound.")
     payload = json.loads(evt.payload or "{}")
     try:
@@ -349,6 +363,46 @@ def _apply_order_delivered(payload):
         earned = earn_points(doc.customer_email, doc.name, doc.grand_total)
         if earned:
             frappe.db.set_value("Order", order_id, "loyalty_points_earned", earned)
+
+    # COD cash collection: the rider hands over the goods and takes the
+    # customer's cash — that moment IS the payment event for a COD order.
+    # Without this, the order stays Unpaid forever: no Payment Log (so the
+    # accounting hook that books the platform's ledger never fires), no
+    # payment.received event (so the vendor never records the Payment Entry
+    # that unblocks settlement), and every Paid-filtered report silently
+    # undercounts. COD settled on delivery, per Nepal e-commerce norms.
+    if became_delivered and doc.payment_method == "COD" and doc.payment_status != "Paid":
+        try:
+            from saathimart.events.publisher import publish_payment_received
+
+            amount = frappe.utils.flt(doc.grand_total)
+            frappe.db.set_value("Order", order_id, {
+                "payment_status": "Paid",
+                "payment_method": "COD",
+            })
+            log = frappe.new_doc("Payment Log")
+            log.order = order_id
+            log.gateway = "COD"
+            log.status = "Success"
+            log.amount = amount
+            log.reference = f"Cash collected on delivery — {order_id}"
+            log.insert(ignore_permissions=True)
+            # after_insert fires on_payment_log_created, which pushes the
+            # platform ledger batch (commission income, vendor clearing,
+            # VAT) to the Platform Ledger Vendor's books.
+            frappe.db.commit()
+            # Reuse the gateway path so vendors hear about the money and
+            # record their Payment Entry — the trigger their settlement
+            # pipeline waits for.
+            publish_payment_received(
+                order_id, amount=amount, gateway="COD",
+                reference=log.reference,
+            )
+        except Exception:
+            frappe.log_error(
+                frappe.get_traceback(),
+                f"COD payment finalisation failed for {order_id}",
+            )
 
 
 def _apply_order_cancel_from_vendor(payload):

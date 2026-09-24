@@ -94,7 +94,7 @@ def _cascade_status_to_fulfillments(doc, status):
 def checkout(session_id, customer_name, customer_phone, delivery_address,
              payment_method="COD", delivery_zone=None, coupon_code=None,
              loyalty_points=0, notes=None, customer_email=None,
-             customer_lat=None, customer_lng=None):
+             customer_lat=None, customer_lng=None, rider_tip=0):
     from saathimart.api.utils import check_request_size
     check_request_size()
     """
@@ -119,6 +119,7 @@ def checkout(session_id, customer_name, customer_phone, delivery_address,
         customer_email=customer_email,
         customer_lat=customer_lat,
         customer_lng=customer_lng,
+        rider_tip=rider_tip,
     )
 
 
@@ -160,7 +161,7 @@ def _get_checkout_state(kind, token):
 def checkout_async(session_id, customer_name, customer_phone, delivery_address,
                    payment_method="COD", delivery_zone=None, coupon_code=None,
                    loyalty_points=0, notes=None, customer_email=None,
-                   customer_lat=None, customer_lng=None):
+                   customer_lat=None, customer_lng=None, rider_tip=0):
     from saathimart.api.utils import check_request_size
     check_request_size()
     """
@@ -227,6 +228,7 @@ def checkout_async(session_id, customer_name, customer_phone, delivery_address,
         customer_email=customer_email,
         customer_lat=customer_lat,
         customer_lng=customer_lng,
+        rider_tip=rider_tip,
     )
 
     return {
@@ -301,7 +303,7 @@ def checkout_status(job_id):
 def _execute_checkout(session_id, customer_name, customer_phone, delivery_address,
                       payment_method="COD", delivery_zone=None, coupon_code=None,
                       loyalty_points=0, notes=None, customer_email=None,
-                      customer_lat=None, customer_lng=None):
+                      customer_lat=None, customer_lng=None, rider_tip=0):
     """
     Heavy checkout body, shared by the sync endpoint and the async job.
 
@@ -369,6 +371,7 @@ def _execute_checkout(session_id, customer_name, customer_phone, delivery_addres
     order.payment_method   = payment_method
     order.coupon_code      = coupon_code or ""
     order.loyalty_points_redeemed = flt(loyalty_points)
+    order.rider_tip        = flt(rider_tip)
     order.notes            = notes or ""
     order.vendor            = next(iter(vendor_groups.keys()), "") if vendor_groups else ""
     if customer_lat is not None:

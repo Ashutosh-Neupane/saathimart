@@ -160,10 +160,8 @@
   "section_payment",
   "payment_method",
   "payment_reference",
-  "paid_at",
   "notes",
   "col_break_3",
-  "created_by",
   "tab_connections"
  ],
  "sort_field": "modified",

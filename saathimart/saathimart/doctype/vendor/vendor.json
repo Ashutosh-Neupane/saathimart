@@ -344,72 +344,6 @@
    "options": "<p>Optional per-vendor GL account names for the vendor's own ERPNext books. Left blank, accounts resolve by standard name / fuzzy match on the vendor site. Set these when the vendor's Chart of Accounts uses non-standard names — unresolvable accounts now fail LOUD instead of posting unbalanced GL.</p><p><b>Push to vendor site:</b> copy these keys into Vendor Config → Account Overrides (JSON) on the vendor's Frappe site.</p>"
   },
   {
-   "fieldname": "acct_cash_bank",
-   "fieldtype": "Data",
-   "label": "Cash / Bank",
-   "depends_on": "eval:doc.acct_revenue || doc.acct_clearing_platform || 1"
-  },
-  {
-   "fieldname": "acct_revenue",
-   "fieldtype": "Data",
-   "label": "Revenue (Sales)",
-   "depends_on": "eval:doc.acct_revenue || doc.acct_clearing_platform || 1"
-  },
-  {
-   "fieldname": "acct_vat_output",
-   "fieldtype": "Data",
-   "label": "VAT Output",
-   "depends_on": "eval:doc.acct_revenue || doc.acct_clearing_platform || 1"
-  },
-  {
-   "fieldname": "acct_vat_input",
-   "fieldtype": "Data",
-   "label": "VAT Input",
-   "depends_on": "eval:doc.acct_revenue || doc.acct_clearing_platform || 1"
-  },
-  {
-   "fieldname": "acct_clearing_platform",
-   "fieldtype": "Data",
-   "label": "SaathiMart Clearing",
-   "depends_on": "eval:doc.acct_revenue || doc.acct_clearing_platform || 1"
-  },
-  {
-   "fieldname": "acct_tds_payable",
-   "fieldtype": "Data",
-   "label": "TDS Payable",
-   "depends_on": "eval:doc.acct_revenue || doc.acct_clearing_platform || 1"
-  },
-  {
-   "fieldname": "acct_commission_expense",
-   "fieldtype": "Data",
-   "label": "Commission Expense",
-   "depends_on": "eval:doc.acct_revenue || doc.acct_clearing_platform || 1"
-  },
-  {
-   "fieldname": "acct_platform_coupon_income",
-   "fieldtype": "Data",
-   "label": "Platform Coupon Reimbursement",
-   "depends_on": "eval:doc.acct_revenue || doc.acct_clearing_platform || 1"
-  },
-  {
-   "fieldname": "acct_loyalty_income",
-   "fieldtype": "Data",
-   "label": "Loyalty Reimbursement",
-   "depends_on": "eval:doc.acct_revenue || doc.acct_clearing_platform || 1"
-  },
-  {
-   "fieldname": "acct_accounts_receivable",
-   "fieldtype": "Data",
-   "label": "Accounts Receivable",
-   "depends_on": "eval:doc.acct_revenue || doc.acct_clearing_platform || 1"
-  },
-  {
-   "fieldname": "acct_accounts_payable",
-   "fieldtype": "Data",
-   "label": "Accounts Payable",
-   "depends_on": "eval:doc.acct_revenue || doc.acct_clearing_platform || 1"
-  },
-  {
    "fieldname": "col_break_acct",
    "fieldtype": "Column Break"
   }
@@ -532,17 +466,6 @@
   "tab_accounting",
   "section_accounts",
   "accounts_help",
-  "acct_cash_bank",
-  "acct_revenue",
-  "acct_vat_output",
-  "acct_vat_input",
-  "acct_clearing_platform",
-  "acct_tds_payable",
-  "acct_commission_expense",
-  "acct_platform_coupon_income",
-  "acct_loyalty_income",
-  "acct_accounts_receivable",
-  "acct_accounts_payable",
   "col_break_acct",
   "section_credentials_info",
   "credentials_info",

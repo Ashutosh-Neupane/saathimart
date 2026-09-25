@@ -17,8 +17,6 @@
   "new_value",
   "column_break_1",
   "status",
-  "processed_at",
-  "error_message",
   "tab_connections"
  ],
  "fields": [
@@ -79,11 +77,6 @@
    "label": "Status",
    "options": "Pending\nProcessed\nFailed",
    "default": "Pending"
-  },
-  {
-   "fieldname": "error_message",
-   "fieldtype": "Text",
-   "label": "Error Message"
   },
   {
    "fieldname": "tab_connections",

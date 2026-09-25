@@ -387,6 +387,16 @@ def _apply_order_delivered(payload):
             log.amount = amount
             log.reference = f"Cash collected on delivery — {order_id}"
             log.insert(ignore_permissions=True)
+            # Timeline parity with the gateway path (payments._mark_order_paid
+            # records this event for eSewa): the COD flip above goes through
+            # db.set_value, which bypasses doc_events, so without this the
+            # customer's order timeline simply never shows the paid moment.
+            from saathimart.api.order_events import record_order_event
+            record_order_event(order_id, "paid", {
+                "amount": amount,
+                "method": "COD",
+                "reference": log.reference,
+            }, actor="system")
             # after_insert fires on_payment_log_created, which pushes the
             # platform ledger batch (commission income, vendor clearing,
             # VAT) to the Platform Ledger Vendor's books.
